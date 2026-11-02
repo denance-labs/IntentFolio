@@ -43,4 +43,40 @@ describe("buildValueSeries", () => {
     const days = [{ day: "2026-10-30", tokens: [] }];
     expect(buildValueSeries({ ...base, days, nowUsd: 0 })).toEqual([]);
   });
+
+  describe("movements the user made (D-548)", () => {
+    const withFlows: ValueSeriesInput = {
+      ...base,
+      days: [
+        { ...base.days[0], flowUsd: 20 },
+        { ...base.days[1], flowUsd: -4.5 },
+      ],
+      nowFlowUsd: null,
+    };
+
+    it("carries each day's movement and now's onto its point, but never onto the first one drawn", () => {
+      expect(buildValueSeries(withFlows).map((p) => p.flowUsd)).toEqual([undefined, -4.5, null]);
+      expect(buildValueSeries(withFlows)[0]).not.toHaveProperty("flowUsd");
+    });
+
+    it("the first point inside the range loses its mark too: the jump into it is off screen", () => {
+      const old = { day: "2026-10-20", tokens: [{ tokenId: NEAR, usd: 10 }] };
+      const points = buildValueSeries({ ...withFlows, days: [old, ...withFlows.days], rangeDays: 7 });
+      expect(points.map((p) => [p.day, p.flowUsd])).toEqual([
+        ["2026-10-29", undefined],
+        ["2026-10-30", -4.5],
+        [null, null],
+      ]);
+    });
+
+    it("leaves a movement under a cent unmarked", () => {
+      const days = [base.days[0], { ...base.days[1], flowUsd: 0.004 }];
+      expect(buildValueSeries({ ...base, days })[1]).not.toHaveProperty("flowUsd");
+    });
+
+    it("has no now mark while now is not drawn", () => {
+      const points = buildValueSeries({ ...withFlows, nowUsd: null, nowFlowUsd: 3 });
+      expect(points.map((p) => p.flowUsd)).toEqual([undefined, -4.5]);
+    });
+  });
 });

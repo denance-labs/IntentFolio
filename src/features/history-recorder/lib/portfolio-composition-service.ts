@@ -26,26 +26,29 @@ import { CURSOR_SQL, PORTFOLIO_ID_RE, freshnessOf, type CursorRow } from "./port
  * `token` for allocate / unallocate; a rebalance row carries BOTH legs, qty_in of `token_in` and
  * qty_out of `token_out`; a repair names it per row in `corrections[ord][1]`. Rows of other events
  * move nothing and have both quantities NULL. A token the line does not name comes back as ''.
+ * `flow` is the part of `delta` that the user moved in or out (allocate / unallocate, D-548):
+ * what Performance marks on its curve so it is not read as a gain or a loss.
  */
 export const MOVES_SQL = `
 SELECT COALESCE(l.token, '') AS token,
        to_char(l.day, 'YYYY-MM-DD') AS day,
-       SUM(l.delta)::text AS delta
+       SUM(l.delta)::text AS delta,
+       COALESCE(SUM(l.delta) FILTER (WHERE l.flow), 0)::text AS flow
   FROM (
-    SELECT leg.token, (p.block_ts AT TIME ZONE 'UTC')::date AS day, leg.delta
+    SELECT leg.token, (p.block_ts AT TIME ZONE 'UTC')::date AS day, leg.delta, leg.flow
       FROM vault_event_portfolio p
       JOIN vault_event e USING (vault_id, receipt_id, log_index)
      CROSS JOIN LATERAL (
-       SELECT e.raw #>> '{data,0,token}' AS token, COALESCE(p.qty_in, 0) - COALESCE(p.qty_out, 0) AS delta
+       SELECT e.raw #>> '{data,0,token}' AS token, COALESCE(p.qty_in, 0) - COALESCE(p.qty_out, 0) AS delta, TRUE AS flow
         WHERE e.event IN ('allocate', 'unallocate')
        UNION ALL
-       SELECT e.raw #>> '{data,0,token_in}', p.qty_in
+       SELECT e.raw #>> '{data,0,token_in}', p.qty_in, FALSE
         WHERE e.event IN ('external_rebalance', 'forced_internal_rebalance') AND p.qty_in IS NOT NULL
        UNION ALL
-       SELECT e.raw #>> '{data,0,token_out}', -p.qty_out
+       SELECT e.raw #>> '{data,0,token_out}', -p.qty_out, FALSE
         WHERE e.event IN ('external_rebalance', 'forced_internal_rebalance') AND p.qty_out IS NOT NULL
        UNION ALL
-       SELECT e.raw #>> ARRAY['data', '0', 'corrections', p.ord::text, '1'], COALESCE(p.qty_in, 0) - COALESCE(p.qty_out, 0)
+       SELECT e.raw #>> ARRAY['data', '0', 'corrections', p.ord::text, '1'], COALESCE(p.qty_in, 0) - COALESCE(p.qty_out, 0), FALSE
         WHERE e.event = 'reconciliation_repaired'
      ) leg
      WHERE p.vault_id = $1 AND p.portfolio_id = $2
@@ -63,18 +66,33 @@ SELECT to_char(day, 'YYYY-MM-DD') AS day, token_id, price_usd::text AS price_usd
 
 const ZERO = BigInt(0);
 
-type MoveRow = { token: string; day: string; delta: string };
+/** `flow`: the part of `delta` from allocate / unallocate; absent counts as none. */
+type MoveRow = { token: string; day: string; delta: string; flow?: string };
 type PriceRow = { day: string; token_id: string; price_usd: string };
 
 export type CompositionToken = { tokenId: string; usd: number };
 /** One snapshot: the portfolio at 00:00 UTC of `day`. Every token held then, none at zero. */
-export type CompositionDay = { day: string; tokens: CompositionToken[] };
+export type CompositionDay = {
+  day: string;
+  tokens: CompositionToken[];
+  /**
+   * What the user moved in (+) or out (−) since the previous snapshot, at this day's price (D-548);
+   * null when a token moved has no price that day. Absent when nothing moved, and on the first
+   * snapshot, which has no previous one to jump from.
+   */
+  flowUsd?: number | null;
+};
 
 export type PortfolioCompositionBody =
   | {
       ok: true;
       /** Oldest day first; days that could not be valued are absent, not zero. */
       days: CompositionDay[];
+      /**
+       * What the user moved in or out after the last snapshot — Performance's "now" point — at the
+       * last kept price (D-548). Same meaning as `CompositionDay.flowUsd`; absent when nothing moved.
+       */
+      nowFlowUsd?: number | null;
       /** Every vault transaction is recorded up to this block time (ms); null before the first pass. */
       recordedUntil: number | null;
       upToDate: boolean;
@@ -136,7 +154,7 @@ export async function handlePortfolioComposition(
   const { recordedUntil, upToDate, loading, cacheControl, catchUp } = freshnessOf(cursor, (input.now ?? Date.now)());
   return {
     status: 200,
-    body: { ok: true, days: snapshotsOf(moves, prices), recordedUntil, upToDate, loading },
+    body: { ok: true, ...snapshotsOf(moves, prices), recordedUntil, upToDate, loading },
     cacheControl,
     catchUp,
   };
@@ -145,8 +163,16 @@ export async function handlePortfolioComposition(
 /**
  * Folds the daily changes (oldest first) into a snapshot per priced day. Quantities stay `bigint`
  * until a token is valued; only the USD value is a float.
+ *
+ * Alongside, what the user moved in or out (D-548): netted per token since the previous snapshot
+ * that came out — a day left out passes its movements on to the next — and valued at the price of
+ * the snapshot it first shows in, the one its point is drawn at. The jump between two points is
+ * then exactly this plus what the earlier holdings gained or lost on price.
  */
-export function snapshotsOf(moves: MoveRow[], prices: PriceRow[]): CompositionDay[] {
+export function snapshotsOf(
+  moves: MoveRow[],
+  prices: PriceRow[]
+): { days: CompositionDay[]; nowFlowUsd?: number | null } {
   const priceByDay = new Map<string, Map<string, number>>();
   for (const p of prices) {
     let day = priceByDay.get(p.day);
@@ -155,14 +181,19 @@ export function snapshotsOf(moves: MoveRow[], prices: PriceRow[]): CompositionDa
   }
 
   const held = new Map<string, bigint>();
+  // Moved in or out since the last snapshot that came out.
+  const flow = new Map<string, bigint>();
+  const fold = ({ token, delta, flow: moved }: MoveRow) => {
+    held.set(token, (held.get(token) ?? ZERO) + BigInt(delta));
+    if (moved !== undefined && moved !== "0") flow.set(token, (flow.get(token) ?? ZERO) + BigInt(moved));
+  };
   const days: CompositionDay[] = [];
+  let lastPrices: Map<string, number> | undefined;
   let next = 0;
   for (const [day, dayPrices] of priceByDay) {
+    lastPrices = dayPrices;
     // 00:00 UTC of `day`: every movement of an earlier day, none of its own.
-    for (; next < moves.length && moves[next].day < day; next++) {
-      const { token, delta } = moves[next];
-      held.set(token, (held.get(token) ?? ZERO) + BigInt(delta));
-    }
+    for (; next < moves.length && moves[next].day < day; next++) fold(moves[next]);
     const tokens: CompositionToken[] = [];
     let valued = true;
     for (const [token, qty] of held) {
@@ -177,9 +208,33 @@ export function snapshotsOf(moves: MoveRow[], prices: PriceRow[]): CompositionDa
       }
       tokens.push({ tokenId, usd: units * price });
     }
-    if (valued && tokens.some((t) => t.usd > 0)) days.push({ day, tokens });
+    if (valued && tokens.some((t) => t.usd > 0)) {
+      const flowUsd = days.length > 0 ? valueOfFlow(flow, dayPrices) : undefined;
+      days.push(flowUsd === undefined ? { day, tokens } : { day, tokens, flowUsd });
+      flow.clear();
+    }
   }
-  return days;
+  if (days.length === 0 || !lastPrices) return { days };
+  // After the last snapshot: today's movements, and those of any days left out since.
+  for (; next < moves.length; next++) fold(moves[next]);
+  const nowFlowUsd = valueOfFlow(flow, lastPrices);
+  return nowFlowUsd === undefined ? { days } : { days, nowFlowUsd };
+}
+
+/** Undefined when nothing moved; null when a token moved cannot be valued at these prices. */
+function valueOfFlow(flow: Map<string, bigint>, prices: Map<string, number>): number | null | undefined {
+  let usd = 0;
+  let moved = false;
+  for (const [token, qty] of flow) {
+    if (qty === ZERO) continue;
+    moved = true;
+    // `quantityOf` takes no negatives: value the size, then put the sign back.
+    const units = quantityOf(toRegistryTokenId(token), (qty < ZERO ? -qty : qty).toString());
+    const price = prices.get(token);
+    if (units === null || price === undefined) return null;
+    usd += (qty < ZERO ? -units : units) * price;
+  }
+  return moved ? usd : undefined;
 }
 
 function fail(

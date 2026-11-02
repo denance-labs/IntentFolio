@@ -76,9 +76,44 @@ type RangeDays = (typeof RANGES)[number];
 
 // --- Chart component ---
 
-type ChartProps = { points: ValuePoint[]; nowLabel: string };
+type ChartProps = {
+  points: ValuePoint[];
+  nowLabel: string;
+  /** The tooltip line of a point that includes funds the user moved (D-548). */
+  flowLabel: (flowUsd: number | null) => string;
+};
 
-function ValueLineChart({ points, nowLabel }: ChartProps) {
+// D-548: a point that includes funds the user moved gets a neutral ring — never green/red or an
+// arrow, which would read as the gain or loss it is there to rule out.
+const FLOW_RING = "#e2e8f0";
+
+/** Arrow path inside a ring of radius ~6, centred on 0,0: up when funds came in, down when out. */
+const FLOW_ARROW_UP = "M0 3V-3M-2.2 -0.8 0 -3 2.2 -0.8";
+
+/**
+ * The ring, with the movement's direction inside it in the same neutral colour, so in or out reads
+ * without hovering. No arrow when the movement could not be valued: its direction is unknown too.
+ */
+function FlowMark({ cx, cy, flowUsd, hovered }: { cx: number; cy: number; flowUsd: number | null; hovered: boolean }) {
+  return (
+    <g transform={`translate(${cx} ${cy})`}>
+      <circle r={hovered ? 7 : 6} fill={hovered ? "#22d3ee" : "#0f172a"} stroke={FLOW_RING} strokeWidth="1.5" />
+      {flowUsd !== null && (
+        <path
+          d={FLOW_ARROW_UP}
+          transform={flowUsd < 0 ? "rotate(180)" : undefined}
+          fill="none"
+          stroke={hovered ? "#0f172a" : FLOW_RING}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+    </g>
+  );
+}
+
+function ValueLineChart({ points, nowLabel, flowLabel }: ChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
@@ -140,7 +175,11 @@ function ValueLineChart({ points, nowLabel }: ChartProps) {
   const hp = hoveredIdx !== null ? points[hoveredIdx] : null;
   const hx = hp ? scaleX(hp.timestamp) : 0;
   const hy = hp ? scaleY(hp.valueUsd) : 0;
-  const tooltipLeft = hx > W - 140;
+  const hFlow = hp && hp.flowUsd !== undefined ? flowLabel(hp.flowUsd) : null;
+  // Wide enough for the movement line at 10px (~5.8 per character), never narrower than before.
+  const tooltipW = hFlow ? Math.max(116, Math.ceil(hFlow.length * 5.8) + 24) : 116;
+  const tooltipH = hFlow ? 58 : 42;
+  const tooltipLeft = hx > W - tooltipW - 24;
 
   return (
     <svg
@@ -178,17 +217,27 @@ function ValueLineChart({ points, nowLabel }: ChartProps) {
         clipPath="url(#perf-clip)"
       />
 
-      {points.map((p, i) => (
-        <circle
-          key={i}
-          cx={scaleX(p.timestamp)}
-          cy={scaleY(p.valueUsd)}
-          r={hoveredIdx === i ? 4.5 : 2.5}
-          fill={hoveredIdx === i ? "#22d3ee" : "#0e7490"}
-          className="stroke-slate-900"
-          strokeWidth="1.5"
-        />
-      ))}
+      {points.map((p, i) =>
+        p.flowUsd !== undefined ? (
+          <FlowMark
+            key={i}
+            cx={scaleX(p.timestamp)}
+            cy={scaleY(p.valueUsd)}
+            flowUsd={p.flowUsd}
+            hovered={hoveredIdx === i}
+          />
+        ) : (
+          <circle
+            key={i}
+            cx={scaleX(p.timestamp)}
+            cy={scaleY(p.valueUsd)}
+            r={hoveredIdx === i ? 4.5 : 2.5}
+            fill={hoveredIdx === i ? "#22d3ee" : "#0e7490"}
+            className="stroke-slate-900"
+            strokeWidth="1.5"
+          />
+        )
+      )}
 
       {xLabelIdxs.map((idx, i) => (
         <text key={i} x={scaleX(points[idx].timestamp)} y={H - 8} textAnchor="middle" fontSize="10" className="fill-slate-500">
@@ -212,20 +261,25 @@ function ValueLineChart({ points, nowLabel }: ChartProps) {
       {hp && (
         <>
           <rect
-            x={tooltipLeft ? hx - 128 : hx + 10}
+            x={tooltipLeft ? hx - tooltipW - 12 : hx + 10}
             y={hy - 30}
-            width={116}
-            height={42}
+            width={tooltipW}
+            height={tooltipH}
             rx={6}
             className="fill-slate-800 stroke-slate-700"
             strokeWidth="1"
           />
-          <text x={tooltipLeft ? hx - 118 : hx + 20} y={hy - 13} fontSize="10" className="fill-slate-400">
+          <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy - 13} fontSize="10" className="fill-slate-400">
             {formatValuePointDate(hp, nowLabel)}
           </text>
-          <text x={tooltipLeft ? hx - 118 : hx + 20} y={hy + 5} fontSize="12" fontWeight="600" fill="#e2e8f0">
+          <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy + 5} fontSize="12" fontWeight="600" fill="#e2e8f0">
             {formatUsd(hp.valueUsd)}
           </text>
+          {hFlow && (
+            <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy + 21} fontSize="10" className="fill-slate-300">
+              {hFlow}
+            </text>
+          )}
         </>
       )}
     </svg>
@@ -543,10 +597,12 @@ export function PerformanceView() {
       days: composition.data?.days ?? [],
       // Without live prices "now" would be valued at fallback prices: left out until they load.
       nowUsd: livePrices ? currentValueUsd : null,
+      nowFlowUsd: composition.data?.nowFlowUsd,
       now: Date.now(),
       rangeDays: range,
     });
   }, [isReal, navPoints, composition.data, livePrices, currentValueUsd, range]);
+  const hasFlowMark = chartPoints.some((p) => p.flowUsd !== undefined);
   const valueLoading = isReal && composition.isLoading;
   // A failed re-read keeps the days it already has, like the rebalance numbers above.
   const valueFailed = isReal && composition.isError && !composition.data;
@@ -663,7 +719,26 @@ export function PerformanceView() {
             <p className="mt-2 text-sm text-slate-400">{t.evolutionError}</p>
           </div>
         ) : chartPoints.length > 1 ? (
-          <ValueLineChart points={chartPoints} nowLabel={t.evolutionNow} />
+          <>
+            <ValueLineChart
+              points={chartPoints}
+              nowLabel={t.evolutionNow}
+              flowLabel={(flowUsd) =>
+                flowUsd === null
+                  ? t.performanceFlowUnknown
+                  : (flowUsd > 0 ? t.performanceFlowIn : t.performanceFlowOut).replace("{amount}", formatUsd(Math.abs(flowUsd)))
+              }
+            />
+            {hasFlowMark && (
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
+                <svg viewBox="-7 -7 14 14" width="13" height="13" aria-hidden="true" className="mt-px shrink-0">
+                  <circle r="6" fill="#0f172a" stroke={FLOW_RING} strokeWidth="1.5" />
+                  <path d={FLOW_ARROW_UP} fill="none" stroke={FLOW_RING} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {t.performanceFlowLegend}
+              </p>
+            )}
+          </>
         ) : (
           <p className="py-10 text-center text-sm text-slate-400">
             {isReal ? t.evolutionNoCurve : t.performanceNoData}

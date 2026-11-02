@@ -5,8 +5,8 @@ import { communityLinks } from "@/content/community-links";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
 
-// Brand marks as small inline SVGs: lucide-react has no Discord/Telegram glyphs
-// and two shapes don't justify a new icon dependency.
+// Brand marks as small inline SVGs: lucide-react has no Discord/Telegram/X glyphs
+// and a few shapes don't justify a new icon dependency.
 function DiscordIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -20,6 +20,50 @@ function TelegramIcon() {
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
       <path d="M21.94 4.1 18.72 19.3c-.24 1.07-.87 1.33-1.76.83l-4.86-3.58-2.35 2.26c-.26.26-.48.48-.98.48l.35-4.96 9.02-8.15c.39-.35-.09-.54-.61-.19L6.38 12.99 1.58 11.5c-1.04-.33-1.06-1.04.22-1.54l18.76-7.23c.87-.32 1.63.2 1.38 1.37Z" />
     </svg>
+  );
+}
+
+// Drawn here from plain shapes (D-549): the X mark, Instagram's camera outline and LinkedIn's "in".
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M3.5 3h5l12 18h-5z" fill="currentColor" />
+      <path d="M20 3.2 13.6 10.4M10.4 13.6 4 20.8" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.3" cy="6.7" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
+      <g fill="#020617">
+        <rect x="5.6" y="9.6" width="3" height="8.8" />
+        <circle cx="7.1" cy="6.6" r="1.75" />
+        <path d="M10.7 9.6h2.9v1.3c.5-.9 1.6-1.5 3-1.5 2.3 0 3.4 1.4 3.4 4v5h-3v-4.5c0-1.2-.4-1.9-1.5-1.9s-1.8.8-1.8 2v4.4h-3z" />
+      </g>
+    </svg>
+  );
+}
+
+/** A channel without a working link yet: shown, disabled, with a "Soon" pill. */
+function SoonEntry({ icon, label, srLabel, soon }: { icon: React.ReactNode; label: string; srLabel: string; soon: string }) {
+  return (
+    <span role="img" aria-label={srLabel} className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-slate-400">
+      {icon}
+      {label}
+      <span className="rounded-full border border-slate-700 px-1.5 py-px text-[10px] uppercase tracking-wide">{soon}</span>
+    </span>
   );
 }
 
@@ -49,16 +93,20 @@ export function LandingFooter() {
           <nav aria-label={t.contactLabel}>
             <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
               <li>
-                <a
-                  href={communityLinks.discord}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t.discord}
-                  className={linkClass}
-                >
-                  <DiscordIcon />
-                  {t.discord}
-                </a>
+                {communityLinks.discord ? (
+                  <a
+                    href={communityLinks.discord}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={t.discord}
+                    className={linkClass}
+                  >
+                    <DiscordIcon />
+                    {t.discord}
+                  </a>
+                ) : (
+                  <SoonEntry icon={<DiscordIcon />} label={t.discord} srLabel={t.discordSrLabel} soon={t.soon} />
+                )}
               </li>
               <li>
                 {communityLinks.telegram ? (
@@ -73,18 +121,44 @@ export function LandingFooter() {
                     {t.telegram}
                   </a>
                 ) : (
-                  <span
-                    role="img"
-                    aria-label={t.telegramSrLabel}
-                    className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-slate-400"
-                  >
-                    <TelegramIcon />
-                    {t.telegram}
-                    <span className="rounded-full border border-slate-700 px-1.5 py-px text-[10px] uppercase tracking-wide">
-                      {t.telegramSoon}
-                    </span>
-                  </span>
+                  <SoonEntry icon={<TelegramIcon />} label={t.telegram} srLabel={t.telegramSrLabel} soon={t.soon} />
                 )}
+              </li>
+              <li>
+                <a
+                  href={communityLinks.x}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t.x}
+                  className={linkClass}
+                >
+                  <XIcon />
+                  {t.x}
+                </a>
+              </li>
+              <li>
+                <a
+                  href={communityLinks.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t.instagram}
+                  className={linkClass}
+                >
+                  <InstagramIcon />
+                  {t.instagram}
+                </a>
+              </li>
+              <li>
+                <a
+                  href={communityLinks.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t.linkedin}
+                  className={linkClass}
+                >
+                  <LinkedInIcon />
+                  {t.linkedin}
+                </a>
               </li>
               <li>
                 <a

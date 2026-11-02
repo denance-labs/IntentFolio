@@ -136,6 +136,13 @@ suite("portfolio composition — the read against a real Postgres 16, the 008 sc
     for (const day of out.body.days) expect(day.tokens.map((t) => t.tokenId)).toEqual([USDT]);
   });
 
+  it("an allocation is all flow: what the user moved in, not a gain (D-548)", async () => {
+    const vault = freshVault();
+    await record(vault, [CREATE_FIRST]);
+    const { rows } = await reader.query(MOVES_SQL, [vault, "p_000000000000"]);
+    expect(rows).toEqual([{ token: USDT, day: dayOf(CREATE_FIRST), delta: "2457698", flow: "2457698" }]);
+  });
+
   it("an allocation withdrawn the same day leaves no day at all", async () => {
     const vault = freshVault();
     await record(vault, [CREATE_FIRST, COMMIT_WITHDRAW]);
@@ -148,8 +155,8 @@ suite("portfolio composition — the read against a real Postgres 16, the 008 sc
     await record(vault, [REBALANCE]);
     const { rows } = await reader.query(MOVES_SQL, [vault, "p_000000000001"]);
     expect(rows).toEqual([
-      { token: USDT, day: dayOf(REBALANCE), delta: "-444329" },
-      { token: WNEAR, day: dayOf(REBALANCE), delta: "84046287820715792235350" },
+      { token: USDT, day: dayOf(REBALANCE), delta: "-444329", flow: "0" },
+      { token: WNEAR, day: dayOf(REBALANCE), delta: "84046287820715792235350", flow: "0" },
     ]);
     // Priced the next day, so only the negative USDT (no allocation in this vault) keeps it out.
     await priceOn(nextDay(dayOf(REBALANCE)), USDT);

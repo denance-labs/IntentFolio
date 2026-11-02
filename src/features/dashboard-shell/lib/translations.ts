@@ -197,6 +197,12 @@ export const shellTranslations = {
     performanceCumulativeSpreadLabel: "Cumulative spread",
     performanceCumulativeSpreadNote: "Total earned from rebalances since inception",
     performanceSpreadNoData: "No rebalances yet — spread will appear here once the first one runs.",
+    // D-548: a point of the value curve that includes funds the user moved, so a jump is not read as
+    // a gain or a loss. `{amount}` is replaced.
+    performanceFlowIn: "You added {amount}",
+    performanceFlowOut: "You moved out {amount}",
+    performanceFlowUnknown: "Includes funds you moved",
+    performanceFlowLegend: "Ringed points include funds you added or moved out: not a gain or a loss.",
     // D-516: the Evolution tab — how the portfolio's value was split between its tokens, day by day.
     evolutionChartTitle: "Value split by token",
     evolutionChartNote: "One point per day, at 00:00 UTC and that day's price. The last one is now.",
@@ -736,6 +742,10 @@ export const shellTranslations = {
     performanceCumulativeSpreadLabel: "Spread acumulado",
     performanceCumulativeSpreadNote: "Total ganado desde el inicio",
     performanceSpreadNoData: "Todavía no hay rebalanceos — el spread aparecerá aquí cuando ocurra el primero.",
+    performanceFlowIn: "Agregaste {amount}",
+    performanceFlowOut: "Sacaste {amount}",
+    performanceFlowUnknown: "Incluye fondos que moviste",
+    performanceFlowLegend: "Los puntos con anillo incluyen fondos que agregaste o sacaste: no son ganancia ni pérdida.",
     evolutionChartTitle: "Reparto del valor por token",
     evolutionChartNote: "Un punto por día, a las 00:00 UTC y al precio de ese día. El último es ahora.",
     evolutionChartLabel: "Reparto del valor del portfolio entre sus tokens a lo largo del tiempo. {summary}",
