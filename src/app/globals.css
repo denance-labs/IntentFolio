@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #020617;
+  color: #f1f5f9;
+
+  /* Tailwind's slate, as RGB channels (tailwind.config.ts reads them). */
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 2 6 23;
+}
+
+/*
+ * The app's depth scale (021 R1): base (950) → surface (900) → card (800), each a visible step
+ * lighter, and secondary text (400, 500) at WCAG AA on all three. Scoped with :has() on the
+ * root rather than on the marked element so that what a component portals to <body> (a
+ * tooltip) gets the same values as the rest of the app. The landing has no marker and keeps
+ * Tailwind's slate.
+ */
+:root:has([data-app-theme]) {
+  --slate-300: 210 220 232;
+  --slate-400: 170 183 201;
+  --slate-500: 139 154 175;
+  --slate-600: 85 100 122;
+  --slate-700: 58 71 91;
+  --slate-800: 38 49 66;
+  --slate-900: 23 32 49;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: #020617;
+  color: #f1f5f9;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(103 232 249 / 0.28);
+}
+
+@keyframes sectionIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 027 A-1: the "Lock all / Unlock all" buttons flash orange once when a row lock says it
+   can't be toggled, pointing at the way out. Restarted by remounting the buttons. */
+@keyframes lockFlash {
+  0%,
+  100% {
+    border-color: rgb(var(--slate-700));
+    background-color: transparent;
+    color: rgb(var(--slate-400));
+  }
+  25%,
+  60% {
+    border-color: rgb(251 146 60);
+    background-color: rgb(251 146 60 / 0.15);
+    color: rgb(253 186 116);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lock-flash {
+    animation: lockFlash 1s ease-out;
+  }
+}
+
+/* D-518 Overview. Motion lives in classes, inside the media query, so it stops with reduced
+   motion (an inline `animation` would ignore it); delays come inline. Everything is fully visible
+   without it. */
+@keyframes ovRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ovDonutIn {
+  from {
+    opacity: 0;
+    transform: rotate(-24deg) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ovBarIn {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes ovFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ov-rise {
+    animation: ovRise 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  /* A ring enters whole, from its group: on the slices themselves the animation's final
+     opacity would override the hover dimming (the D-508 trap). */
+  .ov-donut-in {
+    transform-origin: 120px 120px;
+    animation: ovDonutIn 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .ov-bar-in {
+    transform-origin: left center;
+    animation: ovBarIn 900ms 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .ov-fade {
+    animation: ovFade 150ms ease-out both;
+  }
+  /* The phone's Now/Target switch: each dash travels to its new length and place. */
+  .ov-slice {
+    transition:
+      stroke-dasharray 650ms cubic-bezier(0.65, 0, 0.35, 1),
+      stroke-dashoffset 650ms cubic-bezier(0.65, 0, 0.35, 1),
+      stroke-width 180ms,
+      r 180ms,
+      opacity 180ms,
+      filter 180ms;
+  }
+  /* A glass slice's end caps (D-521) turn with its dash, on the same curve. */
+  .ov-cap {
+    transition: transform 650ms cubic-bezier(0.65, 0, 0.35, 1);
+  }
+}
+
+/* The caps are drawn at 12 o'clock and turned into place around the donut's center. */
+.ov-cap {
+  transform-origin: 120px 120px;
+}
+
+/* The part of the mix still on its way: a hatch, so it reads as "not yet" without a color. */
+.ov-hatch {
+  background-color: rgb(148 163 184 / 0.06);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(148 163 184 / 0.26) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* D-318: a strip that scrolls with its own arrows and fades, without the native bar.
+   Tailwind 3.4 ships no utility for it. */
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

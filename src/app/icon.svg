@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="IntentFolio">
+  <!-- D-502: donut around a target dot; explicit paths so rasterizers match. Mirrored inline by AppMark in header-logo.tsx. -->
+  <rect width="32" height="32" rx="7" fill="#0B1220"/>
+  <path d="M17.2 3.056A13 13 0 0 1 24.579 25.767L21.62 21.694A8 8 0 0 0 17.2 8.091Z" fill="#22D3EE"/>
+  <path d="M22.638 27.178A13 13 0 0 1 3.308 18.813L8.303 18.182A8 8 0 0 0 19.678 23.104Z" fill="#34D399"/>
+  <path d="M3.007 16.432A13 13 0 0 1 14.8 3.056L14.8 8.091A8 8 0 0 0 8.002 15.801Z" fill="#A78BFA"/>
+  <circle cx="16" cy="16" r="3.5" fill="#F8FAFC"/>
+</svg>
