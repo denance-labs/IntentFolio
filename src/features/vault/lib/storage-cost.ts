@@ -97,7 +97,7 @@ export function storageCostBytes(p: StorageCostBytesInput): number {
  */
 export function livePriceOf(prices: TokenPriceMap, tokenId: string): number | null {
   const price = prices[tokenId];
-  if (!price || (price.source !== "chaindefuser" && price.source !== "cached")) return null;
+  if (!price || (price.source !== "chaindefuser" && price.source !== "coingecko" && price.source !== "cached")) return null;
   return Number.isFinite(price.usdPrice) && price.usdPrice * PRICE_SCALE >= 1 ? price.usdPrice : null;
 }
 

@@ -3,6 +3,7 @@
 import { useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { colorForSymbol } from "@/features/portfolio-editor/lib/format";
@@ -105,6 +106,7 @@ export function DraftTokenPickerContent({
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-slate-100">{tk.symbol}</span>
                   <span className="block truncate text-[11px] text-slate-400">{tk.name}</span>
+                  {isStockToken(tk.id) ? <span className="block text-[11px] text-slate-400">{te.stockTargetNote}</span> : null}
                 </span>
                 {outOfCatalog ? (
                   <span className="shrink-0 text-[11px] text-amber-400">{te.addTokensNotAvailableYet}</span>

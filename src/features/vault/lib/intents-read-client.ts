@@ -14,7 +14,7 @@
 // `"00000000".parse::<Salt>()` width.
 
 import { INTENTS_CONTRACT_ID } from "@/features/wallet/config/network";
-import { viewCall } from "./near-view";
+import { readFinalHead, viewCall } from "./near-view";
 
 export const SALT_BYTES = 4;
 
@@ -75,22 +75,31 @@ export async function getIntentsBalances(
  * because neither answers alone: once a salt is invalidated the Verifier may sweep its nonces,
  * and `false` stops being evidence of anything. Same pair the solver's reconciler reads.
  *
+ * Head first, then both views pinned to it (D-556, solver `chain-evidence.rpc.ts`), so the two
+ * answers and `blockTimestampMs` describe one block. That clock is what makes `false` mean
+ * something: a node hours behind answers "not used" for a nonce burnt since, and only the age of
+ * the block it read at gives that away. A node without the pinned block answers with an error.
+ *
  * Fails CLOSED: anything but two booleans throws, and the caller treats a throw as "cannot
  * tell" — never as "not used".
+ *
+ * Attribution: see ATTRIBUTIONS.md #25.
  */
 export async function readNonceWitness(
   accountId: string,
   nonceBase64: string,
   saltHex: string
-): Promise<{ nonceUsed: boolean; saltValid: boolean }> {
+): Promise<{ nonceUsed: boolean; saltValid: boolean; blockTimestampMs: number }> {
+  const head = await readFinalHead();
+  const at = { blockHash: head.hash };
   const [nonceUsed, saltValid] = await Promise.all([
-    viewCall<unknown>(INTENTS_CONTRACT_ID, "is_nonce_used", { account_id: accountId, nonce: nonceBase64 }),
-    viewCall<unknown>(INTENTS_CONTRACT_ID, "is_valid_salt", { salt: saltHex }),
+    viewCall<unknown>(INTENTS_CONTRACT_ID, "is_nonce_used", { account_id: accountId, nonce: nonceBase64 }, at),
+    viewCall<unknown>(INTENTS_CONTRACT_ID, "is_valid_salt", { salt: saltHex }, at),
   ]);
   if (typeof nonceUsed !== "boolean" || typeof saltValid !== "boolean") {
     throw new Error(
       `nonce witness: expected two booleans, got ${JSON.stringify(nonceUsed)} / ${JSON.stringify(saltValid)}`
     );
   }
-  return { nonceUsed, saltValid };
+  return { nonceUsed, saltValid, blockTimestampMs: head.timestampMs };
 }

@@ -161,6 +161,13 @@ const LOCAL_SVG_ICON_MAP: Record<string, string> = {
   WALC: "/token-icons/WALC.svg",
   // Same on-chain logo as META (the Meta Pool token): the two catalog entries differ in contract only.
   $META: "/token-icons/META.svg",
+  // The six Ondo stocks (plan 039). Attribution: see ATTRIBUTIONS.md #24.
+  AAPL: "/token-icons/AAPL.png",
+  AMZN: "/token-icons/AMZN.png",
+  NVDA: "/token-icons/NVDA.png",
+  QQQ: "/token-icons/QQQ.png",
+  TSLA: "/token-icons/TSLA.png",
+  GOOGL: "/token-icons/GOOGL.png",
 };
 
 // Catalog tickers can carry a suffix ("GRAM (ex-TON)", D-247) while the icon maps are keyed by the

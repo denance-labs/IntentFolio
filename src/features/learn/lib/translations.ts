@@ -207,7 +207,7 @@ export const learnTranslations = {
         },
         {
           q: "Can I withdraw whenever I want?",
-          a: "Yes. You can withdraw at any time.",
+          a: "Yes. You can withdraw at any time. Stocks are the exception: you sell them for USDC first, and that can wait while their market is closed.",
         },
       ] as FaqItem[],
     },
@@ -408,7 +408,7 @@ export const learnTranslations = {
         },
         {
           q: "¿Puedo retirar cuando quiera?",
-          a: "Sí. Puedes retirar en cualquier momento.",
+          a: "Sí. Puedes retirar en cualquier momento. Los stocks son la excepción: primero se venden por USDC, y eso puede tener que esperar si su mercado está cerrado.",
         },
       ] as FaqItem[],
     },

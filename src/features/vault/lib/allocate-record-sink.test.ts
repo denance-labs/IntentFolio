@@ -475,7 +475,12 @@ describe("markAllocateRecordNeverExecuted", () => {
       status: "failed",
       error: NEVER_EXECUTED_ERROR,
     });
-    expect(listAllocateRecords()[0]).toMatchObject({ status: "failed", error: NEVER_EXECUTED_ERROR });
+    expect(listAllocateRecords()[0]).toMatchObject({
+      status: "failed",
+      error: NEVER_EXECUTED_ERROR,
+      // D-556: what keeps the notice alive past this flip. Local: the PATCH above does not carry it.
+      neverExecutedAt: expect.any(Number),
+    });
   });
 
   it("leaves the local record submitted when the database did not take the flip", async () => {

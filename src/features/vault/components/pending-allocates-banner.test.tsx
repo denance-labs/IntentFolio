@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { shellTranslations } from "@/features/dashboard-shell/lib/translations";
-import type { PendingAllocate } from "../lib/pending-allocates";
+import type { NotExecutedAllocate, PendingAllocate } from "../lib/pending-allocates";
 
 // D-293: the My Account notice. The deciding rule is tested in `pending-allocates.test.ts`
 // and the re-evaluation in `use-pending-allocates.test.tsx`; this is what the user reads.
@@ -10,13 +10,20 @@ import type { PendingAllocate } from "../lib/pending-allocates";
 const state = vi.hoisted(() => ({
   lang: "en" as "en" | "es",
   pending: undefined as PendingAllocate[] | undefined,
+  notExecuted: [] as NotExecutedAllocate[],
+  dismissNotExecuted: vi.fn(),
 }));
 
 vi.mock("@/features/dashboard-shell/context/language-context", () => ({
   useLanguage: () => ({ lang: state.lang, setLang: vi.fn() }),
 }));
 vi.mock("../hooks/use-pending-allocates", () => ({
-  usePendingAllocates: () => ({ pending: state.pending, isFetching: false }),
+  usePendingAllocates: () => ({
+    pending: state.pending,
+    notExecuted: state.notExecuted,
+    dismissNotExecuted: state.dismissNotExecuted,
+    isFetching: false,
+  }),
 }));
 
 import { PendingAllocatesBanner } from "./pending-allocates-banner";
@@ -44,6 +51,8 @@ describe.each(["en", "es"] as const)("PendingAllocatesBanner (%s)", (lang) => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW, toFake: ["Date", "setInterval", "clearInterval"] });
     state.lang = lang;
+    state.notExecuted = [];
+    state.dismissNotExecuted.mockReset();
   });
   afterEach(() => {
     cleanup();
@@ -101,9 +110,11 @@ describe.each(["en", "es"] as const)("PendingAllocatesBanner (%s)", (lang) => {
     ];
     render(<PendingAllocatesBanner signerId="alice.near" />);
 
-    const title = t.pendingAllocatesTitleMany.replace("{count}", "2");
+    // D-552: one unproven row is enough for the notice not to say the funds left.
+    const title = t.pendingAllocatesTitleMixedMany.replace("{count}", "2");
     const section = screen.getByRole("region", { name: title });
-    expect(section.textContent).toContain(t.pendingAllocatesBodyMany);
+    expect(section.textContent).toContain(t.pendingAllocatesBodyUnconfirmedMany);
+    expect(section.textContent).not.toContain(t.pendingAllocatesBodyMany);
     const rows = within(section).getAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain("Stables");
@@ -136,13 +147,89 @@ describe.each(["en", "es"] as const)("PendingAllocatesBanner (%s)", (lang) => {
 
     const title = t.pendingAllocatesTitleMixedMany.replace("{count}", "2");
     const section = screen.getByRole("region", { name: title });
-    expect(section.textContent).toContain(t.pendingAllocatesBodyMixedMany);
+    expect(section.textContent).toContain(t.pendingAllocatesBodyUnconfirmedMany);
     const rows = within(section).getAllByRole("listitem");
     expect(rows[0].textContent).toContain(t.pendingAllocateAddingTo.replace("{name}", "canary-931"));
     expect(rows[0].textContent).toContain(t.pendingAllocateConfirming);
     expect(rows[1].textContent).toContain("Mi cartera");
     expect(rows[1].textContent).not.toContain(t.pendingAllocateAddingTo.replace("{name}", "Mi cartera"));
     expect(rows[1].textContent).toContain(t.pendingAllocateCompleting);
+  });
+
+  it("two proven entries: the plural that says the funds left", () => {
+    state.pending = [entry(), entry({ id: "rec-2", portfolioName: "Stables" })];
+    render(<PendingAllocatesBanner signerId="alice.near" />);
+    const section = screen.getByRole("region", { name: t.pendingAllocatesTitleMany.replace("{count}", "2") });
+    expect(section.textContent).toContain(t.pendingAllocatesBodyMany);
+  });
+
+  // D-552: the real case. A deposit that never ran read "these funds already left your account".
+  it.each(["setup", "allocate_into"] as const)("one unproven %s claims nothing about the funds", (op) => {
+    state.pending = [entry({ op, kind: "confirming" })];
+    render(<PendingAllocatesBanner signerId="alice.near" />);
+
+    const section = screen.getByRole("region", { name: t.pendingAllocatesTitleUnconfirmedOne });
+    expect(section.textContent).toContain(t.pendingAllocatesBodyUnconfirmedOne);
+    expect(section.textContent).not.toContain(t.pendingAllocatesBodyOne);
+    expect(section.textContent).not.toContain(t.pendingAllocatesBodyAddOne);
+    expect(within(section).getByRole("listitem").textContent).toContain(t.pendingAllocateConfirming);
+  });
+
+  describe("an Allocate that never ran (D-556)", () => {
+    const never = (over: Partial<NotExecutedAllocate> = {}): NotExecutedAllocate => ({
+      id: "gone-1",
+      portfolioName: "Largo plazo",
+      op: "allocate_into",
+      portfolioId: "p_4",
+      legs: [{ tokenId: USDC, amount: "25000000" }],
+      createdAt: NOW - 60_000,
+      ...over,
+    });
+
+    it("says it did not happen, where the funds are, and what was attempted", () => {
+      state.pending = [];
+      state.notExecuted = [never()];
+      render(<PendingAllocatesBanner signerId="alice.near" />);
+
+      const section = screen.getByRole("region", { name: t.notExecutedAllocatesTitleOne });
+      expect(section.textContent).toContain(t.notExecutedAllocatesBody);
+      const row = within(section).getByRole("listitem");
+      expect(row.textContent).toContain("Largo plazo");
+      expect(row.textContent).toContain("25.00 USDC(NEAR)");
+      expect(row.querySelector("time")?.textContent).toBe(lang === "en" ? "1 minute ago" : "hace 1 minuto");
+      // It is not on its way: none of the wording of a move in progress.
+      expect(row.textContent).not.toContain(t.pendingAllocateAddingTo.replace("{name}", "Largo plazo"));
+      expect(section.textContent).not.toContain(t.pendingAllocateConfirming);
+    });
+
+    it("the plural, and one dismissal covers every row shown", () => {
+      state.pending = [];
+      state.notExecuted = [never(), never({ id: "gone-2", portfolioName: "Otra" })];
+      render(<PendingAllocatesBanner signerId="alice.near" />);
+
+      const section = screen.getByRole("region", { name: t.notExecutedAllocatesTitleMany.replace("{count}", "2") });
+      fireEvent.click(within(section).getByRole("button", { name: t.notExecutedAllocatesDismiss }));
+      expect(state.dismissNotExecuted).toHaveBeenCalledWith(["gone-1", "gone-2"]);
+    });
+
+    it("sits above the moves still in progress, each in its own section", () => {
+      state.pending = [entry()];
+      state.notExecuted = [never()];
+      render(<PendingAllocatesBanner signerId="alice.near" />);
+
+      const sections = screen.getAllByRole("region");
+      expect(sections.map((s) => s.getAttribute("aria-labelledby"))).toEqual([
+        "not-executed-allocates-heading",
+        "pending-allocates-heading",
+      ]);
+    });
+
+    it("still shows while the pending list is being re-evaluated", () => {
+      state.pending = undefined;
+      state.notExecuted = [never()];
+      render(<PendingAllocatesBanner signerId="alice.near" />);
+      expect(screen.getByRole("region", { name: t.notExecutedAllocatesTitleOne })).toBeTruthy();
+    });
   });
 
   it("a token the registry does not know shows its id, truncated, and no amount", () => {

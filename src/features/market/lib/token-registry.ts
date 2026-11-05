@@ -1,5 +1,6 @@
 import type { TokenDefinition } from "../types";
 import { toRegistryTokenId } from "./intents-token-id";
+import { STOCK_TOKENS } from "./stock-tokens";
 
 // Source: 1Click intent solver token catalog (https://1click.chaindefuser.com/v0/tokens)
 // plus a few NEAR-native tokens kept for wallet visibility even if not routable.
@@ -752,6 +753,9 @@ export const tokenRegistry: TokenDefinition[] = [
     fallbackUsdPrice: 0.00519835,
     depositable: false,
   },
+
+  // Plan 039: Ondo tokenized stocks. Targets only: no Receive and no Withdraw (`token-availability.ts`).
+  ...STOCK_TOKENS,
 ];
 
 export function getTokenById(id: string): TokenDefinition | null {

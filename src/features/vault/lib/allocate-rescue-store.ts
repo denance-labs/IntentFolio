@@ -89,6 +89,14 @@ export type AllocateRescueRecord = {
    */
   verifierNonce?: string;
   envelopeDeadlineSecs?: number;
+  /**
+   * When this browser recorded that the envelope never executed (`markAllocateRecordNeverExecuted`,
+   * D-556). What tells a `failed` the user still has to hear about from a revert or a refusal, whose
+   * modal already said so, and from a `failed` written before this notice existed. Local only.
+   */
+  neverExecutedAt?: number;
+  /** When the user dismissed the "your deposit didn't go through" notice (D-556). Local only. */
+  notExecutedNoticeDismissedAt?: number;
   txHash?: string;
   error?: string;
 };
@@ -116,7 +124,7 @@ function writeStore(store: RescueStore): void {
 
 export type RecordPendingAllocateParams = Omit<
   AllocateRescueRecord,
-  "id" | "createdAt" | "status" | "txHash" | "error"
+  "id" | "createdAt" | "status" | "txHash" | "error" | "neverExecutedAt" | "notExecutedNoticeDismissedAt"
 > & {
   /**
    * Injected by `allocate-record-sink.ts` so the localStorage copy and the database row are
@@ -152,7 +160,9 @@ export function recordPendingAllocate(params: RecordPendingAllocateParams): stri
 /** Best-effort status update. A lost status update is recoverable; a lost msg is not. */
 export function updateAllocateRecord(
   id: string,
-  patch: Partial<Pick<AllocateRescueRecord, "status" | "txHash" | "error">>
+  patch: Partial<
+    Pick<AllocateRescueRecord, "status" | "txHash" | "error" | "neverExecutedAt" | "notExecutedNoticeDismissedAt">
+  >
 ): void {
   try {
     const store = readStore();

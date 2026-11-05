@@ -229,6 +229,7 @@ export const translations = {
     // D-415: a token whose balance, plus what the portfolio holds of it, stays under MIN_FUNDED_USD ($0.01).
     addTokensDustInPortfolio: "Less than $0.01 — not enough to add",
     addTokensNotAvailableYet: "Not available yet",
+    stockTargetNote: "Sold, not withdrawn · about $7 minimum",
     // D-491: a token with no buy route — its funds can come in, it can't be a target.
     addTokensFundsOnly: "Funds only, converted to your other tokens",
     // D-321: on a real portfolio this modal signs the funds in right away (013.plan P5).
@@ -481,6 +482,7 @@ export const translations = {
     addTokensApply: "Asignar al portfolio",
     addTokensDustInPortfolio: "Menos de $0,01 — no alcanza para sumar",
     addTokensNotAvailableYet: "Todavía no disponible",
+    stockTargetNote: "Se vende, no se retira · mínimo unos US$7",
     addTokensFundsOnly: "Sólo como fondos, se convierte a tus otros tokens",
     addTokensSignAndAdd: "Firmar y asignar",
     addTokensRetry: "Reintentar",

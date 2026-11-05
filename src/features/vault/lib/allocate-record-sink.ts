@@ -204,7 +204,8 @@ export async function markAllocateRecordNeverExecuted(id: string): Promise<boole
       return false;
     }
   }
-  updateAllocateRecord(id, { status: "failed", error: NEVER_EXECUTED_ERROR });
+  // `neverExecutedAt` is what keeps the user's notice alive past this flip (D-556).
+  updateAllocateRecord(id, { status: "failed", error: NEVER_EXECUTED_ERROR, neverExecutedAt: Date.now() });
   return true;
 }
 

@@ -166,6 +166,7 @@ describe("livePriceOf", () => {
   it("takes the feed and its last answer within the hour, not a hand-written fallback", () => {
     expect(livePriceOf(map("chaindefuser", 2.5), "near")).toBe(2.5);
     expect(livePriceOf(map("cached", 2.5), "near")).toBe(2.5);
+    expect(livePriceOf(map("coingecko", 2.5), "near")).toBe(2.5);
     expect(livePriceOf(map("fallback", 2.5), "near")).toBeNull();
     expect(livePriceOf({}, "near")).toBeNull();
   });

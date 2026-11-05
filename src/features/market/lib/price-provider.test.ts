@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getTokenPrices, MAX_STALE_MS, __resetPriceCache } from "./price-provider";
+import { __resetStockPriceCache } from "./stock-prices";
+import { STOCK_TOKENS } from "./stock-tokens";
 import { tokenRegistry } from "./token-registry";
 
 // A registry token that is quoted upstream, so the cache path is exercised on a real entry.
@@ -20,6 +22,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   __resetPriceCache();
+  __resetStockPriceCache();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -79,5 +82,39 @@ describe("getTokenPrices price cache", () => {
     fetchMock.mockRejectedValue(new Error("upstream down"));
     const prices = await getTokenPrices();
     expect(prices[PROBE.id].source).toBe("fallback");
+  });
+});
+
+describe("stock prices", () => {
+  const STOCK = STOCK_TOKENS[0];
+  const route = (coingecko: () => Promise<unknown>) =>
+    fetchMock.mockImplementation((url: string) => (url.includes("coingecko") ? coingecko() : Promise.resolve(okResponse())));
+
+  it("serves a stock from CoinGecko and the rest from 1Click", async () => {
+    route(async () => ({ ok: true, json: async () => ({ [STOCK.coingeckoId]: { usd: 350, last_updated_at: 1793800000 } }) }));
+    const prices = await getTokenPrices();
+    expect(prices[STOCK.id]).toMatchObject({ usdPrice: 350, source: "coingecko" });
+    expect(prices[PROBE.id]).toMatchObject({ usdPrice: UPSTREAM_PRICE, source: "chaindefuser" });
+  });
+
+  it("asks both at once, so a slow CoinGecko adds nothing to a slow 1Click", async () => {
+    let release: (value: unknown) => void = () => {};
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    route(() => held);
+    const reading = getTokenPrices();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    release({ ok: false });
+    await reading;
+  });
+
+  it("does not break the other tokens when CoinGecko fails, and flags the stock's price", async () => {
+    route(async () => {
+      throw new Error("rate limited");
+    });
+    const prices = await getTokenPrices();
+    expect(prices[PROBE.id]).toMatchObject({ usdPrice: UPSTREAM_PRICE, source: "chaindefuser" });
+    expect(prices[STOCK.id]).toMatchObject({ usdPrice: STOCK.fallbackUsdPrice, source: "fallback" });
   });
 });

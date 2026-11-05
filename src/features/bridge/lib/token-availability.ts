@@ -38,6 +38,8 @@
 // the dishonesty of D-201, except self-inflicted. And hiding them outright would read as
 // "IntentFolio forgot Polygon", which a tester reports as a bug. One label, both flows.
 
+import { isStockToken } from "@/features/market/lib/stock-tokens";
+
 export type TokenAvailability = "available" | "not-available-yet";
 
 /**
@@ -191,6 +193,8 @@ export const NO_SELL_ROUTE_TOKEN_IDS: ReadonlySet<string> = new Set([
 // tokens it could never buy (D-491).
 /** Whether IntentFolio offers this token as a portfolio target (D-396, D-389, D-491). */
 export function isPortfolioOfferable(tokenId: string): boolean {
+  // A stock has no withdrawal route: the way out is selling it inside the Funding Account (plan 039).
+  if (isStockToken(tokenId)) return true;
   return isReceivable(tokenId) && !NO_BUY_ROUTE_TOKEN_IDS.has(tokenId);
 }
 

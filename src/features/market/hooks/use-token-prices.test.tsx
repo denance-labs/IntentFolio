@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, cleanup, act } from "@testing-library/react";
 import { PRICE_FRESH_MS, resetTokenPriceCache, useTokenPrices } from "./use-token-prices";
+import { STOCK_TOKENS } from "../lib/stock-tokens";
 import { tokenRegistry } from "../lib/token-registry";
 
 const PROBE = tokenRegistry[0].id;
@@ -58,6 +59,26 @@ describe("useTokenPrices pricesUnavailable", () => {
     const { result } = renderHook(() => useTokenPrices());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.pricesUnavailable).toBe(true);
+  });
+
+  it("still turns true with 1Click down and only the stocks priced: they say nothing about the rest", async () => {
+    const prices = priceMap("fallback");
+    for (const stock of STOCK_TOKENS) prices[stock.id] = { ...prices[stock.id], source: "coingecko" };
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ prices, updatedAt: "x" }) });
+    const { result } = renderHook(() => useTokenPrices());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.pricesUnavailable).toBe(true);
+    expect(result.current.stockPricesUnavailable).toBe(false);
+  });
+
+  it("says apart when only the stock prices are missing", async () => {
+    const prices = priceMap("chaindefuser");
+    for (const stock of STOCK_TOKENS) prices[stock.id] = { ...prices[stock.id], source: "fallback" };
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ prices, updatedAt: "x" }) });
+    const { result } = renderHook(() => useTokenPrices());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.pricesUnavailable).toBe(false);
+    expect(result.current.stockPricesUnavailable).toBe(true);
   });
 
   it("turns true when the price route itself fails", async () => {

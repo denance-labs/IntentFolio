@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
 import { TokenIcon } from "@/features/market/lib/token-icons";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
@@ -158,6 +159,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-slate-100">{e.symbol}</span>
                   <span className="block truncate text-[11px] text-slate-400">{e.name}</span>
+                  {isStockToken(e.id) ? <span className="block text-[11px] text-slate-400">{t.stockTargetNote}</span> : null}
                 </span>
                 {e.inPortfolio ? (
                   // Neutral, so it is never mistaken for a token just marked "Added".

@@ -17,8 +17,11 @@ const RPC_TIMEOUT_MS = 10_000;
 type RpcRequest = {
   jsonrpc: "2.0";
   id: string;
-  /** `tx` joined `query` when the HOT delivery wait needed a transaction's receipt logs. */
-  method: "query" | "tx";
+  /**
+   * `tx` joined `query` when the HOT delivery wait needed a transaction's receipt logs, `block`
+   * when the never-executed proof needed the clock of the block it reads at (D-556).
+   */
+  method: "query" | "tx" | "block";
   params: Record<string, unknown>;
 };
 
@@ -77,10 +80,12 @@ export function utf8Base64(text: string): string {
 // callResult.error — callers decide whether that maps to an empty value (a fresh account)
 // or a real failure. Money-adjacent: never swallow an error into a silent zero.
 // `methodName` is typed to the proxy's allowlist: a read the route would refuse does not compile.
+// Reads at FINAL, or at `at.blockHash` when the answer has to describe one known block.
 export async function viewCall<T>(
   accountId: string,
   methodName: AllowedViewMethod,
-  args: Record<string, unknown> = {}
+  args: Record<string, unknown> = {},
+  at?: { blockHash: string }
 ): Promise<T> {
   const argsBase64 = utf8Base64(JSON.stringify(args));
   const res = await rpcPost<CallFunctionResult>({
@@ -89,7 +94,7 @@ export async function viewCall<T>(
     method: "query",
     params: {
       request_type: "call_function",
-      finality: "final",
+      ...(at ? { block_id: at.blockHash } : { finality: "final" }),
       account_id: accountId,
       method_name: methodName,
       args_base64: argsBase64,
@@ -101,6 +106,31 @@ export async function viewCall<T>(
   if (callResult.error) throw new Error(`view ${accountId} ${methodName}: ${callResult.error}`);
   const text = new TextDecoder().decode(new Uint8Array(callResult.result));
   return JSON.parse(text) as T;
+}
+
+const NS_PER_MS = BigInt(1_000_000);
+
+/**
+ * The FINAL head as whichever node answered sees it: its hash, to pin reads to it, and its clock.
+ *
+ * Fails CLOSED: a caller draws a conclusion from this clock, so an answer without a usable hash
+ * or timestamp throws instead of being read as "now" or as zero. A node hours behind answers
+ * with its own old block, and that old timestamp is exactly what lets the caller notice.
+ */
+export async function readFinalHead(): Promise<{ hash: string; timestampMs: number }> {
+  const res = await rpcPost<{ header?: { hash?: unknown; timestamp_nanosec?: unknown } }>({
+    jsonrpc: "2.0",
+    id: "final-head",
+    method: "block",
+    params: { finality: "final" },
+  });
+  if (res.error) throw new Error(`final head: ${res.error.message}`);
+  const hash = res.result?.header?.hash;
+  const nanos = res.result?.header?.timestamp_nanosec;
+  if (typeof hash !== "string" || hash === "" || typeof nanos !== "string" || !/^\d+$/.test(nanos)) {
+    throw new Error("final head: unreadable block header");
+  }
+  return { hash, timestampMs: Number(BigInt(nanos) / NS_PER_MS) };
 }
 
 /**

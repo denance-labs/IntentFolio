@@ -17,6 +17,7 @@ import {
 import { getTokenById, getTokenByNearTokenId } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import type { TokenDefinition } from "@/features/market/types";
 import { formatUsd, formatTokenAmount, formatCrypto } from "@/features/portfolio-editor/lib/format";
 import { chainRegistry, dismissedWithdrawTxHashes, isDepositCredited, type DepositStatusEntry } from "@/features/bridge";
@@ -63,7 +64,7 @@ type BalanceRow = {
   price: number;
 };
 
-function TokenRow({ row }: { row: BalanceRow }) {
+function TokenRow({ row, onSell, sellLabel }: { row: BalanceRow; onSell?: (tokenId: string) => void; sellLabel?: string }) {
   const symbol = row.token?.symbol ?? "?";
   const name = row.token?.name ?? row.tokenId;
   const price = row.price;
@@ -89,6 +90,17 @@ function TokenRow({ row }: { row: BalanceRow }) {
         <p className="text-xs text-slate-400">
           {formatTokenAmount(row.qty, price)} {symbol}
         </p>
+        {/* A stock has no withdrawal route: selling it here is the way out (plan 039). */}
+        {onSell && isStockToken(row.tokenId) ? (
+          <button
+            type="button"
+            onClick={() => onSell(row.tokenId)}
+            aria-label={`${sellLabel} ${symbol}`}
+            className="mt-1 rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            {sellLabel}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -928,6 +940,8 @@ function BalanceSection({
   rows,
   otherRows = [],
   otherLabel,
+  onSell,
+  sellLabel,
 }: {
   headingId: string;
   label: string;
@@ -940,6 +954,8 @@ function BalanceSection({
    */
   otherRows?: BalanceRow[];
   otherLabel?: string;
+  onSell?: (tokenId: string) => void;
+  sellLabel?: string;
 }) {
   return (
     // Narrower than the column (operator, A-4), left-aligned: full width left a ~400 px gap
@@ -951,7 +967,7 @@ function BalanceSection({
       {hint && <p className="mb-3 text-xs text-slate-400">{hint}</p>}
       <div className="divide-y divide-slate-800 rounded-2xl border border-slate-800 px-4">
         {rows.map((row) => (
-          <TokenRow key={row.tokenId} row={row} />
+          <TokenRow key={row.tokenId} row={row} onSell={onSell} sellLabel={sellLabel} />
         ))}
         {otherRows.length > 0 && (
           <>
@@ -985,6 +1001,7 @@ export function IntentsAccountView({
   pendingWithdrawals = [],
   pendingUnallocations = [],
   onDismissWithdrawal,
+  onSellStock,
 }: {
   onAddFunds?: () => void;
   onWithdraw?: () => void;
@@ -1008,10 +1025,12 @@ export function IntentsAccountView({
   pendingUnallocations?: PendingUnallocationRecord[];
   /** D-463 (023-B): «Hide» on a withdrawal open for over a day that nothing could close. */
   onDismissWithdrawal?: (intentId: string) => void;
+  /** Plan 039: "Sell" on a stock. The shell hosts the dialog: a sale can empty this view's balance. */
+  onSellStock?: (tokenId: string) => void;
 }) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
-  const { prices, pricesUnavailable } = useTokenPrices();
+  const { prices, pricesUnavailable, stockPricesUnavailable } = useTokenPrices();
   const { intentsAccountId } = useLoginWallet();
   const contractVersion = useSyncExternalStore(mockContract.subscribe, mockContract.getVersion, mockContract.getVersion);
   // D-142 (Opción A): available = real on-chain − Σ mock portfolio allocations (mock
@@ -1089,6 +1108,11 @@ export function IntentsAccountView({
       otherRows.push(row);
     }
   }
+
+  // A held stock's USD figures are hand-written while its price read is down: say so, as D-179 does.
+  const holdsStock =
+    [...displayBalance].some(([id, qty]) => qty > 0 && isStockToken(id)) ||
+    portfolios.some((portfolio) => Object.entries(portfolio.deposits).some(([id, qty]) => qty > 0 && isStockToken(id)));
 
   // The tab strip's My Account figure sums the same way (computeTabValues).
   const totals = computeAccountTotals(sumBalanceUsd(displayBalance, prices), sumPortfoliosUsd(portfolios, prices));
@@ -1265,7 +1289,7 @@ export function IntentsAccountView({
           <CreatePortfolioBanner onCreatePortfolio={onCreatePortfolio!} t={t} />
         )}
         {onboardingStep === 2 && <OnboardingSteps current={2} onBuild={onCreatePortfolio} onDeposit={onAddFunds} />}
-        {pricesUnavailable && <PricesUnavailableNotice t={t} />}
+        {(pricesUnavailable || (stockPricesUnavailable && holdsStock)) && <PricesUnavailableNotice t={t} />}
       </div>
 
       {/* D-439 (c): under the onboarding, a rule marks where "your account" starts — without
@@ -1283,6 +1307,8 @@ export function IntentsAccountView({
         rows={curatedRows}
         otherRows={otherRows}
         otherLabel={t.myAccountOtherBalances}
+        onSell={onSellStock}
+        sellLabel={t.stockSellAction}
       />
 
       {activityFeed}

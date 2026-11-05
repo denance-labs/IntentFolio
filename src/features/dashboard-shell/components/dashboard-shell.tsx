@@ -73,6 +73,7 @@ import { useAvailableGeneralBalance } from "../hooks/use-available-general-balan
 import { useGeneralBalanceRead } from "../hooks/use-general-balance-read";
 import { computeTabValues } from "../lib/account-totals";
 import { IntentsAccountView } from "./intents-account-view";
+import { StockSellModal } from "./stock-sell-modal";
 import { WelcomeModal } from "./welcome-modal";
 import { AssignFundsPrompt } from "./assign-funds-prompt";
 import { useAssignFundsPrompt } from "../hooks/use-assign-funds-prompt";
@@ -182,6 +183,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   // it. Only the draft's own buttons open it that way; My Account's plain "Deposit" does not.
   const [receive, setReceive] = useState<"plain" | "draft" | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  // Plan 039: hosted here and not in My Account, because a sale can empty the balance that view
+  // branches on, and that would unmount the dialog with the outcome in it.
+  const [sellingTokenId, setSellingTokenId] = useState<string | null>(null);
   // 019-1: the header's Connect Wallet dialog.
   const [connectOpen, setConnectOpen] = useState(false);
   const closeConnect = useCallback(() => setConnectOpen(false), []);
@@ -1355,6 +1359,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       <IntentsAccountView
         onAddFunds={() => setReceive("plain")}
         onWithdraw={() => setWithdrawOpen(true)}
+        // A sale sends the General Balance out to 1Click: it answers to the same switch as a withdrawal.
+        onSellStock={REAL_WITHDRAWAL_ENABLED ? setSellingTokenId : undefined}
         // Only while the account has no portfolio yet: it is what the view reads as "new".
         onCreatePortfolio={hasPortfolios ? undefined : () => setCreateFlow({ kind: "new" })}
         onDepositForDraft={() => setReceive("draft")}
@@ -1536,6 +1542,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
             : undefined
         }
       />
+      {sellingTokenId ? <StockSellModal tokenId={sellingTokenId} onClose={() => setSellingTokenId(null)} /> : null}
       <WithdrawalModal
         open={withdrawOpen}
         lang={lang}

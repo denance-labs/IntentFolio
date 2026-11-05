@@ -13,6 +13,7 @@ import {
 import { validateAddress } from "./address-validation";
 import { withdrawalRegistry, isWithdrawable } from "./withdrawal-registry";
 import { depositGroups } from "./deposit-registry";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
 
 const routeOf = (id: string) => withdrawalRegistry[id]?.bridgeRoute;
@@ -228,9 +229,9 @@ describe("portfolio offer", () => {
     ]);
   });
 
-  it("offers what Receive offers, minus the tokens with no buy route", () => {
+  it("offers what Receive offers, minus the tokens with no buy route, plus the stocks", () => {
     for (const t of depositableTokens) {
-      expect(isPortfolioOfferable(t.id), t.id).toBe(isReceivable(t.id) && !NO_BUY_ROUTE_TOKEN_IDS.has(t.id));
+      expect(isPortfolioOfferable(t.id), t.id).toBe(isStockToken(t.id) || (isReceivable(t.id) && !NO_BUY_ROUTE_TOKEN_IDS.has(t.id)));
     }
   });
 });

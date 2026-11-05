@@ -544,6 +544,17 @@ export const shellTranslations = {
     // Permanent, and the team's fix does not change it — so never "stuck" (942 D5).
     pendingAllocateReview: "Under team review",
     pendingAllocatesReviewNote: "Our team is reviewing a transfer that didn't complete. You don't need to do anything.",
+    // D-552: nothing proves the funds left, so these two make no such claim.
+    pendingAllocatesTitleUnconfirmedOne: "We couldn't confirm this move yet",
+    pendingAllocatesBodyUnconfirmedOne:
+      "If it didn't go through, your funds are still in your account and we'll let you know here.",
+    pendingAllocatesBodyUnconfirmedMany:
+      "If any of them didn't go through, its funds are still in your account and we'll let you know here.",
+    // D-556: the envelope provably never ran. Worded by the operator.
+    notExecutedAllocatesTitleOne: "Your deposit didn't go through",
+    notExecutedAllocatesTitleMany: "{count} deposits didn't go through",
+    notExecutedAllocatesBody: "Your funds are still in your account. You can try again.",
+    notExecutedAllocatesDismiss: "Got it",
     // D-302 h2: My Account notice for scheduled Returns (funds sent back after the
     // timelock). `{amount}` is "1.25 NEAR"; `{date}` is the arrival day. Outcome terms only.
     scheduledReturnsTitle: "Funds on their way back to your funding account",
@@ -565,6 +576,41 @@ export const shellTranslations = {
     portfoliosRefreshError: "We couldn't update your portfolios. You're seeing the last version we read.",
     // Shown when no price is a real quote — not even the server's one-hour cache (D-179).
     // The amounts you hold are still exact; only their USD conversion is not.
+    // Plan 039: selling a stock from the funding account.
+    stockSellAction: "Sell",
+    stockSellTitle: "Sell {symbol}",
+    stockSellHint:
+      "You get USDC in your funding account. Stock markets close on weekends and holidays: if there is no price, try again when they reopen.",
+    stockSellAmount: "Amount",
+    stockSellAvailable: "Available",
+    stockSellBalanceUnread: "We couldn't read your balance",
+    stockSellMax: "Max",
+    stockSellGetQuote: "Get price",
+    stockSellQuoting: "Getting a price…",
+    stockSellConfirm: "Sell",
+    stockSellClose: "Close",
+    stockSellYouSell: "You sell",
+    stockSellYouReceive: "You receive about",
+    stockSellMinimum: "Guaranteed minimum",
+    stockSellCost: "Cost",
+    stockSellInvalidAmount: "Enter a valid amount",
+    stockSellAboveBalance: "That's more than you have available",
+    stockSellNoLiquidity:
+      "There is no price for this amount right now. Amounts under about $7 usually have none, and the market may be closed.",
+    stockSellCostTooHigh: "The price right now is too far from the stock's value, so we won't offer it. Try again later.",
+    stockSellUnavailable: "We couldn't get a price. Try again in a moment.",
+    stockSellNotSent: "The sale wasn't sent. Your {symbol} is still in your funding account.",
+    stockSellNoSigner: "Connect your wallet to sign the sale.",
+    stockSellStagePreparing: "Checking your balance…",
+    stockSellStageSigning: "Waiting for your signature…",
+    stockSellStageSending: "Sending the sale…",
+    stockSellStageConverting: "Completing the sale… You can close this: it goes on by itself.",
+    stockSellQuoteStale: "This price can't be used anymore, and nothing was sent. Get a new one.",
+    stockSellReference: "Reference, if you need to ask us about it:",
+    stockSellDelivered: "Sold. You received {amount} in your funding account.",
+    stockSellRefunded: "The sale couldn't complete. Your {symbol} went back to your funding account.",
+    stockSellUnconfirmed:
+      "We couldn't confirm the sale yet. Don't try again: check your {symbol} and USDC balances in a few minutes.",
     pricesUnavailable: "No prices available",
     pricesUnavailableDetail:
       "We couldn't get up-to-date prices. Your balances are correct, but the values shown in dollars may not be.",
@@ -1023,6 +1069,13 @@ export const shellTranslations = {
     pendingAllocateJustNow: "hace un momento",
     pendingAllocateReview: "En revisión del equipo",
     pendingAllocatesReviewNote: "Nuestro equipo está revisando una transferencia que no se completó. No tienes que hacer nada.",
+    pendingAllocatesTitleUnconfirmedOne: "Todavía no pudimos confirmar este movimiento",
+    pendingAllocatesBodyUnconfirmedOne: "Si no se realizó, tus fondos siguen en tu cuenta y te lo vamos a avisar aquí.",
+    pendingAllocatesBodyUnconfirmedMany: "Si alguno no se realizó, sus fondos siguen en tu cuenta y te lo vamos a avisar aquí.",
+    notExecutedAllocatesTitleOne: "Tu depósito no se realizó",
+    notExecutedAllocatesTitleMany: "{count} depósitos no se realizaron",
+    notExecutedAllocatesBody: "Tus fondos siguen en tu cuenta. Puedes volver a intentarlo.",
+    notExecutedAllocatesDismiss: "Entendido",
     scheduledReturnsTitle: "Fondos que vuelven a tu cuenta de fondos",
     scheduledReturnsBody:
       "No tienes que hacer nada: van a aparecer en tu cuenta de fondos cuando lleguen.",
@@ -1034,6 +1087,41 @@ export const shellTranslations = {
       "Tus fondos están seguros — es un problema de conexión para leerlos, no un cambio en ellos.",
     portfoliosReadErrorRetry: "Reintentar",
     portfoliosRefreshError: "No pudimos actualizar tus portfolios. Estás viendo la última versión que leímos.",
+    // Plan 039: vender un stock desde la cuenta de fondos.
+    stockSellAction: "Vender",
+    stockSellTitle: "Vender {symbol}",
+    stockSellHint:
+      "Recibes USDC en tu cuenta de fondos. Los mercados de acciones cierran los fines de semana y feriados: si no hay precio, prueba de nuevo cuando abran.",
+    stockSellAmount: "Monto",
+    stockSellAvailable: "Disponible",
+    stockSellBalanceUnread: "No pudimos leer tu saldo",
+    stockSellMax: "Máx.",
+    stockSellGetQuote: "Ver precio",
+    stockSellQuoting: "Buscando un precio…",
+    stockSellConfirm: "Vender",
+    stockSellClose: "Cerrar",
+    stockSellYouSell: "Vendes",
+    stockSellYouReceive: "Recibes aprox.",
+    stockSellMinimum: "Mínimo garantizado",
+    stockSellCost: "Costo",
+    stockSellInvalidAmount: "Escribe un monto válido",
+    stockSellAboveBalance: "Es más de lo que tienes disponible",
+    stockSellNoLiquidity:
+      "No hay precio para este monto ahora. Los montos menores a unos US$7 no suelen tenerlo, y el mercado puede estar cerrado.",
+    stockSellCostTooHigh: "El precio de ahora está muy lejos del valor del stock, así que no lo ofrecemos. Prueba más tarde.",
+    stockSellUnavailable: "No pudimos conseguir un precio. Prueba de nuevo en un momento.",
+    stockSellNotSent: "La venta no se envió. Tu {symbol} sigue en tu cuenta de fondos.",
+    stockSellNoSigner: "Conecta tu wallet para firmar la venta.",
+    stockSellStagePreparing: "Revisando tu saldo…",
+    stockSellStageSigning: "Esperando tu firma…",
+    stockSellStageSending: "Enviando la venta…",
+    stockSellStageConverting: "Completando la venta… Puedes cerrar esto: sigue sola.",
+    stockSellQuoteStale: "Este precio ya no se puede usar y no se envió nada. Busca uno nuevo.",
+    stockSellReference: "Referencia, por si necesitas consultarnos:",
+    stockSellDelivered: "Vendido. Recibiste {amount} en tu cuenta de fondos.",
+    stockSellRefunded: "La venta no se pudo completar. Tu {symbol} volvió a tu cuenta de fondos.",
+    stockSellUnconfirmed:
+      "Todavía no pudimos confirmar la venta. No lo intentes de nuevo: revisa tus saldos de {symbol} y USDC en unos minutos.",
     pricesUnavailable: "Sin precios disponibles",
     pricesUnavailableDetail:
       "No pudimos obtener precios actualizados. Tus saldos son correctos, pero los valores en dólares pueden no serlo.",

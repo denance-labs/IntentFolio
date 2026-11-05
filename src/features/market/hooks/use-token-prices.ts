@@ -1,5 +1,6 @@
 "use client";
 
+import { isStockToken } from "../lib/stock-tokens";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { tokenRegistry } from "../lib/token-registry";
 import type { TokenPriceMap } from "../types";
@@ -14,9 +15,16 @@ type TokenPriceState = {
 // True when nothing in the map came from a real quote — neither live nor from the server's
 // one-hour cache (D-179). Every number on screen is then a hardcoded `fallbackUsdPrice`, so
 // callers must say so instead of passing them off as real.
+//
+// Stocks stay out of it: their price comes from elsewhere, so a live one says nothing about the rest.
 function noRealQuotes(prices: TokenPriceMap): boolean {
-  const entries = Object.values(prices);
-  return entries.length > 0 && entries.every((p) => p.source === "fallback");
+  const entries = Object.entries(prices).filter(([id]) => !isStockToken(id));
+  return entries.length > 0 && entries.every(([, p]) => p.source === "fallback");
+}
+
+/** The stock prices fail together, from one read: any on a hand-written price means all are (plan 039). */
+function stockQuotesMissing(prices: TokenPriceMap): boolean {
+  return Object.entries(prices).some(([id, p]) => isStockToken(id) && p.source === "fallback");
 }
 
 const fallbackPrices: TokenPriceMap = Object.fromEntries(
@@ -182,7 +190,11 @@ export function useTokenPrices(refreshMs = 60000) {
   }, [refreshMs]);
 
   return useMemo(
-    () => ({ ...current, pricesUnavailable: !current.isLoading && noRealQuotes(current.prices) }),
+    () => ({
+      ...current,
+      pricesUnavailable: !current.isLoading && noRealQuotes(current.prices),
+      stockPricesUnavailable: !current.isLoading && stockQuotesMissing(current.prices),
+    }),
     [current]
   );
 }

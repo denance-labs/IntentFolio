@@ -1,3 +1,4 @@
+import { fetchStockPrices } from "./stock-prices";
 import { tokenRegistry } from "./token-registry";
 import type { TokenPriceMap } from "../types";
 
@@ -30,6 +31,8 @@ export async function getTokenPrices(): Promise<TokenPriceMap> {
   let defuserMap = new Map<string, DefuserToken>();
   let updatedAt = new Date().toISOString();
   let servedFromCache = false;
+  // Side by side, so a slow CoinGecko adds nothing to a slow 1Click. It never rejects.
+  const stockPricesRead = fetchStockPrices();
 
   try {
     const res = await fetch(DEFUSER_PRICES_URL, {
@@ -52,8 +55,22 @@ export async function getTokenPrices(): Promise<TokenPriceMap> {
     servedFromCache = true;
   }
 
+  const stockPrices = await stockPricesRead;
+
   return Object.fromEntries(
     tokenRegistry.map((token) => {
+      const stock = stockPrices.get(token.id);
+      if (stock) {
+        return [
+          token.id,
+          {
+            symbol: token.symbol,
+            usdPrice: stock.usdPrice,
+            updatedAt: stock.updatedAt,
+            source: stock.servedFromCache ? "cached" : "coingecko",
+          },
+        ];
+      }
       const lookupId = token.id === "near" ? NATIVE_NEAR_DEFUSER_ID : token.id;
       const defuser = defuserMap.get(lookupId);
       return [

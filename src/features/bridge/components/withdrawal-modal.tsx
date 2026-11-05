@@ -15,6 +15,7 @@ import {
   unreceivableNearDestination,
   withdrawalDestinations,
 } from "../lib/withdrawal-registry";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { isTokenAvailable } from "../lib/token-availability";
 import {
   fetchWithdrawalFee,
@@ -592,6 +593,7 @@ export function WithdrawalModal({
           {step === 1 && (
             <WithdrawTokenPicker
               groups={sortedGroups}
+              holdsStock={[...generalBalance].some(([id, qty]) => qty > 0 && isStockToken(id))}
               lastUsedToken={lastUsedToken}
               t={t}
               onSelect={handleSelectGroup}
@@ -2798,8 +2800,10 @@ function WithdrawTokenPicker({
   lastUsedToken,
   t,
   onSelect,
+  holdsStock,
 }: {
   groups: WithdrawGroup[];
+  holdsStock: boolean;
   lastUsedToken: string | null;
   t: (typeof bridgeTranslations)["en"];
   onSelect: (group: WithdrawGroup) => void;
@@ -2812,7 +2816,7 @@ function WithdrawTokenPicker({
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M12 5v14"/><path d="m19 12-7-7-7 7"/><path d="M5 3h14"/></svg>
         </div>
         <p className="text-sm font-medium text-slate-300">{t.withdrawNoAssets}</p>
-        <p className="text-xs text-slate-400">{t.withdrawNoAssetsBody}</p>
+        <p className="text-xs text-slate-400">{holdsStock ? t.withdrawNoAssetsStockBody : t.withdrawNoAssetsBody}</p>
       </div>
     );
   }

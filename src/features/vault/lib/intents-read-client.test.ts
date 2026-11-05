@@ -96,10 +96,19 @@ describe("getIntentsBalances", () => {
 // D-312: this pair is what may HIDE a record from the My Account notice, so it fails closed —
 // anything but two booleans throws, and the caller reads a throw as "cannot tell".
 describe("readNonceWitness", () => {
+  const HEAD = { hash: "HeadHash", timestamp_nanosec: "1800000000123456789" };
+
+  function bodies() {
+    return vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
+  }
+
   function answer(byMethod: Record<string, unknown>) {
     vi.mocked(fetch).mockImplementation(async (_url, init) => {
-      const method = JSON.parse((init as RequestInit).body as string).params.method_name as string;
-      return mockViewResult(byMethod[method]);
+      const body = JSON.parse((init as RequestInit).body as string);
+      if (body.method === "block") {
+        return new Response(JSON.stringify({ result: { header: HEAD } }), { status: 200 });
+      }
+      return mockViewResult(byMethod[body.params.method_name as string]);
     });
   }
 
@@ -108,8 +117,11 @@ describe("readNonceWitness", () => {
     await expect(readNonceWitness("alice.near", "Tk9OQ0U=", "252812b3")).resolves.toEqual({
       nonceUsed: false,
       saltValid: true,
+      blockTimestampMs: 1_800_000_000_123,
     });
-    const calls = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string).params);
+    const calls = bodies()
+      .filter((b) => b.method === "query")
+      .map((b) => b.params);
     expect(calls.map((c) => c.account_id)).toEqual([INTENTS_CONTRACT_ID, INTENTS_CONTRACT_ID]);
     const args = calls.map((c) => JSON.parse(atob(c.args_base64)));
     expect(args).toContainEqual({ account_id: "alice.near", nonce: "Tk9OQ0U=" });
@@ -122,5 +134,45 @@ describe("readNonceWitness", () => {
   ])("throws on %s — never reads it as false", async (_, byMethod) => {
     answer(byMethod);
     await expect(readNonceWitness("alice.near", "Tk9OQ0U=", "252812b3")).rejects.toThrow(/two booleans/);
+  });
+
+  // D-556: the clock returned must be the clock of the block both answers describe.
+  it("reads the FINAL head first and pins both views to that one block", async () => {
+    answer({ is_nonce_used: false, is_valid_salt: true });
+    await readNonceWitness("alice.near", "Tk9OQ0U=", "252812b3");
+
+    const [first, ...views] = bodies();
+    expect(first).toMatchObject({ method: "block", params: { finality: "final" } });
+    expect(views).toHaveLength(2);
+    for (const view of views) {
+      expect(view.params.block_id).toBe("HeadHash");
+      expect(view.params).not.toHaveProperty("finality");
+    }
+  });
+
+  it.each([
+    ["an RPC error", { error: { code: -32000, message: "node down" } }],
+    ["no header", { result: {} }],
+    ["a timestamp that is not a number", { result: { header: { hash: "H", timestamp_nanosec: "soon" } } }],
+    ["no hash", { result: { header: { timestamp_nanosec: "1800000000123456789" } } }],
+  ])("throws on a head with %s, and reads no view: no clock, no evidence", async (_, head) => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(head), { status: 200 }));
+    await expect(readNonceWitness("alice.near", "Tk9OQ0U=", "252812b3")).rejects.toThrow(/final head/);
+    expect(bodies().filter((b) => b.method === "query")).toEqual([]);
+  });
+
+  it("throws when the node does not hold the pinned block", async () => {
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      return new Response(
+        JSON.stringify(
+          body.method === "block"
+            ? { result: { header: HEAD } }
+            : { error: { code: -32000, message: "UNKNOWN_BLOCK", cause: { name: "UNKNOWN_BLOCK" } } }
+        ),
+        { status: 200 }
+      );
+    });
+    await expect(readNonceWitness("alice.near", "Tk9OQ0U=", "252812b3")).rejects.toThrow(/UNKNOWN_BLOCK/);
   });
 });

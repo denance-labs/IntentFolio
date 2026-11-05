@@ -1006,3 +1006,27 @@ describe("IntentsAccountView — the funding account not read yet", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+describe("IntentsAccountView — selling a stock (plan 039)", () => {
+  const NVDA_ID = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+  const holdings = () =>
+    new Map([
+      [NVDA_ID, 0.05],
+      ["nep141:usdt.tether-token.near", 10],
+    ]);
+
+  it("offers Sell on a stock and on nothing else, and asks the shell for that stock", () => {
+    state.balance = holdings();
+    const onSellStock = vi.fn();
+    render(<IntentsAccountView onSellStock={onSellStock} />);
+    expect(screen.getAllByRole("button", { name: /^Sell / })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Sell NVDA" }));
+    expect(onSellStock).toHaveBeenCalledWith(NVDA_ID);
+  });
+
+  it("offers no Sell when the shell has none to give", () => {
+    state.balance = holdings();
+    render(<IntentsAccountView />);
+    expect(screen.queryByRole("button", { name: /^Sell / })).toBeNull();
+  });
+});

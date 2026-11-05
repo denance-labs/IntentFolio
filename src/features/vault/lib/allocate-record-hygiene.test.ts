@@ -42,7 +42,7 @@ function deps(
   const log = vi.fn();
   // No record in these fixtures carries a V1 nonce, so the never-executed proof never holds
   // here; the D-295 flip has its own suite below.
-  const readNonceWitness = vi.fn(async () => ({ nonceUsed: false, saltValid: true }));
+  const readNonceWitness = vi.fn(async () => ({ nonceUsed: false, saltValid: true, blockTimestampMs: 0 }));
   const markNeverExecuted = vi.fn<(id: string) => Promise<boolean>>(async () => true);
   // An hour after the fixture's `createdAt`: well inside the `failed` candidate horizon.
   const d: ReconcileDeps = {
@@ -286,7 +286,7 @@ describe("reconcileSuspectedOrphans — a sent record whose envelope never execu
     records: AllocateRescueRecord[],
     opts: {
       seal?: SealRead | Error;
-      witness?: { nonceUsed: boolean; saltValid: boolean } | Error;
+      witness?: { nonceUsed: boolean; saltValid: boolean; blockTimestampMs?: number } | Error;
       now?: number;
       mark?: boolean;
     } = {}
@@ -297,7 +297,8 @@ describe("reconcileSuspectedOrphans — a sent record whose envelope never execu
     });
     const readNonceWitness = vi.fn(async () => {
       if (opts.witness instanceof Error) throw opts.witness;
-      return opts.witness ?? { nonceUsed: false, saltValid: true };
+      // The node is up to date unless a case says otherwise: its block carries this clock.
+      return { nonceUsed: false, saltValid: true, blockTimestampMs: opts.now ?? TODAY, ...opts.witness };
     });
     const markNeverExecuted = vi.fn<(id: string) => Promise<boolean>>(async () => opts.mark ?? true);
     const confirm = vi.fn<(id: string) => Promise<boolean>>(async () => true);
@@ -333,6 +334,11 @@ describe("reconcileSuspectedOrphans — a sent record whose envelope never execu
     ["the nonce was used — the envelope ran", { witness: { nonceUsed: true, saltValid: true } }],
     ["the salt was invalidated — its nonces may be swept", { witness: { nonceUsed: false, saltValid: false } }],
     ["the witness read failed", { witness: new Error("rpc down") }],
+    // D-556: a `failed` written here leaves the solver's worklist and verdict queue for good.
+    [
+      "the node answering is behind: its block is from before the envelope closed",
+      { witness: { nonceUsed: false, saltValid: true, blockTimestampMs: ENVELOPE_DEADLINE_MS } },
+    ],
     ["the seal cannot be read", { seal: { kind: "unreadable", reason: "rpc" } as SealRead }],
     ["the seal read throws", { seal: new Error("rpc down") }],
     ["the envelope is still inside its finality margin", { now: ENVELOPE_DEADLINE_MS + 30_000 }],

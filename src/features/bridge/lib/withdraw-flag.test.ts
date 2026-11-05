@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens } from "@/features/market/lib/token-registry";
 import { withdrawalRegistry } from "./withdrawal-registry";
 
@@ -97,7 +98,8 @@ describe("the Deposit-only set (D-201) — what opening the gate actually moved"
     const gate = await loadGate({ real: "true" });
     const depositOnly = depositableTokens
       .map((token) => token.id)
-      .filter((tokenId) => !gate({ ...signedIn, tokenId }));
+      // A stock is never taken in: Receive does not offer it, and it leaves by being sold (plan 039).
+      .filter((tokenId) => !isStockToken(tokenId) && !gate({ ...signedIn, tokenId }));
 
     expect(depositOnly).toEqual([]);
   });

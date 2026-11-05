@@ -10,6 +10,7 @@ import {
   NEAR_REGISTRABLE_OMFT,
   _validateChainIds,
 } from "./withdrawal-registry";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
 import { chainRegistry } from "./chain-registry";
 
@@ -168,7 +169,8 @@ describe("stellar:mainnet curated assets (measured against mainnet)", () => {
 describe("tokenRegistry coverage", () => {
   it("every depositable token except NEAR has a withdrawalRegistry entry", () => {
     const missing = tokenRegistry
-      .filter((t) => t.depositable && t.id !== "near")
+      // A stock is the one exception: it leaves by being sold, not withdrawn (plan 039).
+      .filter((t) => t.depositable && t.id !== "near" && !isStockToken(t.id))
       .filter((t) => !isWithdrawable(t.id))
       .map((t) => t.id);
     expect(missing, `missing withdrawable tokens: ${missing.join(", ")}`).toHaveLength(0);

@@ -10,28 +10,34 @@
 //
 // The direction of every doubt is "show it": an unreadable seal keeps the row. Over-warning
 // costs a notice that lingers until the next load; under-warning hides money in transit.
-// The one thing that hides an unsealed record is positive proof that its envelope never ran
-// (D-312, `allocate-never-executed.ts`) — a burnt-or-not nonce read under conditions where
-// `false` is evidence. The hygiene sweep writes that same verdict down as `failed` (D-295),
-// so the row stays gone once the proof expires.
+// But a row claims only what the chain shows (D-552, D-556): "the funds left" needs a burnt nonce,
+// so a doubt is shown in words that assert nothing. `status` does not say it: `suspected_orphan`
+// is also a poll that gave up on an envelope that never landed.
+//
+// The one thing that takes an unsealed record off the list is positive proof that its envelope
+// never ran (D-312, `allocate-never-executed.ts`) — a burnt-or-not nonce read under conditions
+// where `false` is evidence. It moves to `notExecuted`, so the user is told instead of the row
+// just vanishing. The hygiene sweep writes that same verdict down as `failed` (D-295) for what it
+// may flip, and `neverExecutedAt` keeps the notice alive past that flip and past the proof.
+// `suspected_orphan` is the solver's to close: until its verdict the notice rests on the proof.
 //
 // Both on-chain proofs expire: the seal may be purged after the AuthCall deadline, the nonce
 // witness a week later. The solver's final verdict (D-448, `allocate-verdicts-client.ts`) does
-// not, so it is asked FIRST and, when present, decides without any chain read: `credited` and
-// `never_executed` hide the row, `orphan_escalated` keeps it as "under team review". No verdict
-// — not decided yet, or the read failed — falls through to the chain reads, as before.
+// not, so it is asked FIRST and, when present, decides without any chain read: `credited` hides
+// the row, `never_executed` moves it to `notExecuted`, `orphan_escalated` keeps it as "under team
+// review". No verdict — not decided yet, or the read failed — falls through to the chain reads.
 
 import type { Language } from "@/features/portfolio-editor/types";
 import { shellTranslations } from "@/features/dashboard-shell/lib/translations";
 import type { AllocateRescueRecord } from "./allocate-rescue-store";
 import type { SealRead } from "./allocate-seal";
-import { provesNeverExecuted, type ReadNonceWitness } from "./allocate-never-executed";
+import { readEnvelopeOutcome, type ReadNonceWitness } from "./allocate-never-executed";
 import { verdictFor, type AllocateVerdicts, type ReadAllocateVerdicts } from "./allocate-verdicts-client";
 
 export type PendingAllocateKind =
-  /** The vault refused the credit or the poll gave up: the record is on the rescue worklist. */
+  /** The nonce is burnt and there is no seal: the funds left the account, the credit is owed. */
   | "completing"
-  /** Sent, and its outcome never reached this browser. It may still land by itself. */
+  /** Nothing proven either way: it may still land, or the reads failed. The copy asserts nothing. */
   | "confirming"
   /**
    * The solver's final verdict: the funds reached the vault and were never credited
@@ -59,6 +65,19 @@ export type PendingAllocate = {
   legs: Array<{ tokenId: string; amount: string }>;
   createdAt: number;
   kind: PendingAllocateKind;
+};
+
+/** An Allocate whose envelope provably never ran, until the user dismisses the notice (D-556). */
+export type NotExecutedAllocate = Omit<PendingAllocate, "kind">;
+
+/**
+ * Two lists because they answer different questions. `pending` is money that may be on its way,
+ * and it drives the delete gate and the "part of this balance may be on its way" notices.
+ * `notExecuted` is money that never moved: counting it there would block what it must not.
+ */
+export type PendingAllocatesResult = {
+  pending: PendingAllocate[];
+  notExecuted: NotExecutedAllocate[];
 };
 
 /**
@@ -119,65 +138,90 @@ export function allocateIntoPortfolioIdOf(msg: string): string | null {
 /** Same bound as the hygiene sweep: the candidates are few, this only caps a pathological store. */
 const CONCURRENCY = 3;
 
-/** In transit = not credited (no seal) and not proven never-executed. Never throws. */
-async function isInTransit(
+/**
+ * Where the chain puts an undecided candidate. The seal first: a sealed record is a credited
+ * Allocate and never goes near the nonce. Never throws.
+ */
+async function standingOf(
   record: AllocateRescueRecord,
   deps: FindPendingDeps,
   now: number
-): Promise<boolean> {
+): Promise<"credited" | "never_executed" | "completing" | "confirming"> {
   try {
-    if ((await deps.readSeal(record.signerId, record.msg)).kind === "sealed") return false;
+    if ((await deps.readSeal(record.signerId, record.msg)).kind === "sealed") return "credited";
   } catch {
     /* unreadable: fall through — a doubt is shown, unless the nonce proves otherwise */
   }
-  return !(await provesNeverExecuted(record, deps.readNonceWitness, now));
+  const outcome = await readEnvelopeOutcome(record, deps.readNonceWitness, now);
+  if (outcome === "never_executed") return "never_executed";
+  return outcome === "executed" ? "completing" : "confirming";
 }
 
-/**
- * The candidates still in transit, newest first. Never throws: every read that fails leaves
- * the record shown.
- */
-export async function findPendingAllocates(deps: FindPendingDeps): Promise<PendingAllocate[]> {
-  const now = (deps.now ?? Date.now)();
-  const candidates = deps.records().filter((r) => isPendingCandidate(r, deps.signerId));
-  const pending: PendingAllocate[] = [];
-  if (candidates.length === 0) return pending;
-
-  let verdicts: AllocateVerdicts = {};
-  try {
-    verdicts = (await deps.readVerdicts?.(candidates.map((r) => r.id))) ?? {};
-  } catch {
-    /* no verdicts: the chain reads below decide, as before D-448 */
-  }
-
-  const row = (record: AllocateRescueRecord, kind: PendingAllocateKind): PendingAllocate => ({
+function baseRow(record: AllocateRescueRecord): NotExecutedAllocate {
+  return {
     id: record.id,
     portfolioName: record.portfolioName,
     op: allocateOpOf(record.msg),
     portfolioId: allocateIntoPortfolioIdOf(record.msg),
     legs: record.legs ?? [],
     createdAt: record.createdAt,
-    kind,
-  });
+  };
+}
 
-  const undecided: AllocateRescueRecord[] = [];
-  for (const record of candidates) {
-    const verdict = verdictFor(verdicts, record.id);
-    if (verdict === "orphan_escalated") pending.push(row(record, "review"));
-    else if (verdict === undefined) undecided.push(record);
-    // `credited` / `never_executed`: settled for good, nothing in transit.
+const newestFirst = (a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt;
+
+/**
+ * The candidates still in transit and the Allocates that never ran, each newest first. Never
+ * throws: every read that fails leaves the record in `pending`, in words that assert nothing.
+ *
+ * A dismissed record stays a candidate. Dismissing only hides the notice, so if a later verdict
+ * contradicted the proof the record would come back as a row instead of staying out of sight.
+ */
+export async function findPendingAllocates(deps: FindPendingDeps): Promise<PendingAllocatesResult> {
+  const now = (deps.now ?? Date.now)();
+  const records = deps.records();
+  const candidates = records.filter((r) => isPendingCandidate(r, deps.signerId));
+  const pending: PendingAllocate[] = [];
+  // Flipped by the sweep, with the mark that says the user still has to hear about it.
+  const neverRan = records.filter(
+    (r) => r.signerId === deps.signerId && r.status === "failed" && r.neverExecutedAt !== undefined
+  );
+
+  if (candidates.length > 0) {
+    let verdicts: AllocateVerdicts = {};
+    try {
+      verdicts = (await deps.readVerdicts?.(candidates.map((r) => r.id))) ?? {};
+    } catch {
+      /* no verdicts: the chain reads below decide, as before D-448 */
+    }
+
+    const undecided: AllocateRescueRecord[] = [];
+    for (const record of candidates) {
+      const verdict = verdictFor(verdicts, record.id);
+      if (verdict === "orphan_escalated") pending.push({ ...baseRow(record), kind: "review" });
+      else if (verdict === "never_executed") neverRan.push(record);
+      else if (verdict === undefined) undecided.push(record);
+      // `credited`: settled for good, nothing to say.
+    }
+
+    for (let i = 0; i < undecided.length; i += CONCURRENCY) {
+      const batch = undecided.slice(i, i + CONCURRENCY);
+      const standings = await Promise.all(batch.map((r) => standingOf(r, deps, now)));
+      batch.forEach((record, j) => {
+        const standing = standings[j];
+        if (standing === "never_executed") neverRan.push(record);
+        else if (standing !== "credited") pending.push({ ...baseRow(record), kind: standing });
+      });
+    }
   }
 
-  for (let i = 0; i < undecided.length; i += CONCURRENCY) {
-    const batch = undecided.slice(i, i + CONCURRENCY);
-    const inTransit = await Promise.all(batch.map((r) => isInTransit(r, deps, now)));
-    batch.forEach((record, j) => {
-      if (!inTransit[j]) return;
-      pending.push(row(record, record.status === "suspected_orphan" ? "completing" : "confirming"));
-    });
-  }
-
-  return pending.sort((a, b) => b.createdAt - a.createdAt);
+  return {
+    pending: pending.sort(newestFirst),
+    notExecuted: neverRan
+      .filter((r) => r.notExecutedNoticeDismissedAt === undefined)
+      .map(baseRow)
+      .sort(newestFirst),
+  };
 }
 
 const MINUTE_MS = 60_000;

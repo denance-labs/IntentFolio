@@ -714,9 +714,9 @@ async function loadPrices(
   if (Number(stored.rows[0]?.n ?? 0) < entries.length) {
     await db.query(
       `INSERT INTO token_price_daily (day, token_id, price_usd, source)
-       SELECT $1::date, t, p::numeric, '1click' FROM unnest($2::text[], $3::text[]) AS u(t, p)
+       SELECT $1::date, t, p::numeric, s FROM unnest($2::text[], $3::text[], $4::text[]) AS u(t, p, s)
        ON CONFLICT (day, token_id) DO NOTHING`,
-      [day, entries.map(([id]) => id), entries.map(([, q]) => q.priceText)]
+      [day, entries.map(([id]) => id), entries.map(([, q]) => q.priceText), entries.map(([, q]) => q.source ?? "1click")]
     );
   }
   return book;

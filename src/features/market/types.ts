@@ -1,4 +1,4 @@
-export type TokenCategory = "Stable" | "Core" | "DeFi" | "Privacy" | "Web3" | "Liquid Staking" | "Other";
+export type TokenCategory = "Stable" | "Core" | "DeFi" | "Privacy" | "Web3" | "Liquid Staking" | "Stocks" | "Other";
 
 export type TokenDefinition = {
   id: string;          // primary key — full asset id, e.g. "nep141:wrap.near", "near"

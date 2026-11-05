@@ -23,6 +23,7 @@
 // so the rule this file is built on — offered here only if it round-trips — finally holds
 // for NEAR too instead of being suspended for it.
 
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens } from "@/features/market/lib/token-registry";
 import { chainRegistry } from "./chain-registry";
 import { withdrawalRegistry } from "./withdrawal-registry";
@@ -52,6 +53,8 @@ function buildDepositGroups(): DepositGroup[] {
   const order: string[] = [];
 
   for (const token of depositableTokens) {
+    // A stock is a target, never a deposit: without this it would be a group with no chain (plan 039).
+    if (isStockToken(token.id)) continue;
     const key = token.assetName ?? token.symbol;
     if (!seen.has(key)) {
       order.push(key);

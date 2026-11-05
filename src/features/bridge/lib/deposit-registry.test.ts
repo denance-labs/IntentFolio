@@ -8,7 +8,11 @@ import {
 } from "./deposit-registry";
 import { chainRegistry } from "./chain-registry";
 import { withdrawalRegistry } from "./withdrawal-registry";
-import { depositableTokens } from "@/features/market/lib/token-registry";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
+import { depositableTokens as allDepositableTokens } from "@/features/market/lib/token-registry";
+
+// A stock is a portfolio target, never a deposit (plan 039).
+const depositableTokens = allDepositableTokens.filter((t) => !isStockToken(t.id));
 
 function group(assetName: string) {
   const g = depositGroups.find((x) => x.assetName === assetName);

@@ -1,4 +1,6 @@
-// Today's USD prices for the history recorder (plan 028-2, decision 5), from 1Click `/v0/tokens`.
+// Today's USD prices for the history recorder (plan 028-2, decision 5), from 1Click `/v0/tokens`, and
+// from CoinGecko for the Ondo stocks, which 1Click does not list (plan 039). Without them every day
+// holding a stock is left out of Evolution and Performance, and nothing backfills a missing day.
 // Server only.
 //
 // Unlike `price-provider.ts`, there is no fallback of any kind: a hand-written or hour-old price
@@ -8,6 +10,8 @@
 // Attribution: see ATTRIBUTIONS.md #1 (1Click token catalog, `/v0/tokens`).
 
 import { ONE_CLICK_BASE_URL } from "@/features/bridge/lib/oneclick-base-url";
+import { fetchStockPrices } from "@/features/market/lib/stock-prices";
+import { STOCK_TOKENS } from "@/features/market/lib/stock-tokens";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -16,6 +20,8 @@ export type TokenQuote = {
   /** The price as 1Click sent it, for a `numeric` column; never rounded through arithmetic here. */
   priceText: string;
   decimals: number;
+  /** Where it came from, for `token_price_daily.source`. Absent: 1Click. */
+  source?: string;
 };
 
 export type PriceBook = ReadonlyMap<string, TokenQuote>;
@@ -46,6 +52,13 @@ export async function fetchPriceBook(fetchImpl: FetchLike = fetch): Promise<Pric
       // `String` of a parsed number is its shortest exact spelling ("1.3462e-8"), which
       // Postgres `numeric` reads as is.
       book.set(assetId, { priceText: String(price), decimals });
+    }
+    // Only what CoinGecko answered now: a kept price would read as that day's real one forever.
+    const stockPrices = await fetchStockPrices(fetchImpl as typeof fetch);
+    for (const token of STOCK_TOKENS) {
+      const stock = stockPrices.get(token.id);
+      if (!stock || stock.servedFromCache) continue;
+      book.set(token.id, { priceText: String(stock.usdPrice), decimals: token.decimals, source: "coingecko" });
     }
     return book;
   } finally {

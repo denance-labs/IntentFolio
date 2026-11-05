@@ -36,12 +36,13 @@ export const MAX_BODY_BYTES = 16 * 1024;
  * Worst case with the primary hanging: 2 × (1.5s + ~0.3s FastNEAR) ≈ 3.6s — still inside.
  * `tx` waits for execution (`wait_until: EXECUTED_OPTIMISTIC`), so it gets longer; its only
  * caller (hot-delivery.ts) polls, so a slow answer costs one poll, not a popup.
+ * `block` only serves the never-executed proof (`readFinalHead`, near-view.ts): same as `query`.
  */
-const PRIMARY_TIMEOUT_MS: Record<AllowedRpcMethod, number> = { query: 1_500, tx: 4_000 };
+const PRIMARY_TIMEOUT_MS: Record<AllowedRpcMethod, number> = { query: 1_500, tx: 4_000, block: 1_500 };
 /** The fallback is the last resort: bounded only to stay under the browser's own 10s abort. */
-const FALLBACK_TIMEOUT_MS: Record<AllowedRpcMethod, number> = { query: 8_000, tx: 5_000 };
+const FALLBACK_TIMEOUT_MS: Record<AllowedRpcMethod, number> = { query: 8_000, tx: 5_000, block: 8_000 };
 
-type AllowedRpcMethod = "query" | "tx";
+type AllowedRpcMethod = "query" | "tx" | "block";
 
 const ALLOWED_QUERY_REQUEST_TYPES = new Set(["call_function", "view_account"]);
 const ALLOWED_FINALITIES = new Set(["optimistic", "near-final", "final"]);
@@ -232,6 +233,13 @@ export function validateNearRpcRequest(bodyText: string): Validation {
       return { ok: false, id, reason: `wait_until not allowed: ${String(params.wait_until)}` };
     }
     forwardParams = pick(params, ["tx_hash", "sender_account_id", "wait_until"]);
+  } else if (method === "block") {
+    // Only the FINAL head, whose clock the never-executed proof reads (D-556). Nothing in the
+    // browser needs a block by height or hash, and this route is public.
+    if (params.finality !== "final") {
+      return { ok: false, id, reason: "block is only served at finality final" };
+    }
+    forwardParams = { finality: "final" };
   } else {
     return { ok: false, id, reason: `method not allowed: ${String(method)}` };
   }

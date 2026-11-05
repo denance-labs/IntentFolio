@@ -161,7 +161,9 @@ describe("validateNearRpcRequest — the allowlist", () => {
   it.each([
     ["a send method", { method: "send_tx", params: { signed_tx_base64: "x" } }],
     ["broadcast_tx_commit", { method: "broadcast_tx_commit", params: ["x"] }],
-    ["block (not a read the app makes)", { method: "block", params: { finality: "final" } }],
+    ["a block that is not the FINAL head", { method: "block", params: { finality: "optimistic" } }],
+    ["a block by height", { method: "block", params: { block_id: 1 } }],
+    ["a block by hash", { method: "block", params: { block_id: "H" } }],
     ["view_access_key_list", { method: "query", params: { request_type: "view_access_key_list", account_id: "a.near" } }],
     ["view_code", { method: "query", params: { request_type: "view_code", account_id: "a.near" } }],
     [
@@ -210,6 +212,16 @@ describe("validateNearRpcRequest — the allowlist", () => {
     expect(validateNearRpcRequest(JSON.stringify([JSON.parse(callFunction("current_salt"))])).ok).toBe(false);
     expect(validateNearRpcRequest("not json").ok).toBe(false);
     expect(validateNearRpcRequest(callFunction("current_salt").replace('"2.0"', '"1.0"')).ok).toBe(false);
+  });
+});
+
+describe("validateNearRpcRequest — the FINAL head (D-556)", () => {
+  it("serves it, forwarding nothing but the finality", () => {
+    const result = validateNearRpcRequest(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "block", params: { finality: "final", block_id: 7, x: 1 } })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(JSON.parse(result.request.forward).params).toEqual({ finality: "final" });
   });
 });
 

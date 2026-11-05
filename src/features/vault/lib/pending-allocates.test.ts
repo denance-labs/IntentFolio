@@ -53,7 +53,7 @@ describe("isPendingCandidate", () => {
 describe("findPendingAllocates", () => {
   it("drops a candidate whose seal is on chain — the status alone would keep it forever", async () => {
     // The tab-closed-during-the-poll case: `submitted` locally, credited on chain.
-    const pending = await findPendingAllocates({ readNonceWitness: noWitness,
+    const { pending } = await findPendingAllocates({ readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record({ status: "submitted" })],
       readSeal: async () => ({ kind: "sealed", deadlineSecs: 1 }),
@@ -62,7 +62,7 @@ describe("findPendingAllocates", () => {
   });
 
   it("keeps an unsealed candidate, with what the notice shows", async () => {
-    const pending = await findPendingAllocates({ readNonceWitness: noWitness,
+    const { pending } = await findPendingAllocates({ readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record()],
       readSeal: unsealed,
@@ -75,13 +75,13 @@ describe("findPendingAllocates", () => {
         portfolioId: null,
         legs: [{ tokenId: "nep141:wrap.near", amount: "300000000000000000000000" }],
         createdAt: 1_000,
-        kind: "completing",
+        kind: "confirming",
       },
     ]);
   });
 
   it("tells a top-up from a creation by the op in its raw msg (D-321)", async () => {
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [
@@ -105,12 +105,14 @@ describe("findPendingAllocates", () => {
     ["an unreadable seal", async () => ({ kind: "unreadable", reason: "rpc 503" })],
     ["a seal read that rejects", () => Promise.reject(new Error("network"))],
   ])("shows the record on %s — money in transit is never hidden on a doubt", async (_, readSeal) => {
-    const pending = await findPendingAllocates({ readNonceWitness: noWitness, signerId: ME, records: () => [record()], readSeal });
+    const { pending } = await findPendingAllocates({ readNonceWitness: noWitness, signerId: ME, records: () => [record()], readSeal });
     expect(pending.map((p) => p.id)).toEqual(["rec-1"]);
   });
 
-  it("words a sent-but-unseen record as confirming, and a worklist one as completing", async () => {
-    const pending = await findPendingAllocates({ readNonceWitness: noWitness,
+  // D-552: `suspected_orphan` is also a poll that gave up on an envelope that never landed, so
+  // the status alone says nothing about the funds. Only a burnt nonce makes a row "completing".
+  it("without a nonce read, every status is confirming: none of them claims the funds left", async () => {
+    const { pending } = await findPendingAllocates({ readNonceWitness: noWitness,
       signerId: ME,
       records: () => [
         record({ id: "a", status: "submitted", createdAt: 1 }),
@@ -120,7 +122,7 @@ describe("findPendingAllocates", () => {
       readSeal: unsealed,
     });
     expect(pending.map((p) => [p.id, p.kind])).toEqual([
-      ["c", "completing"],
+      ["c", "confirming"],
       ["b", "confirming"],
       ["a", "confirming"],
     ]);
@@ -144,7 +146,7 @@ describe("findPendingAllocates", () => {
 
   it("keeps a pre-Phase-2 record without legs, as an empty list", async () => {
     const legacy = record({ legs: undefined as unknown as AllocateRescueRecord["legs"] });
-    const [pending] = await findPendingAllocates({ readNonceWitness: noWitness, signerId: ME, records: () => [legacy], readSeal: unsealed });
+    const { pending: [pending] } = await findPendingAllocates({ readNonceWitness: noWitness, signerId: ME, records: () => [legacy], readSeal: unsealed });
     expect(pending.legs).toEqual([]);
   });
 });
@@ -174,6 +176,8 @@ describe("formatAllocateAge", () => {
 
 // D-312: the ONE thing that hides an unsealed record is proof its envelope never ran. Each
 // condition of that proof is pinned by a case where it alone fails — and the record shows.
+type Witness = { nonceUsed: boolean; saltValid: boolean; blockTimestampMs: number };
+
 describe("findPendingAllocates — the never-executed proof", () => {
   const NOW = 1_800_000_000_000;
   const ENVELOPE_DEADLINE = NOW / 1000 - 3600; // an hour past
@@ -196,10 +200,10 @@ describe("findPendingAllocates — the never-executed proof", () => {
 
   async function shown(
     rec: AllocateRescueRecord,
-    witness: () => Promise<{ nonceUsed: boolean; saltValid: boolean }>,
+    witness: () => Promise<Witness>,
     readSeal: () => Promise<SealRead> = unsealed
   ): Promise<boolean> {
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       signerId: ME,
       records: () => [rec],
       readSeal,
@@ -209,7 +213,7 @@ describe("findPendingAllocates — the never-executed proof", () => {
     return pending.length === 1;
   }
 
-  const unused = async () => ({ nonceUsed: false, saltValid: true });
+  const unused = async (): Promise<Witness> => ({ nonceUsed: false, saltValid: true, blockTimestampMs: NOW });
 
   it("hides an unsealed record whose nonce was never used, past its envelope deadline", async () => {
     expect(await shown(neverRan(), unused)).toBe(false);
@@ -226,10 +230,21 @@ describe("findPendingAllocates — the never-executed proof", () => {
     expect(witness).toHaveBeenCalledWith(ME, rec.verifierNonce, "252812b3");
   });
 
-  it.each<[string, Partial<AllocateRescueRecord>, () => Promise<{ nonceUsed: boolean; saltValid: boolean }>]>([
-    ["the nonce WAS used (it executed: an orphan)", {}, async () => ({ nonceUsed: true, saltValid: true })],
-    ["the salt was invalidated (false is no evidence)", {}, async () => ({ nonceUsed: false, saltValid: false })],
+  it.each<[string, Partial<AllocateRescueRecord>, () => Promise<Witness>]>([
+    ["the nonce WAS used (it executed: an orphan)", {}, async () => ({ nonceUsed: true, saltValid: true, blockTimestampMs: NOW })],
+    ["the salt was invalidated (false is no evidence)", {}, async () => ({ nonceUsed: false, saltValid: false, blockTimestampMs: NOW })],
     ["the witness read fails", {}, () => Promise.reject(new Error("rpc down"))],
+    // D-556: this browser's clock is past everything, and a node hours behind still says "unused".
+    [
+      "the block it was read at is from before the envelope closed",
+      {},
+      async () => ({ nonceUsed: false, saltValid: true, blockTimestampMs: (ENVELOPE_DEADLINE + 60) * 1000 }),
+    ],
+    [
+      "the block it was read at is past the nonce's own deadline",
+      {},
+      async () => ({ nonceUsed: false, saltValid: true, blockTimestampMs: NONCE_DEADLINE * 1000 }),
+    ],
     ["the envelope can still execute", { envelopeDeadlineSecs: NOW / 1000 + 300 }, unused],
     ["the envelope deadline is inside the finality margin", { envelopeDeadlineSecs: NOW / 1000 - 30 }, unused],
     ["the nonce's own deadline passed (it may have been swept)", { verifierNonce: v1Nonce(NOW / 1000 - 1) }, unused],
@@ -287,9 +302,12 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
   const sealRead = vi.fn(unsealed);
   const verdicts = (map: Record<string, string>) => vi.fn(async () => map as never);
 
-  it.each(["credited", "never_executed"])("hides a record whose verdict is %s, without reading the chain", async (v) => {
+  it.each([
+    ["credited", []],
+    ["never_executed", ["rec-1"]],
+  ])("takes a record whose verdict is %s off the list, without reading the chain", async (v, told) => {
     sealRead.mockClear();
-    const pending = await findPendingAllocates({
+    const { pending, notExecuted } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record({ status: "submitted" })],
@@ -297,12 +315,13 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
       readVerdicts: verdicts({ "rec-1": v }),
     });
     expect(pending).toEqual([]);
+    expect(notExecuted.map((n) => n.id)).toEqual(told);
     expect(sealRead).not.toHaveBeenCalled();
   });
 
   it("keeps an orphan_escalated record as under review, without reading the chain", async () => {
     sealRead.mockClear();
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record({ status: "submitted" })],
@@ -314,7 +333,7 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
   });
 
   it("matches the verdict whatever case the store holds the id in", async () => {
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record({ id: "REC-1" })],
@@ -351,7 +370,7 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
     ["no verdict yet", verdicts({})],
     ["a failed read", vi.fn(async () => Promise.reject(new Error("offline")))],
   ])("falls back to the chain reads on %s", async (_why, readVerdicts) => {
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [record({ id: "x" }), record({ id: "y", status: "submitted" })],
@@ -359,13 +378,13 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
       readVerdicts,
     });
     expect(pending.map((p) => [p.id, p.kind])).toEqual([
-      ["x", "completing"],
+      ["x", "confirming"],
       ["y", "confirming"],
     ]);
   });
 
   it("mixes decided and undecided rows, newest first", async () => {
-    const pending = await findPendingAllocates({
+    const { pending } = await findPendingAllocates({
       readNonceWitness: noWitness,
       signerId: ME,
       records: () => [
@@ -377,8 +396,161 @@ describe("findPendingAllocates — the solver's verdict (D-448)", () => {
       readVerdicts: verdicts({ "old-review": "orphan_escalated", gone: "never_executed" }),
     });
     expect(pending.map((p) => [p.id, p.kind])).toEqual([
-      ["new-chain", "completing"],
+      ["new-chain", "confirming"],
       ["old-review", "review"],
     ]);
+  });
+});
+
+// D-552: a row says the funds left only with the burnt nonce behind it, whatever the local status.
+describe("findPendingAllocates — what the chain lets a row claim", () => {
+  const NOW = 1_800_000_000_000;
+  const nonce = Buffer.from(
+    buildVersionedV1Nonce({
+      deadlineSecs: NOW / 1000 + 86_400,
+      salt: Uint8Array.of(0x25, 0x28, 0x12, 0xb3),
+      tail: new Uint8Array(15),
+    })
+  ).toString("base64");
+  const sent = (over: Partial<AllocateRescueRecord> = {}) =>
+    record({ verifierNonce: nonce, envelopeDeadlineSecs: NOW / 1000 + 300, ...over });
+  const kinds = async (rec: AllocateRescueRecord, witness: () => Promise<Witness>) => {
+    const { pending } = await findPendingAllocates({
+      signerId: ME,
+      records: () => [rec],
+      readSeal: unsealed,
+      readNonceWitness: witness,
+      now: () => NOW,
+    });
+    return pending.map((p) => p.kind);
+  };
+
+  it.each(["suspected_orphan", "submitted", "signing"] as const)("%s with a burnt nonce: completing", async (status) => {
+    const burnt = async () => ({ nonceUsed: true, saltValid: true, blockTimestampMs: NOW });
+    expect(await kinds(sent({ status }), burnt)).toEqual(["completing"]);
+  });
+
+  it.each(["suspected_orphan", "submitted", "signing"] as const)(
+    "%s with the nonce unused and the envelope still open: confirming",
+    async (status) => {
+      const open = async () => ({ nonceUsed: false, saltValid: true, blockTimestampMs: NOW });
+      expect(await kinds(sent({ status }), open)).toEqual(["confirming"]);
+    }
+  );
+
+  it("the failed read of the real case: a poll that gave up, and an RPC down, claims nothing", async () => {
+    expect(await kinds(sent(), () => Promise.reject(new Error("account does not exist")))).toEqual(["confirming"]);
+  });
+});
+
+// D-556: money that never moved. Told to the user, and kept out of `pending`, which is what blocks
+// deleting a portfolio and warns that part of the balance may be on its way.
+describe("findPendingAllocates — the Allocates that never ran", () => {
+  const NOW = 1_800_000_000_000;
+  const nonce = Buffer.from(
+    buildVersionedV1Nonce({
+      deadlineSecs: NOW / 1000 + 86_400,
+      salt: Uint8Array.of(0x25, 0x28, 0x12, 0xb3),
+      tail: new Uint8Array(15),
+    })
+  ).toString("base64");
+  const unused = async () => ({ nonceUsed: false, saltValid: true, blockTimestampMs: NOW });
+  const closed = (over: Partial<AllocateRescueRecord> = {}) =>
+    record({ verifierNonce: nonce, envelopeDeadlineSecs: NOW / 1000 - 3600, ...over });
+  const find = (records: AllocateRescueRecord[], verdicts: Record<string, string> = {}) =>
+    findPendingAllocates({
+      signerId: ME,
+      records: () => records,
+      readSeal: unsealed,
+      readNonceWitness: unused,
+      readVerdicts: async () => verdicts as never,
+      now: () => NOW,
+    });
+  const flipped = (over: Partial<AllocateRescueRecord> = {}) =>
+    record({ status: "failed", neverExecutedAt: NOW - 1000, ...over });
+
+  it.each(["suspected_orphan", "submitted", "signing"] as const)(
+    "%s proven by the nonce moves from pending to notExecuted, with what the notice shows",
+    async (status) => {
+      const { pending, notExecuted } = await find([
+        closed({ status, msg: '{"op":{"allocate_into":{"portfolio_id":"p_4"}}}' }),
+      ]);
+      expect(pending).toEqual([]);
+      expect(notExecuted).toEqual([
+        {
+          id: "rec-1",
+          portfolioName: "Mi cartera",
+          op: "allocate_into",
+          portfolioId: "p_4",
+          legs: [{ tokenId: "nep141:wrap.near", amount: "300000000000000000000000" }],
+          createdAt: 1_000,
+        },
+      ]);
+    }
+  );
+
+  it("keeps telling the user after the sweep flipped it to failed, and without a chain read", async () => {
+    const readSeal = vi.fn(unsealed);
+    const { pending, notExecuted } = await findPendingAllocates({
+      signerId: ME,
+      records: () => [flipped()],
+      readSeal,
+      readNonceWitness: noWitness,
+    });
+    expect(pending).toEqual([]);
+    expect(notExecuted.map((n) => n.id)).toEqual(["rec-1"]);
+    expect(readSeal).not.toHaveBeenCalled();
+  });
+
+  it("says nothing for a failed without the mark: a revert or a refusal the modal already reported, or an old one", async () => {
+    const { notExecuted } = await find([record({ status: "failed", error: "reverted" })]);
+    expect(notExecuted).toEqual([]);
+  });
+
+  it("says nothing for another signer's record kept in the same browser", async () => {
+    const { notExecuted } = await find([
+      flipped({ id: "a", signerId: "bob.near" }),
+      closed({ id: "b", signerId: "bob.near" }),
+    ]);
+    expect(notExecuted).toEqual([]);
+  });
+
+  it("stops once dismissed, in both ways of getting there", async () => {
+    const { pending, notExecuted } = await find([
+      flipped({ id: "a", notExecutedNoticeDismissedAt: NOW }),
+      closed({ id: "b", notExecutedNoticeDismissedAt: NOW }),
+    ]);
+    expect(pending).toEqual([]);
+    expect(notExecuted).toEqual([]);
+  });
+
+  it("a dismissed record stays a candidate: a verdict that contradicts the proof brings it back as a row", async () => {
+    const { pending, notExecuted } = await find(
+      [closed({ notExecutedNoticeDismissedAt: NOW })],
+      { "rec-1": "orphan_escalated" }
+    );
+    expect(pending.map((p) => [p.id, p.kind])).toEqual([["rec-1", "review"]]);
+    expect(notExecuted).toEqual([]);
+  });
+
+  it("a seal beats the proof: a credited Allocate is never told it did not happen", async () => {
+    const { pending, notExecuted } = await findPendingAllocates({
+      signerId: ME,
+      records: () => [closed()],
+      readSeal: async () => ({ kind: "sealed", deadlineSecs: 1 }),
+      readNonceWitness: unused,
+      now: () => NOW,
+    });
+    expect(pending).toEqual([]);
+    expect(notExecuted).toEqual([]);
+  });
+
+  it("orders them newest first", async () => {
+    const { notExecuted } = await find([
+      flipped({ id: "old", createdAt: 1 }),
+      closed({ id: "new", createdAt: 3 }),
+      flipped({ id: "mid", createdAt: 2 }),
+    ]);
+    expect(notExecuted.map((n) => n.id)).toEqual(["new", "mid", "old"]);
   });
 });
