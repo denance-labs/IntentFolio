@@ -30,21 +30,21 @@ type Step =
 // Single entry point for new-portfolio creation (5.6). Each create surface (the account CTA,
 // the tabs "+") renders this and only handles open/close.
 //
-// 019-5 (D-393 Q4): every card opens the New Portfolio Draft editor (preset preloaded, or
-// empty), with funds or without — a new portfolio is always built as a draft first, and
-// signed from its confirmation. The signed review of a preset (`source: preset`) and the
-// funded "start from scratch" modal are no longer reached from here (their code waits on
-// D-397). Before, with a General Balance worth ≥ $1 a card went straight to signing, and
-// the choice waited on the balance read to pick its way (016 block 2.2).
+// 019-5 (D-393 Q4): every card opens the editor (preset preloaded, or empty), with funds or
+// without, and it opens at once: nothing there waits on the balance read.
 //
-// 016 block 2.3: one draft per account, so while one is saved every way in resumes it
-// instead of offering a new one (which would overwrite it) — the editor with the draft
-// when there are no funds for it. Deciding that needs the balance too, so the entry waits
-// on it the same way.
+// D-397 (plan 041): the editor's own actions follow the funds. With them it creates the
+// portfolio, through the funds screen, and saving a draft is a separate action; without them it
+// saves a draft. A portfolio is not built as a draft first any more.
 //
-// 016 block 2.4: a saved draft with funds (≥ $1) opens its confirmation — the preset review,
-// fed the draft's mix. Right after a wallet deposit for it (B1) the confirmation first waits
-// for the General Balance to show that deposit, or AFTER_DEPOSIT_WAIT_MS, then opens anyway.
+// 016 block 2.3: one draft per account. While one is saved these entries resume it, the editor
+// with the draft when there are no funds for it. Deciding that needs the balance too, so the
+// entry waits on it the same way. D-397: `startNew`, from the tabs' "+", opens the chooser instead,
+// and the draft stays as it is.
+//
+// 016 block 2.4: a saved draft with funds opens its confirmation, the same funds screen fed the
+// draft's mix. Right after a wallet deposit for it (B1) the confirmation first waits for the
+// General Balance to show that deposit, or AFTER_DEPOSIT_WAIT_MS, then opens anyway.
 //
 // D-359: signed out there is no balance to sign with and nowhere to deposit, so every way in
 // is the editor — whatever a balance read without an account says.
@@ -58,6 +58,7 @@ export function CreatePortfolioFlow({
   afterDeposit,
   onCreated,
   signedOut = false,
+  startNew = false,
 }: {
   onClose: () => void;
   /** After a New Portfolio Draft was saved in the editor. */
@@ -68,6 +69,8 @@ export function CreatePortfolioFlow({
   onCreated?: () => void;
   /** No wallet connected (D-359): the anonymous draft, in the editor only. */
   signedOut?: boolean;
+  /** D-397: build another portfolio, even with a draft saved. Only read on open. */
+  startNew?: boolean;
 }) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
@@ -80,7 +83,7 @@ export function CreatePortfolioFlow({
 
   // B1: the deposit counts as seen once the balance holds at least what was credited (a
   // tolerance for float noise only). A balance that already held more of that token passes at
-  // once, possibly on the old read — the confirmation's default amounts follow the live
+  // once, possibly on the old read — the confirmation's rows and "available" follow the live
   // balance, so the re-read corrects them in place.
   const depositSeen = afterDeposit
     ? (available.get(afterDeposit.tokenId) ?? 0) >= afterDeposit.qty * (1 - 1e-9)
@@ -96,7 +99,7 @@ export function CreatePortfolioFlow({
   // null while a saved draft waits on the balance to pick its way. Decided once and kept:
   // funds arriving while the draft is being edited do not swap the editor away.
   const [step, setStep] = useState<Step | null>(() => {
-    if (!draft) return { kind: "select" };
+    if (!draft || startNew) return { kind: "select" };
     if (afterDeposit) return depositSeen ? { kind: "confirm", draft } : null;
     if (canFund === null) return null;
     return canFund ? { kind: "confirm", draft } : { kind: "resume" };
@@ -106,7 +109,7 @@ export function CreatePortfolioFlow({
     if (step !== null) return;
     // Discarded meanwhile (another tab): nothing to resume.
     if (!draft) setStep({ kind: "select" });
-    // Asked to confirm: it opens even without funds ≥ $1, and says what is missing.
+    // Asked to confirm: it opens even without funds, and says what is missing.
     else if (waitsForDeposit) {
       if (depositSeen || waitedOut) setStep({ kind: "confirm", draft });
     } else if (canFund !== null) setStep(canFund ? { kind: "confirm", draft } : { kind: "resume" });
@@ -147,7 +150,8 @@ export function CreatePortfolioFlow({
         existingNames={existingNames}
         onClose={onClose}
         onSaved={handleDraftSaved}
-        funded={canFund === true}
+        funded={canFund}
+        signedOut={signedOut}
       />
     );
   }
@@ -160,7 +164,11 @@ export function CreatePortfolioFlow({
         onBack={() => setStep({ kind: "select" })}
         onClose={onClose}
         onSaved={handleDraftSaved}
-        funded={canFund === true}
+        funded={canFund}
+        balanceUnreadable={fundable.status === "error"}
+        signedOut={signedOut}
+        savedDraftName={signedOut ? null : (draft?.name ?? null)}
+        onCreated={onCreated}
       />
     );
   }

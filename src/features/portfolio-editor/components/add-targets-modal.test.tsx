@@ -47,6 +47,30 @@ describe.each(["en", "es"] as const)("AddTargetsModal — %s", (lang) => {
   const t = translations[lang];
   afterEach(cleanup);
 
+  // D-558: the stocks lead, in a section that holds their note once.
+  it("lists the stocks first, with the note once and each one marked", () => {
+    renderModal({ lang });
+    expect(symbols().slice(0, 6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(screen.getAllByText(t.stockSectionNote)).toHaveLength(1);
+    expect(screen.getByRole("list", { name: t.stockSectionTitle })).toBeTruthy();
+    expect(screen.getByRole("list", { name: t.stockOtherTokens })).toBeTruthy();
+    expect(rowOf("NVDA").textContent).toContain(t.stockChipStock);
+    expect(rowOf("QQQ").textContent).toContain(t.stockChipEtf);
+    expect(rowOf("NEAR", "NEAR Protocol").textContent).not.toContain(t.stockChipStock);
+  });
+
+  it("drops both headings when a search finds no stock, and keeps the section when it finds one", () => {
+    renderModal({ lang });
+    const search = screen.getByRole("textbox", { name: t.searchToken });
+    fireEvent.change(search, { target: { value: "usdc" } });
+    expect(screen.queryByText(t.stockSectionTitle)).toBeNull();
+    expect(screen.queryByText(t.stockOtherTokens)).toBeNull();
+    fireEvent.change(search, { target: { value: "nvda" } });
+    expect(screen.getByText(t.stockSectionTitle)).toBeTruthy();
+    expect(screen.queryByText(t.stockOtherTokens)).toBeNull();
+    expect(symbols()).toEqual(["NVDA"]);
+  });
+
   it("offers «Add» on a token outside the portfolio, with no amount field", () => {
     renderModal({ lang });
     expect(within(rowOf("NEAR")).getByRole("button", { name: /NEAR/ }).getAttribute("aria-pressed")).toBe("false");
@@ -135,4 +159,12 @@ describe.each(["en", "es"] as const)("AddTargetsModal — %s", (lang) => {
     fireEvent.change(screen.getByLabelText(t.searchToken), { target: { value: "zzz-none" } });
     expect(document.body.textContent).toContain(t.noTokensFound);
   });
+});
+
+// D-558: the category only says "Stocks", so the Spanish word needs its own search term.
+it("finds the stocks by the Spanish word", () => {
+  renderModal({ lang: "es" });
+  fireEvent.change(screen.getByRole("textbox", { name: translations.es.searchToken }), { target: { value: "acciones" } });
+  expect(symbols()).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+  cleanup();
 });

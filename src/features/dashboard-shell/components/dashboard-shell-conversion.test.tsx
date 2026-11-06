@@ -92,6 +92,9 @@ vi.mock("@/features/vault/hooks/use-real-portfolio-history", async (importOrigin
   useAccountHistory: () => ({ data: undefined, isLoading: false, outOfDate: false }),
 }));
 vi.mock("../hooks/use-pending-unallocations", () => ({ usePendingUnallocations: () => [] }));
+vi.mock("@/features/vault/hooks/use-pending-allocates", () => ({
+  usePendingAllocates: () => ({ pending: [], isFetching: false }),
+}));
 vi.mock("../hooks/use-new-portfolio-draft", () => ({
   useNewPortfolioDraft: () => ({ draft: null, discard: () => {} }),
 }));

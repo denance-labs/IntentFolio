@@ -9,9 +9,16 @@
 
 import type { TokenDefinition } from "../types";
 
-export type StockToken = TokenDefinition & { coingeckoId: string };
+export type StockToken = TokenDefinition & { coingeckoId: string; kind: "stock" | "etf" };
 
-function stock(symbol: string, name: string, address: string, coingeckoId: string, fallbackUsdPrice: number): StockToken {
+function stock(
+  symbol: string,
+  name: string,
+  address: string,
+  coingeckoId: string,
+  fallbackUsdPrice: number,
+  kind: StockToken["kind"] = "stock"
+): StockToken {
   const contractId = `bnb-${address}.omdep.near`;
   return {
     id: `nep141:${contractId}`,
@@ -24,6 +31,7 @@ function stock(symbol: string, name: string, address: string, coingeckoId: strin
     fallbackUsdPrice,
     depositable: true,
     coingeckoId,
+    kind,
   };
 }
 
@@ -31,7 +39,7 @@ export const STOCK_TOKENS: readonly StockToken[] = [
   stock("AAPL", "Apple (Ondo)", "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4", "apple-ondo-tokenized-stock", 338),
   stock("AMZN", "Amazon (Ondo)", "0x4553cfe1c09f37f38b12dc509f676964e392f8fc", "amazon-ondo-tokenized-stock", 260),
   stock("NVDA", "NVIDIA (Ondo)", "0xa9ee28c80f960b889dfbd1902055218cba016f75", "nvidia-ondo-tokenized-stock", 204),
-  stock("QQQ", "Invesco QQQ ETF (Ondo)", "0x0cde6936d305d5b34667fc46425e852efd73559a", "invesco-qqq-etf-ondo-tokenized-etf", 689),
+  stock("QQQ", "Invesco QQQ ETF (Ondo)", "0x0cde6936d305d5b34667fc46425e852efd73559a", "invesco-qqq-etf-ondo-tokenized-etf", 689, "etf"),
   stock("TSLA", "Tesla (Ondo)", "0x2494b603319d4d9f9715c9f4496d9e0364b59d93", "tesla-ondo-tokenized-stock", 377),
   stock("GOOGL", "Alphabet Class A (Ondo)", "0x091fc7778e6932d4009b087b191d1ee3bac5729a", "alphabet-class-a-ondo-tokenized-stock", 282),
 ];
@@ -41,4 +49,9 @@ const STOCK_IDS: ReadonlySet<string> = new Set(STOCK_TOKENS.map((token) => token
 /** Whether this is one of the six stocks. */
 export function isStockToken(tokenId: string): boolean {
   return STOCK_IDS.has(tokenId);
+}
+
+/** Stock or ETF, for the label beside it. Undefined when it isn't one of the six. */
+export function stockKind(tokenId: string): StockToken["kind"] | undefined {
+  return STOCK_TOKENS.find((token) => token.id === tokenId)?.kind;
 }

@@ -31,6 +31,16 @@ describe.each(["en", "es"] as const)("DraftCompositionTable (%s)", (lang) => {
   const te = editorTranslations[lang];
   const targetLabel = te.target.replace(/\s*%$/, "");
 
+  // D-558: the last look before signing keeps the stocks marked.
+  it("marks a stock row and leaves the others alone", () => {
+    state.lang = lang;
+    const NVDA = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+    render(<DraftCompositionTable rows={[{ tokenId: NVDA, targetPct: 60, tolerancePct: 5 }, ROWS[1]]} />);
+    const items = screen.getAllByRole("listitem");
+    expect(items[0].textContent).toContain(te.stockChipStock);
+    expect(items[1].textContent).not.toContain(te.stockChipStock);
+  });
+
   it("one row per token, each value labelled, nothing editable", () => {
     state.lang = lang;
     const { container } = render(<DraftCompositionTable rows={ROWS} />);

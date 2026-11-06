@@ -268,7 +268,7 @@ describe("IntentsAccountView — a New Portfolio Draft waiting for funds", () =>
 
 // 016 block 2.4: the same draft once the General Balance can fund it.
 describe("IntentsAccountView — a New Portfolio Draft ready to confirm", () => {
-  const READY_TITLE = "You have $5.00 in your funding account — assign it to “My mix” to start it";
+  const READY_TITLE = "You have $5.00 in your funding account — assign funds to “My mix” to start it";
   const ready = () => screen.queryByRole("heading", { name: READY_TITLE });
 
   beforeEach(() => {

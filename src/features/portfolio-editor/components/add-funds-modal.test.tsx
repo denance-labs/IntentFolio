@@ -7,13 +7,12 @@ import { RealChangeSetInvalidError } from "@/features/vault/lib/vault-errors";
 import { shellTranslations } from "@/features/dashboard-shell/lib/translations";
 import { translations } from "../lib/translations";
 
-// D-298 / D-304(b), the "from scratch" create modal. Same contract as `preset-review-modal`:
+// D-298 / D-304(b), funding a real portfolio. Same contract as `preset-review-modal`:
 // an unconfirmed Allocate ends the modal (a second click must never sign the same funds
 // again); an amount above the balance signed nothing and keeps the retry open.
 
 const state = vi.hoisted(() => ({
   lang: "en" as "en" | "es",
-  create: vi.fn(),
   allocateInto: vi.fn(),
   relaySends: false,
   vaultLive: false,
@@ -43,7 +42,6 @@ vi.mock("@/features/dashboard-shell/context/language-context", () => ({
 }));
 vi.mock("@/features/dashboard-shell/context/portfolio-context", () => ({
   usePortfolio: () => ({
-    createPortfolioWithChangeSet: state.create,
     allocateIntoPortfolio: state.allocateInto,
     realAllocateStage: state.stage,
     relaySends: state.relaySends,
@@ -66,151 +64,11 @@ vi.mock("@/features/market/hooks/use-token-prices", async () => {
 
 import { AddFundsModal } from "./add-funds-modal";
 
-function renderModal(lang: "en" | "es") {
-  const onClose = vi.fn();
-  const onBack = vi.fn();
-  const el = (available: Map<string, number>) => (
-    <AddFundsModal
-      mode="create"
-      t={translations[lang]}
-      available={available}
-      existingBalances={{}}
-      prices={{}}
-      existingNames={[]}
-      defaultTolerancePct={5}
-      onClose={onClose}
-      onBack={onBack}
-    />
-  );
-  const { rerender } = render(el(new Map([["near", 5]])));
-  // Create mode starts with no amounts: type one so the primary is enabled.
-  fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
-  return { onClose, onBack, rerenderWith: (available: Map<string, number>) => rerender(el(available)) };
-}
-
 async function clickPrimary(name: string) {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name }));
   });
 }
-
-describe.each(["en", "es"] as const)("AddFundsModal (create) — a live Allocate that was not confirmed (%s)", (lang) => {
-  const t = shellTranslations[lang];
-
-  beforeEach(() => {
-    state.lang = lang;
-    state.create.mockReset();
-  });
-  afterEach(cleanup);
-
-  it.each([
-    ["vault_failed", t.realStageVaultFailedTitle, t.realStageVaultFailed],
-    ["unconfirmed", t.realStagePendingUnconfirmedTitle, t.realStagePendingUnconfirmed],
-  ] as const)("%s ends the modal: its copy, only Close, the form disabled", async (reason, title, body) => {
-    state.create.mockRejectedValue(new RealAllocateUnconfirmedError("technical detail", "rec-1", reason));
-    const { onClose, onBack } = renderModal(lang);
-
-    await clickPrimary(t.presetReviewCreate);
-
-    const status = screen.getByRole("status");
-    expect(status.textContent).toContain(title);
-    expect(status.textContent).toContain(body);
-    expect(status.textContent).toContain(t.realStageSeeMyAccount);
-    expect(document.body.textContent).not.toContain("technical detail");
-    expect(document.body.textContent).not.toContain(t.presetReviewRetry);
-
-    const close = screen.getByRole("button", { name: t.realAllocateClose }) as HTMLButtonElement;
-    expect(close.disabled).toBe(false);
-    expect(screen.queryByRole("button", { name: t.presetReviewBack })).toBeNull();
-    expect(document.activeElement).toBe(close);
-    const describedBy = close.getAttribute("aria-describedby");
-    expect(describedBy && document.getElementById(describedBy)?.textContent).toContain(title);
-
-    expect(screen.getByRole("group").hasAttribute("disabled")).toBe(true);
-    expect(screen.getByLabelText(t.portfolioNameLabel).matches(":disabled")).toBe(true);
-    expect(screen.getByRole("spinbutton").matches(":disabled")).toBe(true);
-
-    // 🔴 The second click closes. It must never sign again.
-    await clickPrimary(t.realAllocateClose);
-    expect(state.create).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(onBack).not.toHaveBeenCalled();
-  });
-
-  it("Close stays usable after the refetched balance leaves nothing to create with", async () => {
-    state.create.mockRejectedValue(new RealAllocateUnconfirmedError("x", "rec-1", "unconfirmed"));
-    const { onClose, rerenderWith } = renderModal(lang);
-    await clickPrimary(t.presetReviewCreate);
-
-    // The context refetches the balance on failure; the funds already left.
-    rerenderWith(new Map());
-
-    const close = screen.getByRole("button", { name: t.realAllocateClose }) as HTMLButtonElement;
-    expect(close.disabled).toBe(false);
-    await clickPrimary(t.realAllocateClose);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("an amount above the balance: localized copy, no base units, retry open", async () => {
-    const error = new AmountExceedsBalanceError(BigInt("2000000000000000000000001"), BigInt("4"));
-    state.create.mockRejectedValueOnce(error).mockResolvedValueOnce(undefined);
-    const { onClose } = renderModal(lang);
-
-    await clickPrimary(t.presetReviewCreate);
-
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain(t.amountExceedsBalanceTitle);
-    expect(alert.textContent).toContain(t.amountExceedsBalanceBody);
-    expect(alert.textContent).not.toContain(t.signErrorGeneric);
-    expect(document.body.textContent).not.toContain(error.message);
-    expect(document.body.textContent).not.toContain("base units");
-    expect(document.body.textContent).not.toContain("2000000000000000000000001");
-
-    const amount = screen.getByRole("spinbutton");
-    expect(amount.matches(":disabled")).toBe(false);
-    expect(document.activeElement).toBe(amount);
-    expect(screen.getByRole("button", { name: t.presetReviewBack })).toBeTruthy();
-
-    await clickPrimary(t.presetReviewRetry);
-    expect(state.create).toHaveBeenCalledTimes(2);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-});
-
-// D-315, the create side (see the same case in `preset-review-modal.test.tsx`): MAX used to
-// write `toFixed(8)` of the balance, which signs less than everything.
-describe("AddFundsModal (create) — MAX on a 24-decimal balance", () => {
-  const t = shellTranslations.en;
-  const avail = 0.7980717709871432; // fromBaseUnits(798071770987143215177784n, 24)
-
-  beforeEach(() => {
-    state.lang = "en";
-    state.create.mockReset().mockResolvedValue(undefined);
-  });
-  afterEach(cleanup);
-
-  it("signs the whole balance", async () => {
-    render(
-      <AddFundsModal
-        mode="create"
-        t={translations.en}
-        available={new Map([["near", avail]])}
-        existingBalances={{}}
-        prices={{}}
-        existingNames={[]}
-        defaultTolerancePct={5}
-        onClose={vi.fn()}
-        onBack={vi.fn()}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: translations.en.withdrawMax }));
-
-    await clickPrimary(t.presetReviewCreate);
-
-    const changeset = state.create.mock.calls[0][1];
-    expect(changeset.allocations).toEqual([{ tokenId: "near", qty: avail }]);
-  });
-});
 
 
 // ── D-321: edit mode on a REAL portfolio signs the funds in right away (013.plan P5/P6/P3) ──
@@ -241,7 +99,6 @@ function renderEdit(opts: EditOpts = {}) {
   };
   const el = (available: Map<string, number>) => (
     <AddFundsModal
-      mode="edit"
       t={translations[lang]}
       available={available}
       existingBalances={opts.existingBalances ?? {}}
@@ -608,19 +465,6 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit) — only funds (%s)",
   });
 });
 
-describe("AddFundsModal (create) — no «Add»: a new portfolio is built from funded tokens", () => {
-  beforeEach(() => {
-    state.lang = "en";
-  });
-  afterEach(cleanup);
-
-  it("shows the amount field and no «Add»", () => {
-    renderModal("en");
-    expect(screen.queryByRole("button", { name: translations.en.addTokensAddAction })).toBeNull();
-    expect(screen.queryByRole("button", { name: translations.en.addTokensAdded })).toBeNull();
-  });
-});
-
 describe("AddFundsModal (edit, mock portfolio) — unchanged: funds join the draft", () => {
   beforeEach(() => {
     state.lang = "en";
@@ -742,31 +586,6 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit) — the curated catal
   });
 });
 
-// Scope fence: create mode is opened from dashboard-shell, whose side of the catalog is
-// 017-4c-B. Until then a held DOGE can still fund a new portfolio there.
-describe("AddFundsModal (create) — the curated catalog (D-396)", () => {
-  afterEach(cleanup);
-
-  it("shows a held token outside the catalog with no amount field", () => {
-    state.lang = "en";
-    render(
-      <AddFundsModal
-        mode="create"
-        t={translations.en}
-        available={new Map([["nep141:doge.omft.near", 1000]])}
-        existingBalances={{}}
-        prices={{}}
-        existingNames={[]}
-        defaultTolerancePct={5}
-        onClose={vi.fn()}
-        onBack={vi.fn()}
-      />
-    );
-    expect(within(rowOf("DOGE")).queryByRole("spinbutton")).toBeNull();
-    expect(within(rowOf("DOGE")).getByText(translations.en.addTokensNotAvailableYet)).toBeTruthy();
-  });
-});
-
 describe("AddFundsModal — a paused relayer (017-2, D-365)", () => {
   const t = translations.en;
   const shellT = shellTranslations.en;
@@ -815,12 +634,6 @@ describe("AddFundsModal — a paused relayer (017-2, D-365)", () => {
     const button = screen.getByRole("button", { name: t.addTokensSignAndAdd });
     expect(button.getAttribute("aria-describedby")).toBe(notice.parentElement?.id);
   });
-
-  it("blocks creating a portfolio from scratch", async () => {
-    renderModal("en");
-    expect(await screen.findByText(shellT.relayPausedTitle)).toBeTruthy();
-    expect((screen.getByRole("button", { name: shellT.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(true);
-  });
 });
 
 describe("AddFundsModal — the vault would refuse (017-9b)", () => {
@@ -861,69 +674,6 @@ describe("AddFundsModal — the vault would refuse (017-9b)", () => {
     renderEdit({ real: false });
     typeNear("en", "2");
     expect(screen.queryByText(shellT.precheckUnavailableTitle)).toBeNull();
-  });
-});
-
-// D-308: creating from scratch names each leg, and the button follows whose turn it is.
-describe.each(["en", "es"] as const)("AddFundsModal (create) — the stages of the signature (%s)", (lang) => {
-  const t = shellTranslations[lang];
-  const et = translations[lang];
-
-  beforeEach(() => {
-    state.lang = lang;
-    state.stage = null;
-    state.create.mockReset().mockReturnValue(new Promise(() => {}));
-  });
-  afterEach(() => {
-    state.stage = null;
-    cleanup();
-  });
-
-  it("waits for the signature, then says it is processing, with the leg named above", async () => {
-    const { rerenderWith } = renderModal(lang);
-    await clickPrimary(t.presetReviewCreate);
-    expect(screen.getByRole("button", { name: et.inFlightAwaitingSignature })).toBeTruthy();
-
-    state.stage = "awaiting-credit";
-    rerenderWith(new Map([["near", 5]]));
-    expect(screen.getByRole("button", { name: et.inFlightProcessing })).toBeTruthy();
-    expect(screen.getByText(t.realStageAwaitingCredit)).toBeTruthy();
-  });
-
-  it("names the preparing leg as creating a portfolio, not as adding funds", async () => {
-    const { rerenderWith } = renderModal(lang);
-    await clickPrimary(t.presetReviewCreate);
-    state.stage = "preparing";
-    rerenderWith(new Map([["near", 5]]));
-    expect(screen.getByText(t.realStagePreparing)).toBeTruthy();
-    expect(screen.queryByText(et.realAddPreparing)).toBeNull();
-  });
-});
-
-// D-356: funds offered while an earlier transfer is unconfirmed may be in transit. Said, never blocked.
-describe.each(["en", "es"] as const)("AddFundsModal (create) — an earlier transfer still unconfirmed (%s)", (lang) => {
-  const t = shellTranslations[lang];
-
-  beforeEach(() => {
-    state.lang = lang;
-    state.create.mockReset().mockResolvedValue(undefined);
-  });
-  afterEach(() => {
-    state.pending = undefined;
-    cleanup();
-  });
-
-  it("says part of the balance may be on its way, and still lets the user create", () => {
-    state.pending = [{ id: "rec-1", op: "setup", portfolioId: null }];
-    renderModal(lang);
-    expect(screen.getByText(t.pendingAllocateFundingNotice)).toBeTruthy();
-    expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("says nothing with nothing in transit", () => {
-    state.pending = [];
-    renderModal(lang);
-    expect(screen.queryByText(t.pendingAllocateFundingNotice)).toBeNull();
   });
 });
 
@@ -996,66 +746,5 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit, real portfolio) — a
     renderEdit({ lang, real: false });
     typeNear(lang, "2");
     expect(screen.queryByText(shellT.pendingAllocateFundingNotice)).toBeNull();
-  });
-});
-
-// D-528: creating from scratch prices the Storage Cost from the same changeset it signs.
-describe("AddFundsModal (create) — the Storage Cost (D-528)", () => {
-  const t = shellTranslations.en;
-  beforeEach(() => {
-    state.lang = "en";
-    state.create.mockReset();
-  });
-  afterEach(cleanup);
-
-  it("shows its own line, and signs the gross changeset with the quote it showed", async () => {
-    renderModal("en");
-    expect(screen.getByText(t.storageCostLabel)).toBeTruthy();
-    expect(screen.getByText((text) => text.startsWith(t.storageCostNet.split("{amount}")[0]))).toBeTruthy();
-
-    await clickPrimary(t.presetReviewCreate);
-
-    const [, changeset, , storage] = state.create.mock.calls[0];
-    expect(changeset.allocations).toEqual([{ tokenId: "near", qty: 2 }]);
-    expect(changeset.tokenAdditions.map((a: { tokenId: string }) => a.tokenId)).toEqual(["near"]);
-    expect(storage).toMatchObject({ ok: true, tokenId: "near" });
-  });
-});
-
-// D-528: creating from scratch puts every funded token in the composition, so 11 is past the cap.
-describe("AddFundsModal (create) — the app's 10-token cap (D-528)", () => {
-  beforeEach(() => {
-    state.lang = "en";
-    state.create.mockReset();
-  });
-  afterEach(cleanup);
-
-  it("blocks the signature, and says why, with 11 funded tokens", async () => {
-    const { depositableTokens } = await import("@/features/market/lib/token-registry");
-    const { isPortfolioOfferable } = await import("@/features/bridge/lib/token-availability");
-    const ids = depositableTokens.filter((t) => isPortfolioOfferable(t.id)).map((t) => t.id).slice(0, 11);
-    render(
-      <AddFundsModal
-        mode="create"
-        t={translations.en}
-        available={new Map(ids.map((id) => [id, 1000]))}
-        existingBalances={{}}
-        prices={{}}
-        existingNames={[]}
-        defaultTolerancePct={5}
-        onClose={vi.fn()}
-        onBack={vi.fn()}
-      />
-    );
-    const inputs = screen.getAllByRole("spinbutton");
-    for (const input of inputs.slice(0, 10)) fireEvent.change(input, { target: { value: "1" } });
-    const create = () => screen.getByRole("button", { name: shellTranslations.en.presetReviewCreate }) as HTMLButtonElement;
-    const capText = translations.en.appTooManyTokens.replace("{max}", "10");
-    expect(screen.queryByText(capText)).toBeNull();
-    expect(create().disabled).toBe(false);
-
-    fireEvent.change(inputs[10], { target: { value: "1" } });
-    expect(screen.getByText(capText)).toBeTruthy();
-    expect(create().disabled).toBe(true);
   });
 });

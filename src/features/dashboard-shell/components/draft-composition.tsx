@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
+import { StockRowChip } from "@/features/portfolio-editor/components/stock-token-sections";
 import { buildTokenColorMap, colorForSymbol } from "@/features/portfolio-editor/lib/format";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import { useLanguage } from "../context/language-context";
@@ -77,7 +78,10 @@ export function DraftCompositionTable({ rows }: { rows: readonly CompositionRow[
                 <span className="flex min-w-0 items-center gap-2">
                   <TokenAvatar symbol={symbol} size={22} className="rounded-full" style={{ backgroundColor: `${color}22` }} />
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-slate-100">{symbol}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-sm font-semibold text-slate-100">{symbol}</span>
+                      <StockRowChip tokenId={row.tokenId} t={te} />
+                    </span>
                     <span className="block truncate text-[11px] text-slate-400">{tokenNameFor(row.tokenId)}</span>
                   </span>
                 </span>

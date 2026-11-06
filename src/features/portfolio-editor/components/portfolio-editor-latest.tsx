@@ -487,7 +487,6 @@ export function PortfolioEditorLatest() {
 
       {addModalOpen ? (
         <AddFundsModal
-          mode="edit"
           t={t}
           available={editor.generalBalanceAvailable}
           balanceLoading={fundable.status === "loading"}

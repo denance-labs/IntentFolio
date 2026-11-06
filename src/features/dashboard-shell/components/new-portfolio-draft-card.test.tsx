@@ -97,7 +97,7 @@ describe("NewPortfolioDraftCard — ready (016 block 2.4)", () => {
   it("says how much the general balance puts in and asks for the confirmation: no deposit, no edit, no discard", () => {
     const { onConfirm, onView } = renderReady();
     expect(
-      screen.getByRole("heading", { name: "You have $2.46 in your funding account — assign it to “My mix” to start it" })
+      screen.getByRole("heading", { name: "You have $2.46 in your funding account — assign funds to “My mix” to start it" })
     ).toBeTruthy();
     expect(screen.queryByText(t.draftCardBody)).toBeNull();
     expect(screen.queryByRole("button", { name: t.draftCardDeposit })).toBeNull();

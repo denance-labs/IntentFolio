@@ -5,6 +5,9 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 // 017-9c: the "···" (Rename) shows on real portfolios as on mock ones — the vault signs it.
 
 vi.mock("../context/language-context", () => ({ useLanguage: () => ({ lang: "en", setLang: vi.fn() }) }));
+vi.mock("../hooks/use-fundable-general-balance", () => ({
+  useFundableGeneralBalance: () => ({ status: "known", fundable: false, tokenIds: [], usd: 0 }),
+}));
 vi.mock("../context/portfolio-context", () => ({
   usePortfolio: () => ({
     portfolios: [
@@ -46,7 +49,6 @@ vi.mock("./portfolio-rename-modal", () => ({
     return null;
   },
 }));
-vi.mock("./create-portfolio-flow", () => ({ CreatePortfolioFlow: () => null }));
 
 import { PortfolioTabs } from "./portfolio-tabs";
 
@@ -64,11 +66,11 @@ describe("PortfolioTabs — Delete from the menu (027 A-9a)", () => {
     expect(deleteModal.props).toMatchObject({ portfolioId: "mock-1" });
   });
 
-  it("the draft's menu has no delete", () => {
+  it("the draft's menu has its own delete (D-560)", () => {
     render(
-      <PortfolioTabs draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }} />
+      <PortfolioTabs draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }} />
     );
-    expect(screen.queryAllByTestId("delete-*new-portfolio-draft")).toHaveLength(0);
+    expect(screen.queryAllByTestId("delete-*new-portfolio-draft").length).toBeGreaterThan(0);
   });
 });
 
@@ -89,6 +91,7 @@ describe("PortfolioTabs — Rename on the draft's tab (022-G)", () => {
     active,
     onSelect: vi.fn(),
     rename,
+    discard: vi.fn(),
   });
 
   it("on desktop the draft's tab has its menu; on mobile only while the draft is on screen", () => {

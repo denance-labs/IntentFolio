@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { amountChipClass, Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
+import { isPortfolioOfferable, isReceivable } from "@/features/bridge/lib/token-availability";
 import { getTokenById, tokenRegistry } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
@@ -28,7 +29,6 @@ import { RealChangeSetInvalidError } from "@/features/vault/lib/vault-errors";
 import { changeSetNoticeCopy } from "@/features/portfolio-editor/components/confirm-changes-modal";
 import { formatDecimalForInput, percentChipAmount } from "@/features/portfolio-editor/lib/decimal-input";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
-import { getPreset, type PresetId } from "@/content/portfolio-presets";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
 import { useRelayPaused } from "@/features/vault/hooks/use-relay-paused";
@@ -42,32 +42,14 @@ import { inFlightButtonLabel } from "@/features/vault/lib/in-flight-button-label
 import { useLoginWallet } from "@/features/login-wallet";
 import { useAvailableGeneralBalance } from "../hooks/use-available-general-balance";
 import { useNewPortfolioDraft } from "../hooks/use-new-portfolio-draft";
-import { MIN_FUNDED_USD, fundableTokenIds, fundableUsd } from "../lib/general-balance";
-import { draftToTargets, type NewPortfolioDraft } from "../lib/new-portfolio-draft";
+import { MIN_FUNDED_USD, fundableTokenIds } from "../lib/general-balance";
+import { draftToTargets, type NewPortfolioDraft, type NewPortfolioDraftInput } from "../lib/new-portfolio-draft";
 import { PORTFOLIO_NAME_MAX_LENGTH, validatePortfolioName } from "../lib/portfolio-validation";
-import { shellTranslations, type ShellTranslations } from "../lib/translations";
+import { shellTranslations } from "../lib/translations";
 import { DraftCompositionTable } from "./draft-composition";
-
-const NAME_KEY: Record<PresetId, keyof ShellTranslations> = {
-  conservative: "presetConservativeName",
-  balanced: "presetBalancedName",
-  aggressive: "presetAggressiveName",
-  stables: "presetStablesName",
-  satoshi: "presetSatoshiName",
-  pioneers: "presetPioneersName",
-};
 
 function symbolFor(tokenId: string): string {
   return getTokenById(tokenId)?.symbol ?? tokenId;
-}
-
-// Editable amount string: fixed precision then trailing-zero trim, so a full-balance
-// default never shows float noise in the input. Display only for that default — the
-// allocation reads the float itself (`allocations` below). NOT for Max (D-315): an override
-// is what gets signed, and 8 decimals of the whole balance land below it by more than
-// `capToHeld` treats as noise.
-function toAmountString(n: number): string {
-  return String(Number(n.toFixed(8)));
 }
 
 // While a signature is in flight the modal cannot be dismissed (Escape, backdrop): closing it
@@ -76,30 +58,28 @@ function toAmountString(n: number): string {
 // buttons are already disabled then; this closes the two exits the dialog shell owns.
 const IGNORE_CLOSE = () => {};
 
+// The rule of a portfolio's "Add funds" (D-396, D-389, D-491): a token that can be a target, or one
+// with no buy route whose funds can still come in to be converted. Any other is shown, never signed.
+const canFundWith = (id: string) => isPortfolioOfferable(id) || isReceivable(id);
+
 // Quick-fill chips for the allocate inputs. 100% (Max) is rendered separately with
 // its own accent so it reads as the primary action.
 const PERCENT_CHIPS = [25, 50, 75] as const;
 
-// First unused "<base>" / "<base> N" so the default name never collides with an existing one.
-function uniqueName(base: string, existing: string[]): string {
-  if (!existing.includes(base)) return base;
-  let i = 2;
-  while (existing.includes(`${base} ${i}`)) i++;
-  return `${base} ${i}`;
-}
-
 /**
- * Where the new portfolio's mix comes from: a preset, or the account's New Portfolio Draft
- * (016 block 2.4) — a snapshot taken when the confirmation opened, so what is signed is what
- * is on screen even if another tab edits the stored draft meanwhile.
+ * Where the new portfolio's mix comes from: what the editor holds now (D-397), never saved, or
+ * the account's New Portfolio Draft (016 block 2.4). The draft is a snapshot taken when the
+ * confirmation opened, so what is signed is what is on screen even if another tab edits the
+ * stored draft meanwhile.
  */
 export type ReviewSource =
-  | { kind: "preset"; presetId: PresetId }
+  | { kind: "new"; input: NewPortfolioDraftInput }
   | { kind: "draft"; draft: NewPortfolioDraft };
 
-// The create-with-funds review (5.6) and, since 016 block 2.4, the confirmation of a New
-// Portfolio Draft once its funds arrived. The source only decides the mix, the prefilled
-// name and the title; the funds, the signature and its failure handling are one path.
+// The funds screen of a new portfolio (5.6): the signature of a mix just built in the editor
+// (D-397) and of a saved New Portfolio Draft (016 block 2.4). The source only decides the mix, the
+// prefilled name and whether a draft is retired afterwards; the funds, the signature and its
+// failure handling are one path.
 export function PresetReviewModal({
   source,
   existingNames,
@@ -110,8 +90,12 @@ export function PresetReviewModal({
   source: ReviewSource;
   existingNames: string[];
   onClose: () => void;
-  /** The chooser this came from. Without it the secondary button cancels. */
-  onBack?: () => void;
+  /**
+   * The editor this came from, handed the name as it stands here. Without it the secondary button
+   * cancels. Escape and the backdrop take the same way, so what was built is not lost by a stray
+   * click.
+   */
+  onBack?: (name: string) => void;
   /** After a successful signature: the shell lands on the new portfolio. */
   onCreated?: () => void;
 }) {
@@ -128,18 +112,13 @@ export function PresetReviewModal({
   const { discard: discardDraft, discardIfUnchanged: retireSignedDraft } = useNewPortfolioDraft();
 
   const draft = source.kind === "draft" ? source.draft : null;
-  const presetId = source.kind === "preset" ? source.presetId : null;
-  const preset = presetId ? getPreset(presetId) : undefined;
+  const mix = source.kind === "draft" ? source.draft : source.input;
+  const mixRows = mix.rows;
 
-  const [name, setName] = useState(() =>
-    draft ? draft.name : uniqueName(presetId ? t[NAME_KEY[presetId]] : "", existingNames)
-  );
-  // Only user-edited amounts are stored; untouched tokens default to the full available
-  // balance, so late-arriving balances still surface an input without being overwritten.
+  const [name, setName] = useState(mix.name);
+  // D-553: every field starts empty. A token enters only with an amount the user set, so
+  // nothing is signed by not noticing it, whether or not it is part of the composition.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  // Tokens the user excluded from the allocation via the ✕. Kept out of `allocations`
-  // and the rendered list, but surfaced as re-addable chips so removal is reversible.
-  const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [isSigning, setIsSigning] = useState(false);
   const [signError, setSignError] = useState<{ kind: WalletErrorKind; message: string } | null>(null);
   // Live-vault Allocate submitted but not observed as credited (007.plan Phase 1). Once set,
@@ -152,7 +131,7 @@ export function PresetReviewModal({
   const [changeSetReason, setChangeSetReason] = useState<string | null>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
-  const amountsRef = useRef<HTMLUListElement>(null);
+  const amountsRef = useRef<HTMLDivElement>(null);
 
   // The notice replaces the form's purpose, so focus goes to the one action left.
   useEffect(() => {
@@ -196,35 +175,22 @@ export function PresetReviewModal({
     [offered, available]
   );
 
-  const amountStr = (id: string): string =>
-    id in overrides ? overrides[id] : toAmountString(available.get(id) ?? 0);
+  const amountStr = (id: string): string => overrides[id] ?? "";
 
   // Chosen allocations, clamped to the available balance (positive entries only).
   const allocations = useMemo(() => {
     const out: Record<string, number> = {};
     for (const id of fundTokens) {
-      if (removed.has(id)) continue;
+      if (!canFundWith(id)) continue;
       const avail = available.get(id) ?? 0;
-      const raw = Number(id in overrides ? overrides[id] : avail);
+      const raw = Number(overrides[id] ?? 0);
       const qty = Number.isFinite(raw) ? Math.max(0, Math.min(raw, avail)) : 0;
       if (qty > 0) out[id] = qty;
     }
     return out;
-  }, [fundTokens, overrides, available, removed]);
+  }, [fundTokens, overrides, available]);
 
-  const targets = useMemo<TargetAllocation[]>(
-    () =>
-      draft
-        ? draftToTargets(draft)
-        : (preset?.slots ?? []).map((slot) => ({
-            id: `target-${slot.tokenId}`,
-            tokenId: slot.tokenId,
-            targetPct: slot.targetPct,
-            tolerancePct: preset?.tolerancePct ?? 0,
-            locked: false,
-          })),
-    [draft, preset]
-  );
+  const targets = useMemo<TargetAllocation[]>(() => draftToTargets({ rows: mixRows }), [mixRows]);
 
   // The composition as shown. Both sources hold numbers; `""` is only the editor's empty input.
   const compositionRows = useMemo(
@@ -272,8 +238,10 @@ export function PresetReviewModal({
     return [...targeted, ...held];
   }, [targets, prices, netAllocations, currentTotalUsd]);
 
-  const visibleTokens = fundTokens.filter((id) => !removed.has(id));
-  const removedTokens = fundTokens.filter((id) => removed.has(id));
+  // D-553: the composition's tokens first; the rest below, with what adding them means.
+  const compositionIds = new Set(compositionRows.map((r) => r.tokenId));
+  const compositionFunds = fundTokens.filter((id) => compositionIds.has(id));
+  const otherFunds = fundTokens.filter((id) => !compositionIds.has(id));
 
   // Per line: an amount lowered below MIN_FUNDED_USD (rounded cents, like `fundableTokenIds`).
   const belowMin = (id: string): boolean => {
@@ -285,10 +253,10 @@ export function PresetReviewModal({
     if (!(price > 0)) return true;
     return Math.round(qty * price * 100) / 100 < MIN_FUNDED_USD;
   };
-  const anyBelowMin = visibleTokens.some(belowMin);
+  const anyBelowMin = fundTokens.some(belowMin);
 
-  // G2: what a lowered amount leaves behind. The whole General Balance — dust included — since
-  // that is what My Account will show afterwards; only said once the user lowered something.
+  // G2: what stays behind. The whole General Balance — dust included — since that is what My
+  // Account will show afterwards; only said once the user chose an amount (`hasFunds` below).
   const lowered = fundTokens.some((id) => (allocations[id] ?? 0) < (available.get(id) ?? 0));
   const remainingUsd = [...available].reduce(
     (sum, [id, qty]) => sum + Math.max(0, qty - (allocations[id] ?? 0)) * priceOf(id),
@@ -297,6 +265,8 @@ export function PresetReviewModal({
 
   const nameValidation = validatePortfolioName(name, existingNames);
   const hasFunds = Object.keys(allocations).length > 0;
+  const anythingToFundWith = fundTokens.some(canFundWith);
+  const needsAmount = !hasFunds && anythingToFundWith && unconfirmedReason === null;
   const outOfBand =
     hasFunds &&
     initialRows.some((r) => r.bandState === "below" || r.bandState === "above" || r.heldNoTarget);
@@ -374,10 +344,14 @@ export function PresetReviewModal({
       onClose();
     } catch (e) {
       // A submitted-but-unconfirmed live Allocate is NOT a signature failure: the funds may
-      // still settle and are recoverable. It gets its own, non-alarming copy. The draft goes
-      // too: its funds are in transit, and a draft still inviting "Confirm" would be an
-      // invitation to sign over them a second time (D-298). Whichever draft is stored: any
-      // draft left "ready" over funds in transit is that invitation.
+      // still settle and are recoverable. It gets its own, non-alarming copy. The draft being
+      // confirmed goes too: its funds are in transit, and a draft still inviting "Confirm" would
+      // be an invitation to sign over them a second time (D-298).
+      //
+      // D-397: a mix created straight from the editor leaves a saved draft alone, on success and
+      // here: that draft is another design, never the one signed, and "+" reaches this same screen
+      // with no draft at all. Against D-298 stand the notice of an earlier Allocate in transit
+      // (D-356), and the assign prompt staying shut meanwhile (dashboard-shell).
       if (e instanceof RealAllocateUnconfirmedError) {
         if (draft) discardDraft();
         setUnconfirmedReason(e.reason);
@@ -394,14 +368,127 @@ export function PresetReviewModal({
 
   if (targets.length === 0) return null;
 
+  const goBack = onBack ? () => onBack(name) : onClose;
+
+  // One token's amount: its field, 25/50/75/Max, and what the amount means.
+  const fundRow = (id: string) => {
+    if (!canFundWith(id)) {
+      return (
+        <li key={id} className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 opacity-50">
+          <TokenAvatar
+            symbol={symbolFor(id)}
+            size={22}
+            className="rounded-full"
+            style={{ backgroundColor: `${colorForSymbol(symbolFor(id)).hex}22` }}
+          />
+          <span className="text-sm font-medium text-slate-100">{symbolFor(id)}</span>
+          <span className="ml-auto text-right text-[11px] text-amber-400">{editorTranslations[lang].addTokensNotAvailableYet}</span>
+        </li>
+      );
+    }
+    const avail = available.get(id) ?? 0;
+    const rawAmt = Number(amountStr(id));
+    const amt = Number.isFinite(rawAmt) ? Math.max(0, Math.min(rawAmt, avail)) : 0;
+    const price = priceOf(id);
+    const rowBelowMin = belowMin(id);
+    // D-319: Max writes the whole float, wider than the field, so it says it is all of it.
+    const wholeBalance = overrides[id] === formatDecimalForInput(avail);
+    return (
+      <li key={id} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5">
+        {/* One row on desktop: name, amount input (narrow, not full-width),
+            quick-fill chips. The USD equivalent of the typed amount sits
+            right-aligned directly under the input (the input + ≈USD share a column).
+            What is available sits below it, or "whole balance" once Max took it all. On narrow
+            widths the chips wrap to a second line so the input never
+            collapses. Native spinners hidden: useless at 6+ decimals. */}
+        <div className="flex flex-wrap items-start gap-2">
+          <span className="flex shrink-0 items-center gap-2 pt-1">
+            <TokenAvatar
+              symbol={symbolFor(id)}
+              size={22}
+              className="rounded-full"
+              style={{ backgroundColor: `${colorForSymbol(symbolFor(id)).hex}22` }}
+            />
+            <span className="text-sm font-medium text-slate-100">{symbolFor(id)}</span>
+          </span>
+          <div className="flex min-w-[6rem] flex-1 flex-col">
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={avail}
+              step="any"
+              value={amountStr(id)}
+              placeholder="0"
+              onChange={(e) => setOverrides((o) => ({ ...o, [id]: e.target.value }))}
+              aria-label={`${symbolFor(id)} ${t.presetReviewAllocate}`}
+              aria-invalid={rowBelowMin || undefined}
+              aria-describedby={rowBelowMin ? `preset-review-min-${id}` : undefined}
+              className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">≈ {formatUsd(amt * price)}</span>
+            {/* D-528: the token the Storage Cost is charged in says what reaches the portfolio. */}
+            {storageQuote?.ok && storageQuote.tokenId === id ? (
+              <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-300">
+                {t.storageCostNet.replace(
+                  "{amount}",
+                  `${formatTokenAmount(netAllocations[id] ?? 0, price)} ${symbolFor(id)}`
+                )}
+              </span>
+            ) : null}
+            {/* D-319: the ellipsis cut is only visual (the value signed does not change). One line
+                either way, so pressing Max does not move the chips. */}
+            {wholeBalance ? (
+              <span className="mt-0.5 text-right text-[11px] text-cyan-300/80">{t.amountWholeBalance}</span>
+            ) : (
+              <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-400">
+                {t.presetReviewAvailable}: {formatTokenAmount(avail, price)} <span className="whitespace-nowrap">≈ {formatUsd(avail * price)}</span>
+              </span>
+            )}
+            {rowBelowMin ? (
+              <p id={`preset-review-min-${id}`} role="alert" className="mt-1 text-right text-[11px] text-rose-400">
+                {editorTranslations[lang].allocateErrorMinFunded}
+              </p>
+            ) : null}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
+            {PERCENT_CHIPS.map((pct) => {
+              const chipAmount = percentChipAmount(avail, pct, getTokenById(id)?.decimals ?? 8);
+              const selected = !wholeBalance && amt > 0 && amountStr(id) === chipAmount;
+              return (
+                <button
+                  key={pct}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setOverrides((o) => ({ ...o, [id]: chipAmount }))}
+                  className={amountChipClass(selected)}
+                >
+                  {pct}%
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              aria-pressed={wholeBalance}
+              onClick={() => setOverrides((o) => ({ ...o, [id]: formatDecimalForInput(avail) }))}
+              className={amountChipClass(wholeBalance)}
+            >
+              {t.depositAmountMax}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  };
+
   return (
-    <Modal titleId="preset-review-title" onClose={isSigning ? IGNORE_CLOSE : onClose} maxWidth="max-w-lg">
+    <Modal
+      titleId="preset-review-title"
+      onClose={isSigning ? IGNORE_CLOSE : unconfirmedReason ? onClose : goBack}
+      maxWidth="max-w-lg"
+    >
       <h2 id="preset-review-title" className="text-lg font-semibold text-slate-100">
-        {draft
-          ? t.draftReadyTitle
-              .replace("{amount}", formatUsd(fundableUsd(available, priceOf)))
-              .replace("{name}", draft.name)
-          : t.presetReviewTitle}
+        {t.presetReviewTitle}
       </h2>
 
       {/* Not during or after this modal's own attempt: its record would be the one counted. */}
@@ -478,135 +565,22 @@ export function PresetReviewModal({
           >
             {t.presetReviewAllocate}
           </h3>
-          {fundTokens.length === 0 ? (
+          {!anythingToFundWith ? (
             <p className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
               {t.presetReviewNoFunds}
             </p>
           ) : (
             <>
-              <ul ref={amountsRef} className="space-y-2">
-                {visibleTokens.map((id) => {
-                  const avail = available.get(id) ?? 0;
-                  const rawAmt = Number(amountStr(id));
-                  const amt = Number.isFinite(rawAmt) ? Math.max(0, Math.min(rawAmt, avail)) : 0;
-                  const price = priceOf(id);
-                  const rowBelowMin = belowMin(id);
-                  // D-319: the untouched default and Max are both the whole balance.
-                  const wholeBalance = !(id in overrides) || overrides[id] === formatDecimalForInput(avail);
-                  return (
-                    <li key={id} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5">
-                      {/* One row on desktop: name, amount input (narrow, not full-width),
-                          quick-fill chips, remove. The USD equivalent of the typed amount sits
-                          right-aligned directly under the input (the input + ≈USD share a column).
-                          The available balance has no separate label — Max fills it. On narrow
-                          widths the chips+remove group wraps to a second line so the input never
-                          collapses. Native spinners hidden: useless at 6+ decimals. */}
-                      <div className="flex flex-wrap items-start gap-2">
-                        <span className="flex shrink-0 items-center gap-2 pt-1">
-                          <TokenAvatar
-                            symbol={symbolFor(id)}
-                            size={22}
-                            className="rounded-full"
-                            style={{ backgroundColor: `${colorForSymbol(symbolFor(id)).hex}22` }}
-                          />
-                          <span className="text-sm font-medium text-slate-100">{symbolFor(id)}</span>
-                        </span>
-                        <div className="flex min-w-[6rem] flex-1 flex-col">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            max={avail}
-                            step="any"
-                            value={amountStr(id)}
-                            onChange={(e) => setOverrides((o) => ({ ...o, [id]: e.target.value }))}
-                            aria-label={`${symbolFor(id)} ${t.presetReviewAllocate}`}
-                            aria-invalid={rowBelowMin || undefined}
-                            aria-describedby={rowBelowMin ? `preset-review-min-${id}` : undefined}
-                            className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          />
-                          <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">≈ {formatUsd(amt * price)}</span>
-                          {/* D-528: the token the Storage Cost is charged in says what reaches the portfolio. */}
-                          {storageQuote?.ok && storageQuote.tokenId === id ? (
-                            <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-300">
-                              {t.storageCostNet.replace(
-                                "{amount}",
-                                `${formatTokenAmount(netAllocations[id] ?? 0, price)} ${symbolFor(id)}`
-                              )}
-                            </span>
-                          ) : null}
-                          {/* D-319: the untouched default and Max are both the whole balance; the
-                              ellipsis cut is only visual (the value signed does not change). */}
-                          {wholeBalance && (
-                            <span className="mt-0.5 whitespace-nowrap text-right text-[11px] text-cyan-300/80">{t.amountWholeBalance}</span>
-                          )}
-                          {rowBelowMin ? (
-                            <p id={`preset-review-min-${id}`} role="alert" className="mt-1 text-right text-[11px] text-rose-400">
-                              {editorTranslations[lang].allocateErrorMinFunded}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
-                          {PERCENT_CHIPS.map((pct) => {
-                            const chipAmount = percentChipAmount(avail, pct, getTokenById(id)?.decimals ?? 8);
-                            const selected = !wholeBalance && amt > 0 && amountStr(id) === chipAmount;
-                            return (
-                              <button
-                                key={pct}
-                                type="button"
-                                aria-pressed={selected}
-                                onClick={() => setOverrides((o) => ({ ...o, [id]: chipAmount }))}
-                                className={amountChipClass(selected)}
-                              >
-                                {pct}%
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            aria-pressed={wholeBalance}
-                            onClick={() => setOverrides((o) => ({ ...o, [id]: formatDecimalForInput(avail) }))}
-                            className={amountChipClass(wholeBalance)}
-                          >
-                            {t.depositAmountMax}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRemoved((prev) => new Set(prev).add(id))}
-                            aria-label={`${t.presetReviewRemoveToken} ${symbolFor(id)}`}
-                            className="rounded-md p-1 text-slate-500 transition hover:bg-slate-800 hover:text-rose-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              {removedTokens.length > 0 ? (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400">{t.presetReviewRemoved}:</span>
-                  {removedTokens.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() =>
-                        setRemoved((prev) => {
-                          const next = new Set(prev);
-                          next.delete(id);
-                          return next;
-                        })
-                      }
-                      aria-label={`${t.presetReviewAddToken} ${symbolFor(id)}`}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-slate-300 transition hover:border-cyan-400/50 hover:text-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-                    >
-                      <span aria-hidden="true">+</span>
-                      {symbolFor(id)}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <div ref={amountsRef}>
+                {compositionFunds.length > 0 ? <ul className="space-y-2">{compositionFunds.map(fundRow)}</ul> : null}
+                {otherFunds.length > 0 ? (
+                  <div className={compositionFunds.length > 0 ? "mt-4" : undefined}>
+                    <p className="text-xs font-medium text-slate-200">{t.presetReviewOtherTokens}</p>
+                    <p className="mb-2 mt-0.5 text-[11px] leading-snug text-slate-400">{t.presetReviewOtherTokensNote}</p>
+                    <ul className="space-y-2">{otherFunds.map(fundRow)}</ul>
+                  </div>
+                ) : null}
+              </div>
               {storageQuote?.ok ? (
                 <StorageCostLine quote={storageQuote} usdPrice={priceOf(storageQuote.tokenId)} t={t} />
               ) : storageProblem ? (
@@ -624,6 +598,16 @@ export function PresetReviewModal({
         </section>
       </fieldset>
 
+      {/* D-553: why the button is off while no amount is set. A Setup cannot be signed empty (ADR-0013). */}
+      {needsAmount ? (
+        <p
+          id="preset-review-needs-amount"
+          className="mt-5 rounded-xl border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-amber-200"
+        >
+          {t.presetReviewEnterAmount}
+        </p>
+      ) : null}
+
       {hasFunds && outOfBand ? (
         <p className="mt-5 rounded-xl border border-violet-400/30 bg-violet-400/5 px-3 py-2 text-[11px] leading-snug text-violet-200">
           {t.presetReviewOutOfBand}
@@ -631,7 +615,7 @@ export function PresetReviewModal({
       ) : null}
 
       {/* "Just a starting point you can edit" is said of a preset; a mix built from scratch is the user's own. */}
-      {preset || draft?.presetId ? (
+      {mix.presetId ? (
         <p className="mt-4 text-[11px] leading-snug text-slate-400">{t.presetReviewNotAdvice}</p>
       ) : null}
 
@@ -698,7 +682,7 @@ export function PresetReviewModal({
           <button
             ref={backRef}
             type="button"
-            onClick={onBack ?? onClose}
+            onClick={goBack}
             disabled={isSigning}
             className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
           >
@@ -716,7 +700,9 @@ export function PresetReviewModal({
               ? "preset-review-unconfirmed"
               : relayPaused || vaultBlock
                 ? "preset-review-relay-paused"
-                : undefined
+                : needsAmount
+                  ? "preset-review-needs-amount"
+                  : undefined
           }
           className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
         >

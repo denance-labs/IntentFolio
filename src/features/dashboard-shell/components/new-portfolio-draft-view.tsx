@@ -18,6 +18,7 @@ import type { ComputedTargetAllocation } from "@/features/portfolio-editor/types
 import { evaluatePortfolioRules } from "@/features/intents-account/mock-contract/rules";
 import type { TokenId } from "@/features/intents-account/mock-contract/types";
 import { useLanguage } from "../context/language-context";
+import { useDraftsReplacedOnConnect } from "../hooks/use-new-portfolio-draft";
 import type { NewPortfolioDraft, NewPortfolioDraftRow, NewPortfolioDraftValidation } from "../lib/new-portfolio-draft";
 import {
   addDraftToken,
@@ -57,6 +58,28 @@ type ViewProps = {
   | { variant: "ready"; onConfirm: () => void; amountUsd: number }
 );
 
+function truncateAccount(id: string): string {
+  return id.length <= 24 ? id : `${id.slice(0, 12)}…${id.slice(-8)}`;
+}
+
+// D-397 (plan 041, P3): connecting that account drops its older draft for this one. Said here,
+// next to "Connect", while it can still be avoided: nothing tells which account will connect.
+function ReplacedOnConnectNotice() {
+  const { lang } = useLanguage();
+  const t = shellTranslations[lang];
+  const [latest, ...others] = useDraftsReplacedOnConnect();
+  if (!latest) return null;
+  const text = others.length > 0 ? t.draftReplacedOnConnectMany : t.draftReplacedOnConnect;
+  return (
+    <p className="mt-3 text-xs leading-snug text-amber-200">
+      {/* One pass: a draft's name is the user's text, and may hold "{count}" or "$&". */}
+      {text.replace(/\{(name|account|count)\}/g, (_, key: string) =>
+        key === "name" ? latest.name : key === "account" ? truncateAccount(latest.accountId) : String(others.length)
+      )}
+    </p>
+  );
+}
+
 // 019-3 (D-393 Q2) — a New Portfolio Draft shown with the shape of a portfolio: the same
 // value header, charts and targets table as Composition, all at $0 because nothing is held
 // yet, and the D-358 simulation under the table. It is still not a Portfolio, and its main
@@ -64,8 +87,8 @@ type ViewProps = {
 //
 // 027 A-10: "Edit targets" edits the table in place, as on a portfolio — the same table,
 // lock rules and remove dialog — and "Save draft" keeps the rows in this browser (no
-// signature); "Cancel" drops them. The edits live here until saved; the draft editor (the
-// "Build your portfolio" dialog) is only for creating the draft.
+// signature); "Cancel" drops them. The edits live here until saved; the "Build your portfolio"
+// dialog is where a new mix is built, not where this one is edited.
 export function NewPortfolioDraftView(props: ViewProps) {
   const { draft, onSaveRows, onUnsavedChange, onDiscard, onSimulationUsdChange } = props;
   const { lang } = useLanguage();
@@ -234,6 +257,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               </button>
             </div>
           )}
+          {props.variant === "signed-out" && !isEditing ? <ReplacedOnConnectNotice /> : null}
         </div>
       </div>
 

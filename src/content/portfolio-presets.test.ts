@@ -7,6 +7,7 @@ import {
   evaluatePortfolioRules,
   firstError,
 } from "@/features/intents-account/mock-contract/rules";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { getPreset, portfolioPresets, type PresetId } from "./portfolio-presets";
 
 // Locked percentages + bands (D-031). The token assignment is product content and may
@@ -18,12 +19,14 @@ const LOCKED: Record<PresetId, { band: number; pcts: number[] }> = {
   stables:      { band: 5,  pcts: [20, 20, 20, 20, 20] },
   satoshi:      { band: 10, pcts: [70, 20, 10] },
   pioneers:     { band: 10, pcts: [60, 40] },
+  bigTech:      { band: 10, pcts: [30, 25, 25, 20] },
+  nearStocks:   { band: 10, pcts: [40, 20, 20, 20] },
 };
 
 describe("portfolio presets", () => {
   it("exposes all presets", () => {
     expect(portfolioPresets.map((p) => p.id).sort()).toEqual(
-      ["aggressive", "balanced", "conservative", "pioneers", "satoshi", "stables"]
+      ["aggressive", "balanced", "bigTech", "conservative", "nearStocks", "pioneers", "satoshi", "stables"]
     );
   });
 
@@ -83,6 +86,29 @@ describe("portfolio presets", () => {
     const ids = portfolioPresets.flatMap((p) => p.slots.map((s) => s.tokenId));
     expect(ids).toContain("nep141:eth.bridge.near");
     expect(ids).not.toContain("nep141:eth.omft.near");
+  });
+
+  // D-558: /learn and the landing derive token colors from the array's order, and the chooser
+  // lifts these presets to the top by itself, so they stay last here.
+  it("keeps the presets holding a stock last, and only uses stocks with a route at every size", () => {
+    const withStock = portfolioPresets.filter((p) => p.slots.some((s) => isStockToken(s.tokenId)));
+    expect(withStock.map((p) => p.id)).toEqual(["bigTech", "nearStocks"]);
+    expect(portfolioPresets.slice(-2)).toEqual(withStock);
+    const symbols = withStock.flatMap((p) => p.slots.map((s) => getTokenById(s.tokenId)?.symbol));
+    expect(symbols).not.toContain("TSLA");
+    expect(symbols).not.toContain("GOOGL");
+  });
+
+  // Who funds with a token outside the mix is the common case for these two (D-319).
+  it.each(["bigTech", "nearStocks"] as const)("%s passes the gate funded with a token outside its mix", (id) => {
+    const preset = getPreset(id)!;
+    const composition = preset.slots.map((s) => ({
+      tokenId: s.tokenId,
+      targetPct: s.targetPct,
+      tolerancePct: preset.tolerancePct,
+    }));
+    const balances = { "nep141:usdt.tether-token.near": 100 };
+    expect(firstError(evaluatePortfolioRules(composition, balances))).toBeNull();
   });
 
   it("getPreset resolves by id and returns undefined otherwise", () => {

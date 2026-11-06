@@ -2,12 +2,12 @@
 
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
-import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
 import { TokenIcon } from "@/features/market/lib/token-icons";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
 import { APP_MAX_TOKENS_PER_PORTFOLIO } from "@/features/vault/lib/change-set-preflight";
 import { Modal } from "./portfolio-primitives";
+import { matchesStockSearch, StockRowChip, StockTokenSections } from "./stock-token-sections";
 import { colorForSymbol } from "../lib/format";
 import type { translations } from "../lib/translations";
 import type { CurrentPortfolioQty } from "../types";
@@ -77,7 +77,8 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
         (e) =>
           e.symbol.toLowerCase().includes(q) ||
           e.name.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q)
+          e.category.toLowerCase().includes(q) ||
+          matchesStockSearch(e.id, q, t)
       )
     : entries;
 
@@ -134,11 +135,12 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
       {visible.length === 0 ? (
         <p className="mt-2 px-3 py-8 text-center text-sm text-slate-400">{t.noTokensFound}</p>
       ) : (
-        <ul
-          aria-label={t.addTokensTitle}
-          className="mt-2 max-h-[22rem] space-y-1 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
-        >
-          {visible.map((e) => {
+        <StockTokenSections
+          items={visible}
+          idOf={(e) => e.id}
+          t={t}
+          className="mt-2 max-h-[min(28rem,55vh)] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
+          renderRow={(e) => {
             const isSelected = selected.has(e.id);
             return (
               <li
@@ -157,9 +159,11 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                   <TokenIcon symbol={e.symbol} size={22} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-100">{e.symbol}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-slate-100">{e.symbol}</span>
+                    <StockRowChip tokenId={e.id} t={t} />
+                  </span>
                   <span className="block truncate text-[11px] text-slate-400">{e.name}</span>
-                  {isStockToken(e.id) ? <span className="block text-[11px] text-slate-400">{t.stockTargetNote}</span> : null}
                 </span>
                 {e.inPortfolio ? (
                   // Neutral, so it is never mistaken for a token just marked "Added".
@@ -191,8 +195,8 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                 )}
               </li>
             );
-          })}
-        </ul>
+          }}
+        />
       )}
 
       <div className="mt-6 flex items-center justify-between gap-3">

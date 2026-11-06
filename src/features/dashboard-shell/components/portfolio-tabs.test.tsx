@@ -3,16 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { shellTranslations } from "../lib/translations";
 import { portfolioColor } from "../lib/portfolio-color";
+import { appPortfolioCap } from "@/features/vault/lib/change-set-preflight";
 
-// 016 block 2.4: a portfolio signed from the tabs' "+" lands on it, like one confirmed from
-// My Account — the tabs hand the shell's landing callback to the creation flow.
+// "+" asks the shell for the creation flow (D-397: the shell hosts it, so a change of wallet status
+// cannot take a signature's screen away) unless something is in the way, and then it says what.
 
-const flow = vi.hoisted(() => ({ props: null as null | Record<string, unknown> }));
+const NO_FUNDS = { status: "known", fundable: false, tokenIds: [], usd: 0 };
+const fundableState = vi.hoisted(() => ({
+  value: { status: "known", fundable: false, tokenIds: [], usd: 0 } as unknown,
+}));
 const data = vi.hoisted(() => ({
   portfolios: [{ id: "p1", name: "Old", isReal: false }] as Array<{ id: string; name: string; isReal: boolean }>,
 }));
 
 vi.mock("../context/language-context", () => ({ useLanguage: () => ({ lang: "en", setLang: vi.fn() }) }));
+vi.mock("../hooks/use-fundable-general-balance", () => ({ useFundableGeneralBalance: () => fundableState.value }));
 vi.mock("../context/portfolio-context", () => ({
   usePortfolio: () => ({
     portfolios: data.portfolios,
@@ -21,39 +26,39 @@ vi.mock("../context/portfolio-context", () => ({
   }),
 }));
 vi.mock("./portfolio-tab-menu", () => ({
-  PortfolioTabMenu: ({ portfolioId }: { portfolioId: string }) => <span data-testid={`menu-${portfolioId}`} />,
+  PortfolioTabMenu: ({
+    portfolioId,
+    onDelete,
+    deleteLabel,
+  }: {
+    portfolioId: string;
+    onDelete?: () => void;
+    deleteLabel?: string;
+  }) => (
+    <span data-testid={`menu-${portfolioId}`}>
+      {onDelete ? <button type="button" onClick={onDelete}>{deleteLabel ?? "delete-portfolio"}</button> : null}
+    </span>
+  ),
 }));
 vi.mock("./portfolio-rename-modal", () => ({ PortfolioRenameModal: () => null }));
-vi.mock("./create-portfolio-flow", () => ({
-  CreatePortfolioFlow: (props: Record<string, unknown>) => {
-    flow.props = props;
-    return <div>create-flow</div>;
-  },
-}));
 
 import { PortfolioTabs } from "./portfolio-tabs";
 
 afterEach(() => {
   cleanup();
   data.portfolios = [{ id: "p1", name: "Old", isReal: false }];
+  fundableState.value = NO_FUNDS;
 });
 
 describe("PortfolioTabs — '+'", () => {
-  it("hands the creation flow both landings: the draft's tab and the new portfolio", () => {
-    const onDraftSaved = vi.fn();
-    const onPortfolioCreated = vi.fn();
-    render(<PortfolioTabs onDraftSaved={onDraftSaved} onPortfolioCreated={onPortfolioCreated} />);
+  it.each([
+    ["signed in", {}],
+    ["signed out", { signedOut: true }],
+  ])("%s, with nothing in the way: asks the shell for the flow", (_label, extra) => {
+    const onNewPortfolio = vi.fn();
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} {...extra} />);
     fireEvent.click(screen.getAllByRole("button", { name: shellTranslations.en.addPortfolio })[0]);
-
-    expect(screen.getByText("create-flow")).toBeTruthy();
-    expect(flow.props).toMatchObject({ onDraftSaved, onCreated: onPortfolioCreated, signedOut: false });
-  });
-
-  it("signed out, the flow knows it (it builds the anonymous draft)", () => {
-    data.portfolios = [];
-    render(<PortfolioTabs signedOut />);
-    fireEvent.click(screen.getAllByRole("button", { name: shellTranslations.en.addPortfolio })[0]);
-    expect(flow.props).toMatchObject({ signedOut: true });
+    expect(onNewPortfolio).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -63,17 +68,18 @@ describe("PortfolioTabs — '+'", () => {
 describe("PortfolioTabs — '+' with a draft saved", () => {
   const t = shellTranslations.en;
   const plusButtons = () => screen.getAllByRole("button", { name: t.addPortfolio });
-  const draftTab = () => ({ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn() });
+  const draftTab = () => ({ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() });
 
+  const onNewPortfolio = vi.fn();
   beforeEach(() => {
-    flow.props = null;
+    onNewPortfolio.mockClear();
   });
 
   it.each([
     ["signed in, with portfolios", {}],
     ["signed out", { signedOut: true }],
   ])("%s: both open the window with the message, not the flow", (_label, extra) => {
-    render(<PortfolioTabs draftTab={draftTab()} {...extra} />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} {...extra} />);
     expect(plusButtons()).toHaveLength(2);
     for (const button of plusButtons()) {
       expect((button as HTMLButtonElement).disabled).toBe(false);
@@ -87,13 +93,12 @@ describe("PortfolioTabs — '+' with a draft saved", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: t.addPortfolioBlockedClose }));
       expect(screen.queryByRole("dialog")).toBeNull();
     }
-    expect(screen.queryByText("create-flow")).toBeNull();
-    expect(flow.props).toBeNull();
+    expect(onNewPortfolio).not.toHaveBeenCalled();
   });
 
   it("'Go to “My mix”' closes the window and opens the draft's tab", () => {
     const tab = draftTab();
-    render(<PortfolioTabs draftTab={tab} />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={tab} />);
     fireEvent.click(plusButtons()[0]);
     fireEvent.click(screen.getByRole("button", { name: t.addPortfolioBlockedGoTo.replace("{name}", "My mix") }));
     expect(tab.onSelect).toHaveBeenCalledTimes(1);
@@ -101,7 +106,7 @@ describe("PortfolioTabs — '+' with a draft saved", () => {
   });
 
   it("closing gives the focus back to '+'", () => {
-    render(<PortfolioTabs draftTab={draftTab()} />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
     const [button] = plusButtons();
     button.focus();
     fireEvent.click(button);
@@ -112,21 +117,149 @@ describe("PortfolioTabs — '+' with a draft saved", () => {
 
   it("signed in with no portfolio, the draft alone makes it wait too", () => {
     data.portfolios = [];
-    render(<PortfolioTabs miCuentaActive onMiCuentaClick={vi.fn()} draftTab={draftTab()} />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} miCuentaActive onMiCuentaClick={vi.fn()} draftTab={draftTab()} />);
     fireEvent.click(plusButtons()[0]);
     expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
-    expect(flow.props).toBeNull();
+    expect(onNewPortfolio).not.toHaveBeenCalled();
+  });
+
+  // D-397: with funds a new portfolio is signed, not saved, so the window offers both.
+  describe("with funds", () => {
+    const FUNDS = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    const choice = t.addPortfolioDraftChoice.replace("{name}", "My mix");
+    const goTo = t.addPortfolioBlockedGoTo.replace("{name}", "My mix");
+
+    it("both buttons open the window, which says what a new one is and offers the draft or a new one", () => {
+      fundableState.value = FUNDS;
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+      expect(plusButtons()).toHaveLength(2);
+      for (const button of plusButtons()) {
+        expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+        expect(document.getElementById("portfolio-tabs-new-blocked")?.textContent).toBe(choice);
+        fireEvent.click(button);
+        const dialog = screen.getByRole("dialog", { name: t.addPortfolio });
+        expect(within(dialog).getByText(choice)).toBeTruthy();
+        expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual([
+          t.addPortfolioBlockedClose,
+          goTo,
+          t.addPortfolioBuildNew,
+        ]);
+        fireEvent.click(within(dialog).getByRole("button", { name: t.addPortfolioBlockedClose }));
+      }
+      expect(onNewPortfolio).not.toHaveBeenCalled();
+    });
+
+    it("'Build a new portfolio' closes it and asks the shell for the flow", () => {
+      fundableState.value = FUNDS;
+      const tab = draftTab();
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={tab} />);
+      fireEvent.click(plusButtons()[0]);
+      fireEvent.click(screen.getByRole("button", { name: t.addPortfolioBuildNew }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(onNewPortfolio).toHaveBeenCalledTimes(1);
+      expect(tab.onSelect).not.toHaveBeenCalled();
+    });
+
+    it("'Go to' closes it and opens the draft's tab", () => {
+      fundableState.value = FUNDS;
+      const tab = draftTab();
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={tab} />);
+      fireEvent.click(plusButtons()[0]);
+      fireEvent.click(screen.getByRole("button", { name: goTo }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(tab.onSelect).toHaveBeenCalledTimes(1);
+      expect(onNewPortfolio).not.toHaveBeenCalled();
+    });
+
+    it("a draft name with a replacement pattern reads as typed", () => {
+      fundableState.value = FUNDS;
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={{ ...draftTab(), name: "US$& mix" }} />);
+      fireEvent.click(plusButtons()[0]);
+      expect(screen.getByRole("button", { name: "Go to “US$& mix”" })).toBeTruthy();
+    });
+
+    it("signed out it waits, whatever a read without an account says", () => {
+      fundableState.value = FUNDS;
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} signedOut />);
+      fireEvent.click(plusButtons()[0]);
+      expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
+      expect(onNewPortfolio).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["still being read", { status: "loading" }],
+      ["unreadable", { status: "error", retry: () => {} }],
+    ])("with the balance %s it waits", (_label, value) => {
+      fundableState.value = value;
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+      fireEvent.click(plusButtons()[0]);
+      expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
+      expect(onNewPortfolio).not.toHaveBeenCalled();
+    });
+
+    it("the cap still has the last word (D-476)", () => {
+      fundableState.value = FUNDS;
+      data.portfolios = Array.from({ length: appPortfolioCap() }, (_, i) => ({ id: `p${i}`, name: `P${i}`, isReal: false }));
+      render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+      fireEvent.click(plusButtons()[0]);
+      expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
+      expect(onNewPortfolio).not.toHaveBeenCalled();
+    });
+  });
+
+  // D-397: the window follows the balance in place; it never vanishes or comes back on its own.
+  it("funds coming and going while it is open change what it offers, and open nothing", () => {
+    const view = () => <PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />;
+    const buildNew = () => screen.queryByRole("button", { name: t.addPortfolioBuildNew });
+    fundableState.value = { status: "loading" };
+    const { rerender } = render(view());
+    fireEvent.click(plusButtons()[0]);
+    expect(buildNew()).toBeNull();
+
+    fundableState.value = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    rerender(view());
+    expect(buildNew()).toBeTruthy();
+
+    fundableState.value = NO_FUNDS;
+    rerender(view());
+    expect(buildNew()).toBeNull();
+    expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
+    expect(onNewPortfolio).not.toHaveBeenCalled();
+  });
+
+  it("a draft discarded elsewhere closes it, and it does not come back with the next draft", () => {
+    const { rerender } = render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+    fireEvent.click(plusButtons()[0]);
+    expect(screen.getByRole("dialog", { name: t.addPortfolio })).toBeTruthy();
+
+    rerender(<PortfolioTabs onNewPortfolio={onNewPortfolio} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    rerender(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onNewPortfolio).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no funds", NO_FUNDS, () => t.addPortfolioDraftWaiting],
+    ["still reading", { status: "loading" }, () => t.draftCheckingBalance],
+    ["unreadable", { status: "error", retry: () => {} }, () => t.myAccountBalanceUnreadable],
+  ])("the window says what is really in the way: %s", (_label, value, message) => {
+    fundableState.value = value;
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={draftTab()} />);
+    fireEvent.click(plusButtons()[0]);
+    expect(within(screen.getByRole("dialog", { name: t.addPortfolio })).getByText(message())).toBeTruthy();
   });
 
   it("without a draft (control): opens the flow, no window, nothing described", () => {
-    render(<PortfolioTabs />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} />);
     for (const button of plusButtons()) {
       expect(button.getAttribute("aria-haspopup")).toBeNull();
       expect(button.getAttribute("aria-describedby")).toBeNull();
     }
     fireEvent.click(plusButtons()[0]);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText("create-flow")).toBeTruthy();
+    expect(onNewPortfolio).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -140,25 +273,26 @@ describe("PortfolioTabs — '+' at the portfolio cap", () => {
     Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, name: `P${i + 1}`, isReal: true }));
   const capMessage = t.addPortfolioCapReached.replace("{max}", "7");
 
+  const onNewPortfolio = vi.fn();
   beforeEach(() => {
-    flow.props = null;
+    onNewPortfolio.mockClear();
   });
 
   it("with 7: desktop's opens the window with the cap message and only 'Close'; mobile's is plain text", () => {
     data.portfolios = withPortfolios(7);
-    render(<PortfolioTabs />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} />);
     expect(plusButtons()).toHaveLength(1);
     fireEvent.click(plusButtons()[0]);
     const dialog = screen.getByRole("dialog", { name: t.addPortfolio });
     expect(within(dialog).getByText(capMessage)).toBeTruthy();
     expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual([t.addPortfolioBlockedClose]);
-    expect(flow.props).toBeNull();
+    expect(onNewPortfolio).not.toHaveBeenCalled();
     expect(screen.getByText(t.addPortfolioCapShort.replace("{max}", "7"))).toBeTruthy();
   });
 
   it("with 7 and a draft saved, the cap's message is the one shown, with no way to the draft", () => {
     data.portfolios = withPortfolios(7);
-    render(<PortfolioTabs draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn() }} />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }} />);
     fireEvent.click(plusButtons()[0]);
     const dialog = screen.getByRole("dialog", { name: t.addPortfolio });
     expect(within(dialog).getByText(capMessage)).toBeTruthy();
@@ -167,10 +301,77 @@ describe("PortfolioTabs — '+' at the portfolio cap", () => {
 
   it("with 6 (control): opens the flow", () => {
     data.portfolios = withPortfolios(6);
-    render(<PortfolioTabs />);
+    render(<PortfolioTabs onNewPortfolio={onNewPortfolio} />);
     fireEvent.click(plusButtons()[0]);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText("create-flow")).toBeTruthy();
+    expect(onNewPortfolio).toHaveBeenCalledTimes(1);
+  });
+});
+
+// D-560: "Delete draft" in the draft's menu, as a portfolio has its own. It asks first.
+describe("PortfolioTabs — deleting the draft from its menu", () => {
+  const t = shellTranslations.en;
+  const tab = (active = false) => ({ name: "My mix", active, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() });
+  const title = t.portfolioDeleteTitle.replace("{name}", "My mix");
+  const open = () => fireEvent.click(screen.getAllByRole("button", { name: t.draftCardDiscard })[0]);
+
+  it("asks, and only 'Delete' discards it", () => {
+    const draft = tab();
+    render(<PortfolioTabs draftTab={draft} />);
+    open();
+    const dialog = screen.getByRole("dialog", { name: title });
+    expect(within(dialog).getByText(t.draftCardDiscardQuestion)).toBeTruthy();
+    expect(draft.discard).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: t.portfolioDeleteConfirmAction }));
+    expect(draft.discard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("'Cancel' and Escape leave it as it was", () => {
+    const draft = tab();
+    render(<PortfolioTabs draftTab={draft} />);
+    open();
+    fireEvent.click(screen.getByRole("button", { name: t.cancel }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    open();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(draft.discard).not.toHaveBeenCalled();
+  });
+
+  it("with funds, says they stay in the funding account", () => {
+    fundableState.value = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    render(<PortfolioTabs draftTab={tab()} />);
+    open();
+    expect(screen.getByText(t.draftReadyDiscardQuestion)).toBeTruthy();
+  });
+
+  it("signed out it is offered too, without talking about funds", () => {
+    fundableState.value = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    render(<PortfolioTabs draftTab={tab()} signedOut />);
+    open();
+    expect(screen.getByText(t.draftCardDiscardQuestion)).toBeTruthy();
+  });
+
+  it("on a phone the menu beside the select offers it too, on the draft's tab", () => {
+    data.portfolios = [];
+    render(<PortfolioTabs draftTab={tab(true)} />);
+    expect(screen.getAllByRole("button", { name: t.draftCardDiscard })).toHaveLength(2);
+  });
+
+  it("a draft gone elsewhere closes the question, and it does not come back with the next draft", () => {
+    const { rerender } = render(<PortfolioTabs draftTab={tab()} />);
+    open();
+    rerender(<PortfolioTabs />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(<PortfolioTabs draftTab={tab()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a portfolio's menu keeps its own wording (control)", () => {
+    render(<PortfolioTabs />);
+    expect(screen.queryByRole("button", { name: t.draftCardDiscard })).toBeNull();
   });
 });
 
@@ -218,7 +419,7 @@ describe("PortfolioTabs — the draft's tab", () => {
 
   it("with no portfolio at all, a draft alone brings the strip", () => {
     data.portfolios = [];
-    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }} />);
+    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }} />);
     expect(tabs()).toEqual([t.myAccountTab, "My mix"]);
     expect(screen.getByRole("tab", { name: "My mix" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText(t.draftTabBadge)).toBeTruthy();
@@ -238,7 +439,7 @@ describe("PortfolioTabs — the draft's tab", () => {
       <PortfolioTabs
         onMiCuentaClick={vi.fn()}
         onPortfolioTabSelect={vi.fn()}
-        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }}
+        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }}
       />
     );
     expect(tabs()).toEqual([t.myAccountTab, "Old", "My mix"]);
@@ -254,7 +455,7 @@ describe("PortfolioTabs — the draft's tab", () => {
 
   it("on a portfolio, the draft's tab is not selected and choosing it goes there", () => {
     const onSelect = vi.fn();
-    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: false, onSelect, rename: vi.fn() }} />);
+    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: false, onSelect, rename: vi.fn(), discard: vi.fn() }} />);
     expect(screen.getByRole("tab", { name: "Old" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("tab", { name: "My mix" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
@@ -267,7 +468,7 @@ describe("PortfolioTabs — the draft's tab", () => {
       <PortfolioTabs
         onMiCuentaClick={vi.fn()}
         onPortfolioTabSelect={onPortfolioTabSelect}
-        draftTab={{ name: "My mix", active: false, onSelect, rename: vi.fn() }}
+        draftTab={{ name: "My mix", active: false, onSelect, rename: vi.fn(), discard: vi.fn() }}
       />
     );
     const options = Array.from(select().options).map((o) => o.textContent);
@@ -278,7 +479,7 @@ describe("PortfolioTabs — the draft's tab", () => {
   });
 
   it("on mobile, on the draft's tab the select shows it", () => {
-    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }} />);
+    render(<PortfolioTabs onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }} />);
     expect(select().selectedOptions[0].textContent).toBe(`My mix · ${t.draftTabBadge}`);
   });
 
@@ -290,7 +491,7 @@ describe("PortfolioTabs — the draft's tab", () => {
       <PortfolioTabs
         onMiCuentaClick={onMiCuentaClick}
         signedOut
-        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }}
+        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }}
       />
     );
     // The desktop tab and the mobile button.
@@ -308,7 +509,7 @@ describe("PortfolioTabs — the draft's tab", () => {
 
   // D-360: discarding on the draft's tab leaves for My Account with the focus gone with it.
   it("My Account, when on screen, is where the focus can land", () => {
-    render(<PortfolioTabs miCuentaActive onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn() }} />);
+    render(<PortfolioTabs miCuentaActive onMiCuentaClick={vi.fn()} draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }} />);
     expect(screen.getByRole("tab", { name: t.myAccountTab }).hasAttribute("data-focus-landing")).toBe(true);
     expect(screen.getByRole("tab", { name: "My mix" }).hasAttribute("data-focus-landing")).toBe(false);
   });
@@ -360,7 +561,7 @@ describe("PortfolioTabs — color and value", () => {
       <PortfolioTabs
         onMiCuentaClick={vi.fn()}
         values={values}
-        draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn() }}
+        draftTab={{ name: "My mix", active: false, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }}
       />
     );
     expect(screen.getByRole("tab", { name: "My mix" }).textContent).toBe("My mix");
@@ -373,7 +574,7 @@ describe("PortfolioTabs — color and value", () => {
       <PortfolioTabs
         onMiCuentaClick={vi.fn()}
         signedOut
-        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn() }}
+        draftTab={{ name: "My mix", active: true, onSelect: vi.fn(), rename: vi.fn(), discard: vi.fn() }}
       />
     );
     expect(screen.getByRole("tab", { name: t.myAccountTab }).textContent).toBe(t.myAccountTab);

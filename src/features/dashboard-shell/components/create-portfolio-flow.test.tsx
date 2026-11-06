@@ -5,9 +5,9 @@ import type { FundableGeneralBalance } from "../hooks/use-fundable-general-balan
 import type { NewPortfolioDraft } from "../lib/new-portfolio-draft";
 import { shellTranslations } from "../lib/translations";
 
-// 019-5 (D-393 Q4): every card opens the New Portfolio Draft editor, with funds or without;
-// the signature comes later, from the draft's confirmation. The balance only decides where a
-// SAVED draft opens (016 blocks 2.3/2.4).
+// 019-5 (D-393 Q4): every card opens the editor, with funds or without. D-397: what its footer
+// offers follows the props handed here (the editor's own tests cover the footer). The balance
+// decides where a SAVED draft opens (016 blocks 2.3/2.4), unless "+" asks for a new one.
 
 const state = vi.hoisted(() => ({
   fundable: { status: "loading" } as FundableGeneralBalance,
@@ -30,19 +30,16 @@ vi.mock("./preset-review-modal", () => ({
     onBack,
     onCreated,
   }: {
-    source: { kind: "preset"; presetId: string } | { kind: "draft"; draft: { name: string } };
+    source: { kind: "new" } | { kind: "draft"; draft: { name: string } };
     onBack?: () => void;
     onCreated?: () => void;
   }) => (
     <div>
-      {source.kind === "preset" ? `review:${source.presetId}` : `confirm:${source.draft.name}`}
+      {source.kind === "new" ? "review:new" : `confirm:${source.draft.name}`}
       <span>{onBack ? "with-back" : "no-back"}</span>
       <button type="button" onClick={onCreated}>created</button>
     </div>
   ),
-}));
-vi.mock("@/features/portfolio-editor/components/add-funds-modal", () => ({
-  AddFundsModal: () => <div>funded-scratch</div>,
 }));
 vi.mock("./new-portfolio-draft-editor", () => ({
   NewPortfolioDraftEditor: ({
@@ -51,19 +48,31 @@ vi.mock("./new-portfolio-draft-editor", () => ({
     existingNames,
     onSaved,
     onBack,
+    onCreated,
     funded,
+    balanceUnreadable,
+    signedOut,
+    savedDraftName,
   }: {
     presetId: string | null;
     draft?: { name: string } | null;
     existingNames: string[];
     onSaved: () => void;
     onBack?: () => void;
-    funded?: boolean;
+    onCreated?: () => void;
+    funded?: boolean | null;
+    balanceUnreadable?: boolean;
+    signedOut?: boolean;
+    savedDraftName?: string | null;
   }) => (
     <div>
       {draft ? `resume:${draft.name}` : `draft:${presetId ?? "scratch"}`}
       <span>{onBack ? "with-back" : "no-back"}</span>
-      <span>{`funded:${funded ? "yes" : "no"}`}</span>
+      <span>{`funded:${funded === null ? "unknown" : funded ? "yes" : "no"}`}</span>
+      <span>{balanceUnreadable ? "unreadable" : "readable"}</span>
+      <span>{signedOut ? "signed-out" : "signed-in"}</span>
+      <span>{`saved:${savedDraftName ?? "none"}`}</span>
+      <button type="button" onClick={onCreated}>editor-created</button>
       <span>{`names:${existingNames.join(",")}`}</span>
       <button type="button" onClick={onSaved}>save-draft</button>
       {onBack ? <button type="button" onClick={onBack}>back</button> : null}
@@ -79,9 +88,11 @@ const card = (name: string) => screen.getByRole("button", { name: new RegExp(`^$
 function renderFlow({
   afterDeposit,
   signedOut,
+  startNew,
 }: {
   afterDeposit?: { tokenId: string; qty: number };
   signedOut?: boolean;
+  startNew?: boolean;
 } = {}) {
   const onClose = vi.fn();
   const onDraftSaved = vi.fn();
@@ -93,6 +104,7 @@ function renderFlow({
       afterDeposit={afterDeposit}
       onCreated={onCreated}
       signedOut={signedOut}
+      startNew={startNew}
     />
   );
   const view = render(flow());
@@ -115,8 +127,8 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("CreatePortfolioFlow — every card builds a draft first", () => {
-  it("with funds ≥ $1: a preset opens the draft editor with it, scratch opens it empty — never a signature", () => {
+describe("CreatePortfolioFlow — every card opens the editor", () => {
+  it("with funds: a preset opens the editor with it, scratch opens it empty, and the signature is the editor's to offer", () => {
     state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
     renderFlow();
     fireEvent.click(card(t.presetBalancedName));
@@ -124,13 +136,36 @@ describe("CreatePortfolioFlow — every card builds a draft first", () => {
     expect(screen.getByText("with-back")).toBeTruthy();
     // D-400: its subtitle does not wait on a deposit.
     expect(screen.getByText("funded:yes")).toBeTruthy();
-    expect(screen.queryByText(/review:|confirm:|funded-scratch/)).toBeNull();
+    expect(screen.getByText("saved:none")).toBeTruthy();
+    expect(screen.queryByText(/review:|confirm:/)).toBeNull();
 
     cleanup();
     renderFlow();
     fireEvent.click(card(t.presetScratchName));
     expect(screen.getByText("draft:scratch")).toBeTruthy();
-    expect(screen.queryByText(/review:|confirm:|funded-scratch/)).toBeNull();
+    expect(screen.queryByText(/review:|confirm:/)).toBeNull();
+  });
+
+  it("hands the editor the landing for a portfolio signed from its funds screen", () => {
+    state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    const { onCreated } = renderFlow();
+    fireEvent.click(card(t.presetBalancedName));
+    fireEvent.click(screen.getByRole("button", { name: "editor-created" }));
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the editor an unknown balance from a read that failed", () => {
+    renderFlow();
+    fireEvent.click(card(t.presetBalancedName));
+    expect(screen.getByText("funded:unknown")).toBeTruthy();
+    expect(screen.getByText("readable")).toBeTruthy();
+
+    cleanup();
+    state.fundable = { status: "error", retry: vi.fn() };
+    renderFlow();
+    fireEvent.click(card(t.presetBalancedName));
+    expect(screen.getByText("funded:unknown")).toBeTruthy();
+    expect(screen.getByText("unreadable")).toBeTruthy();
   });
 
   it("without funds: a preset opens the draft editor with it, scratch opens it empty", () => {
@@ -163,7 +198,7 @@ describe("CreatePortfolioFlow — every card builds a draft first", () => {
   });
 
   // 019-4: saving no longer opens the deposit — the shell lands on the draft's tab.
-  it("'Create portfolio' closes the flow and hands over to the landing", () => {
+  it("saving closes the flow and hands over to the landing", () => {
     state.fundable = { status: "known", fundable: false, tokenIds: [], usd: 0 };
     const { onClose, onDraftSaved } = renderFlow();
     fireEvent.click(card(t.presetBalancedName));
@@ -266,6 +301,33 @@ describe("CreatePortfolioFlow — with a saved New Portfolio Draft", () => {
   });
 });
 
+// D-397: "+" with funds builds another portfolio. The draft stays, and the editor is told about it.
+describe("CreatePortfolioFlow — a new portfolio with a draft saved (startNew)", () => {
+  beforeEach(() => {
+    state.draft = SAVED;
+    state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+  });
+
+  it("opens the chooser, not the draft's confirmation", () => {
+    renderFlow({ startNew: true });
+    expect(screen.getByText(t.presetSelectTitle)).toBeTruthy();
+    expect(screen.queryByText(/confirm:|resume:/)).toBeNull();
+  });
+
+  it("a card opens the editor as a new mix, told the name of the draft it must not replace", () => {
+    renderFlow({ startNew: true });
+    fireEvent.click(card(t.presetBalancedName));
+    expect(screen.getByText("draft:balanced")).toBeTruthy();
+    expect(screen.getByText("saved:My mix")).toBeTruthy();
+    expect(screen.getByText("with-back")).toBeTruthy();
+  });
+
+  it("the other ways in still confirm the draft (control)", () => {
+    renderFlow();
+    expect(screen.getByText("confirm:My mix")).toBeTruthy();
+  });
+});
+
 // B1 (016 block 2.4): "Confirm my portfolio" right after a wallet deposit. The balance on
 // screen may predate the deposit for a few seconds, so the confirmation waits to see it.
 describe("CreatePortfolioFlow — confirming right after a wallet deposit", () => {
@@ -328,6 +390,8 @@ describe("CreatePortfolioFlow — signed out", () => {
     fireEvent.click(card(t.presetBalancedName));
     expect(screen.getByText("draft:balanced")).toBeTruthy();
     expect(screen.getByText("funded:no")).toBeTruthy();
+    expect(screen.getByText("signed-out")).toBeTruthy();
+    expect(screen.getByText("saved:none")).toBeTruthy();
 
     cleanup();
     renderFlow({ signedOut: true });

@@ -77,6 +77,7 @@ import { StockSellModal } from "./stock-sell-modal";
 import { WelcomeModal } from "./welcome-modal";
 import { AssignFundsPrompt } from "./assign-funds-prompt";
 import { useAssignFundsPrompt } from "../hooks/use-assign-funds-prompt";
+import { usePendingAllocates } from "@/features/vault/hooks/use-pending-allocates";
 import { DRAFT_SUBJECT } from "../lib/assign-funds-prompt";
 import { usePendingUnallocations } from "../hooks/use-pending-unallocations";
 import { countWithdrawalsInFlight } from "../lib/withdrawals-in-flight";
@@ -192,7 +193,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   // "after-deposit": B1 — a wallet deposit for the draft just landed; confirm it once the
   // General Balance shows it (016 block 2.4).
   const [createFlow, setCreateFlow] = useState<
-    | { kind: "new" }
+    | { kind: "new"; startNew?: boolean }
     | { kind: "after-deposit"; tokenId: string; qty: number }
     | null
   >(null);
@@ -335,10 +336,20 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
 
   // 029 B-23 — the draft on screen with funds to assign offers them in a window of its own, once
   // (`useAssignFundsPrompt`).
+  // Not with an Allocate still unconfirmed, as D-307 for My Account's banner: part of what it would
+  // offer may be in transit, and it opens unasked. A portfolio created beside a saved draft
+  // leaves that draft here, so this can be the very next screen (D-397).
+  const { pending: pendingAllocates } = usePendingAllocates(intentsAccountId);
   const draftPrompt = useAssignFundsPrompt(
     intentsAccountId,
     newPortfolioDraft ? DRAFT_SUBJECT : null,
-    loginConnected && !portfoliosError && !portfoliosLoading && dashboardSectionReady && section === "draft" && draftReady
+    loginConnected &&
+      !portfoliosError &&
+      !portfoliosLoading &&
+      dashboardSectionReady &&
+      section === "draft" &&
+      draftReady &&
+      (pendingAllocates?.length ?? 0) === 0
   );
   const { markSeen: markDraftPromptSeen } = draftPrompt;
   // The deposit window opened from the draft already offers to assign what lands (B-12): coming
@@ -503,6 +514,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   const landOnPortfolio = useCallback(() => goToSection("portfolio"), [goToSection]);
   // 019-4: a saved draft is shown on its tab, wherever the editor was opened from.
   const landOnDraft = useCallback(() => goToSection("draft"), [goToSection]);
+  // The tabs' "+": another portfolio, even with a draft saved (D-397).
+  const openNewPortfolio = useCallback(() => setCreateFlow({ kind: "new", startNew: true }), []);
 
   // 019-4: discarding happens on the draft's tab, and leaves for My Account. The view hands
   // the focus to the landing there.
@@ -1318,6 +1331,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           if (result.ok) return { ok: true as const };
           return { ok: false as const, error: result.nameError ?? "" };
         },
+        // D-560: from its menu it may be off screen, and then whatever is on screen stays.
+        discard: section === "draft" ? handleDiscardDraft : discardNewPortfolioDraft,
       }
     : undefined;
   // With the draft's tab on screen, whatever the route: History and Performance of a portfolio
@@ -1439,8 +1454,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
               onMiCuentaClick={handleMiCuentaClick}
               onPortfolioTabSelect={handlePortfolioTabSelect}
               draftTab={draftTab}
-              onDraftSaved={landOnDraft}
-              onPortfolioCreated={landOnPortfolio}
+              onNewPortfolio={openNewPortfolio}
               values={tabValues}
             />
             {refreshFailedStrip}
@@ -1499,8 +1513,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
             <PortfolioTabs
               miCuentaActive
               onMiCuentaClick={() => {}}
-              onDraftSaved={landOnDraft}
-              onPortfolioCreated={landOnPortfolio}
+              onNewPortfolio={openNewPortfolio}
               values={tabValues}
             />
             {refreshFailedStrip}
@@ -1523,7 +1536,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
             miCuentaActive={showMiCuenta}
             onMiCuentaClick={handleMiCuentaClick}
             draftTab={draftTab}
-            onDraftSaved={landOnDraft}
+            onNewPortfolio={openNewPortfolio}
             signedOut
           />
           {showMiCuenta ? accountView : draftSection}
@@ -1566,6 +1579,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           }
           onCreated={landOnPortfolio}
           signedOut={!loginConnected}
+          startNew={createFlow.kind === "new" && createFlow.startNew}
         />
       )}
       {welcomeOpen && (
@@ -1574,8 +1588,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           hasDraft={newPortfolioDraft !== null}
           onClose={closeWelcome}
           // 022-D (D-455): with a draft saved, the CTA leads to its tab, the way its tab does.
-          // Without one the creation flow picks the path: the editor without funds, or today's
-          // funded creation.
+          // Without one the creation flow opens the chooser, and the editor's actions follow the funds.
           onStart={newPortfolioDraft ? handleDraftTabSelect : () => setCreateFlow({ kind: "new" })}
           // 029 B-19: the deposit step, as My Account's: signed out there is nothing to deposit
           // into yet, so it connects first.

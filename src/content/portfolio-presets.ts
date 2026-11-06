@@ -47,8 +47,23 @@ const USDT_ETH: TokenId =
   "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near";
 const USDT_SOL: TokenId =
   "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near";
+// D-558: the four stocks with a route both ways at every size measured (plan 039). TSLA and
+// GOOGL stay out while D1 has them in doubt. Ids as in `stock-tokens.ts`.
+// Attribution: see ATTRIBUTIONS.md #24
+const NVDA: TokenId = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+const AAPL: TokenId = "nep141:bnb-0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4.omdep.near";
+const AMZN: TokenId = "nep141:bnb-0x4553cfe1c09f37f38b12dc509f676964e392f8fc.omdep.near";
+const QQQ: TokenId = "nep141:bnb-0x0cde6936d305d5b34667fc46425e852efd73559a.omdep.near";
 
-export type PresetId = "conservative" | "balanced" | "aggressive" | "stables" | "satoshi" | "pioneers";
+export type PresetId =
+  | "conservative"
+  | "balanced"
+  | "aggressive"
+  | "stables"
+  | "satoshi"
+  | "pioneers"
+  | "bigTech"
+  | "nearStocks";
 
 export type PresetSlot = { tokenId: TokenId; targetPct: number };
 
@@ -130,6 +145,30 @@ export const portfolioPresets: PortfolioPreset[] = [
     slots: [
       { tokenId: BTC, targetPct: 60 },
       { tokenId: ETH, targetPct: 40 },
+    ],
+  },
+  // D-558: last in this list on purpose. /learn and the landing derive each token's color from
+  // this order, and the chooser moves any preset holding a stock to the top on its own.
+  {
+    id: "bigTech",
+    risk: "veryHigh",
+    tolerancePct: 10,
+    slots: [
+      { tokenId: NVDA, targetPct: 30 },
+      { tokenId: AAPL, targetPct: 25 },
+      { tokenId: AMZN, targetPct: 25 },
+      { tokenId: QQQ, targetPct: 20 },
+    ],
+  },
+  {
+    id: "nearStocks",
+    risk: "high",
+    tolerancePct: 10,
+    slots: [
+      { tokenId: NEAR, targetPct: 40 },
+      { tokenId: NVDA, targetPct: 20 },
+      { tokenId: AAPL, targetPct: 20 },
+      { tokenId: QQQ, targetPct: 20 },
     ],
   },
 ];

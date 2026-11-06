@@ -88,11 +88,22 @@ vi.mock("../hooks/use-new-portfolio-draft", () => ({
   }),
 }));
 
+import { tokenRegistry } from "@/features/market/lib/token-registry";
+import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
+import { presetDraftRows } from "../lib/new-portfolio-draft-editing";
 import { PresetReviewModal, type ReviewSource } from "./preset-review-modal";
 
+const maxLabel = () => shellTranslations[state.lang as "en" | "es"].depositAmountMax;
+
+// D-397: a mix just built in the editor, never saved.
+const newSource: ReviewSource = {
+  kind: "new",
+  input: { name: "Balanced", presetId: "balanced", rows: presetDraftRows("balanced") },
+};
+
 function renderModal(
-  source: ReviewSource = { kind: "preset", presetId: "balanced" },
-  { existingNames = [] as string[], withBack = true } = {}
+  source: ReviewSource = newSource,
+  { existingNames = [] as string[], withBack = true, filled = true } = {}
 ) {
   const onClose = vi.fn();
   const onBack = vi.fn();
@@ -109,6 +120,9 @@ function renderModal(
     />
   );
   const { rerender } = render(el());
+  // D-553: the fields start empty. Most tests are about what happens with funds chosen, so they
+  // start where the user would: Max on every row. `filled: false` is the modal as it opens.
+  if (filled) for (const max of screen.queryAllByRole("button", { name: maxLabel() })) fireEvent.click(max);
   return { onClose, onBack, onCreated, rerender: () => rerender(el()) };
 }
 
@@ -236,9 +250,10 @@ describe("PresetReviewModal — MAX on a 24-decimal balance", () => {
   });
 
   // D-319: the field cuts the long figure with an ellipsis, so it says when it is all of it.
-  it("says 'whole balance' on the default and after MAX, not on a partial amount", () => {
-    renderModal();
-    expect(screen.getByText(t.amountWholeBalance)).toBeTruthy();
+  it("says 'whole balance' after MAX, and what is available otherwise", () => {
+    renderModal(undefined, { filled: false });
+    expect(screen.queryByText(t.amountWholeBalance)).toBeNull();
+    expect(screen.getByText(new RegExp(`^${t.presetReviewAvailable}: `))).toBeTruthy();
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "0.5" } });
     expect(screen.queryByText(t.amountWholeBalance)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: t.depositAmountMax }));
@@ -277,12 +292,12 @@ describe.each(["en", "es"] as const)("PresetReviewModal — name field (%s)", (l
   it("says the name can be changed and counts against 25", () => {
     renderModal();
     const input = screen.getByLabelText(t.portfolioNameLabel) as HTMLInputElement;
-    expect(input.value).toBe(t.presetBalancedName);
+    expect(input.value).toBe("Balanced");
     expect(input.maxLength).toBe(25);
 
     const hint = screen.getByText(t.portfolioNameHint);
     expect(input.getAttribute("aria-describedby")).toBe(hint.id);
-    expect(screen.getByText(`${t.presetBalancedName.length}/25`)).toBeTruthy();
+    expect(screen.getByText("8/25")).toBeTruthy();
   });
 
   it("an over-long name shows the cap in the error, in place of the hint", () => {
@@ -334,12 +349,9 @@ describe("PresetReviewModal — confirming a New Portfolio Draft (016 block 2.4)
   beforeEach(resetFunds);
   afterEach(cleanup);
 
-  it("says how much the general balance puts in (dust left out), prefills the draft's name and cancels without a chooser to go back to", () => {
+  it("prefills the draft's name and cancels without a chooser to go back to", () => {
     const { onClose } = renderModal(draftSource, { withBack: false });
-    // NEAR $15 + USDC $20; the $0.004 of mpDAO is not offered, so it is not counted.
-    expect(
-      screen.getByRole("heading", { name: t.draftReadyTitle.replace("{amount}", "$35.00").replace("{name}", "My mix") })
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: t.presetReviewTitle })).toBeTruthy();
     expect((screen.getByLabelText(t.portfolioNameLabel) as HTMLInputElement).value).toBe("My mix");
     expect(screen.queryByRole("button", { name: t.presetReviewBack })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: t.cancel }));
@@ -418,7 +430,7 @@ describe("PresetReviewModal — confirming a New Portfolio Draft (016 block 2.4)
 // C2 / D-007, for both sources: nothing under $1 is offered, and no line is funded under $1.
 describe.each([
   ["draft", draftSource],
-  ["preset", { kind: "preset", presetId: "balanced" } as ReviewSource],
+  ["new", newSource],
 ])("PresetReviewModal — the one-cent minimum (%s)", (_label, source) => {
   const t = shellTranslations.en;
   const et = editorTranslations.en;
@@ -475,19 +487,19 @@ describe.each([
     expect(screen.getByRole("alert").textContent).toBe(et.allocateErrorMinFunded);
   });
 
-  // G2: all of it by default; lowering it says what stays behind.
-  it("says what stays in the general balance only once an amount is lowered", () => {
-    renderModal(source);
-    expect(screen.queryByText(/stays in your general balance/)).toBeNull();
+  // G2: says what stays behind once there is an amount to compare it with.
+  it("says what stays in the funding account only once an amount is chosen", () => {
+    renderModal(source, { filled: false });
+    expect(screen.queryByText(/stays in your funding account/)).toBeNull();
 
     fireEvent.change(screen.getByRole("spinbutton", { name: /^NEAR/ }), { target: { value: "2" } });
-    // 3 NEAR ($9) + the mpDAO dust ($0.004): the whole remainder, as My Account will show it.
-    expect(screen.getByText(t.presetReviewRemaining.replace("{amount}", formatUsd(9.004)))).toBeTruthy();
+    // 3 NEAR ($9) + 20 USDC + the mpDAO dust ($0.004): the whole remainder, as My Account will show it.
+    expect(screen.getByText(t.presetReviewRemaining.replace("{amount}", formatUsd(29.004)))).toBeTruthy();
   });
 
-  it("removing a token counts as lowering it", () => {
-    renderModal(source);
-    fireEvent.click(screen.getByRole("button", { name: `${t.presetReviewRemoveToken} USDC(NEAR)` }));
+  it("a token left empty counts as staying behind", () => {
+    renderModal(source, { filled: false });
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^NEAR/ }), { target: { value: "5" } });
     // 20 USDC + the dust.
     expect(screen.getByText(t.presetReviewRemaining.replace("{amount}", formatUsd(20.004)))).toBeTruthy();
   });
@@ -508,7 +520,11 @@ describe.each([
 
     state.available = new Map([[MPDAO, 0.4], ["near", 5]]);
     rerender();
-    expect(screen.getByRole("spinbutton", { name: /^NEAR/ })).toBeTruthy();
+    const near = screen.getByRole("spinbutton", { name: /^NEAR/ }) as HTMLInputElement;
+    // Offered, not chosen: a late arrival starts empty like every other row (D-553).
+    expect(near.value).toBe("");
+    expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(near, { target: { value: "5" } });
     expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -548,13 +564,12 @@ describe("PresetReviewModal — a preset also lands on the new portfolio", () =>
     expect(state.retire).not.toHaveBeenCalled();
   });
 
-  // The generalisation must not dress a preset as a draft.
-  it("keeps the preset's title, disclaimer and Back", () => {
+  it("shows the same title, the disclaimer of a preset's mix, and Back", () => {
     const { onBack, onClose } = renderModal();
     expect(screen.getByRole("heading", { name: t.presetReviewTitle })).toBeTruthy();
     expect(screen.getByText(t.presetReviewNotAdvice)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: t.presetReviewBack }));
-    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenCalledWith("Balanced");
     expect(onClose).not.toHaveBeenCalled();
   });
 });
@@ -564,7 +579,7 @@ describe("PresetReviewModal — a preset also lands on the new portfolio", () =>
 // same funds again — and the late success would close whatever flow is open by then.
 describe.each([
   ["draft", draftSource],
-  ["preset", { kind: "preset", presetId: "balanced" } as ReviewSource],
+  ["new", newSource],
 ])("PresetReviewModal — no way out mid-signature (%s)", (_label, source) => {
   const t = shellTranslations.en;
   beforeEach(resetFunds);
@@ -585,21 +600,20 @@ describe.each([
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("before signing, Escape closes as usual", () => {
-    const { onClose } = renderModal(source);
+  it("before signing, with nowhere to go back to, Escape closes as usual", () => {
+    const { onClose } = renderModal(source, { withBack: false });
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   // D-309: an edit mid-signature changes nothing already signed; it only confuses.
-  it("the amounts, 25/50/75/Max and the ✕ are frozen while signing, and free again after", async () => {
+  it("the amounts and 25/50/75/Max are frozen while signing, and free again after", async () => {
     let fail: (e: Error) => void = () => {};
     state.create.mockImplementation(() => new Promise<void>((_resolve, reject) => (fail = reject)));
     renderModal(source);
     const controls = () => [
       ...screen.getAllByRole("spinbutton"),
       ...["25%", "50%", "75%", t.depositAmountMax].flatMap((name) => screen.getAllByRole("button", { name })),
-      ...screen.getAllByRole("button", { name: new RegExp(`^${t.presetReviewRemoveToken} `) }),
     ];
     expect(controls().every((el) => !el.matches(":disabled"))).toBe(true);
 
@@ -618,6 +632,139 @@ describe.each([
     renderModal(source);
     await clickPrimary(t.presetReviewCreate);
     expect(document.activeElement).toBe(screen.getByRole("button", { name: t.presetReviewRetry }));
+  });
+});
+
+// D-553: a token enters only with an amount the user set. The funds used to open at the whole
+// balance of every token, in the mix or not, and a signature could take them all unnoticed.
+describe.each(["en", "es"] as const)("PresetReviewModal — nothing starts filled (D-553) (%s)", (lang) => {
+  const t = shellTranslations[lang];
+  const NBTC = "nep141:nbtc.bridge.near";
+  // In the mix: NEAR, nBTC. In the account: NEAR and USDC, which is not in the mix.
+  const mixedSource: ReviewSource = {
+    kind: "draft",
+    draft: {
+      v: 1,
+      name: "Mix",
+      presetId: null,
+      updatedAt: 1,
+      rows: [
+        { tokenId: "near", targetPct: 50, tolerancePct: 5, locked: false },
+        { tokenId: NBTC, targetPct: 50, tolerancePct: 5, locked: false },
+      ],
+    },
+  };
+  // Holds none of the mix: the first portfolio of someone who only deposited USDC.
+  const noneHeldSource: ReviewSource = {
+    kind: "draft",
+    draft: {
+      v: 1,
+      name: "Mix",
+      presetId: null,
+      updatedAt: 1,
+      rows: [
+        { tokenId: NBTC, targetPct: 50, tolerancePct: 5, locked: false },
+        { tokenId: "nep141:eth.omft.near", targetPct: 50, tolerancePct: 5, locked: false },
+      ],
+    },
+  };
+  const createButton = () => screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement;
+  const fieldOf = (symbol: RegExp) => screen.getByRole("spinbutton", { name: symbol }) as HTMLInputElement;
+
+  beforeEach(() => {
+    state.lang = lang;
+    state.create.mockReset().mockResolvedValue(undefined);
+    state.available = new Map([["near", 5], [USDC, 20]]);
+    state.prices = { near: { usdPrice: 3 }, [USDC]: { usdPrice: 1 } };
+    state.pricesLoading = false;
+  });
+  afterEach(cleanup);
+
+  it("opens with every field empty, the button off and the reason next to it", async () => {
+    renderModal(mixedSource, { filled: false });
+    expect(screen.getAllByRole("spinbutton").map((el) => (el as HTMLInputElement).value)).toEqual(["", ""]);
+    expect(createButton().disabled).toBe(true);
+    const warning = screen.getByText(t.presetReviewEnterAmount);
+    expect(createButton().getAttribute("aria-describedby")).toBe(warning.id);
+
+    await clickPrimary(t.presetReviewCreate);
+    expect(state.create).not.toHaveBeenCalled();
+  });
+
+  it("signs only the token given an amount, never the one left empty", async () => {
+    renderModal(mixedSource, { filled: false });
+    fireEvent.change(fieldOf(/^NEAR/), { target: { value: "2" } });
+    expect(screen.queryByText(t.presetReviewEnterAmount)).toBeNull();
+
+    await clickPrimary(t.presetReviewCreate);
+    const changeset = state.create.mock.calls[0][1];
+    expect(changeset.allocations).toEqual([{ tokenId: "near", qty: 2 }]);
+  });
+
+  it("a token outside the mix enters only when given an amount, and then is signed", async () => {
+    renderModal(mixedSource, { filled: false });
+    fireEvent.change(fieldOf(/^USDC\(NEAR\)/), { target: { value: "7" } });
+
+    await clickPrimary(t.presetReviewCreate);
+    const changeset = state.create.mock.calls[0][1];
+    expect(changeset.allocations).toEqual([{ tokenId: USDC, qty: 7 }]);
+  });
+
+  it("clearing the amount, or typing 0, brings the warning back", () => {
+    renderModal(mixedSource, { filled: false });
+    fireEvent.change(fieldOf(/^NEAR/), { target: { value: "2" } });
+    fireEvent.change(fieldOf(/^NEAR/), { target: { value: "" } });
+    expect(screen.getByText(t.presetReviewEnterAmount)).toBeTruthy();
+    fireEvent.change(fieldOf(/^NEAR/), { target: { value: "0" } });
+    expect(screen.getByText(t.presetReviewEnterAmount)).toBeTruthy();
+    expect(createButton().disabled).toBe(true);
+  });
+
+  it("lists the mix's tokens first and the others under their own title", () => {
+    renderModal(mixedSource, { filled: false });
+    const title = screen.getByText(t.presetReviewOtherTokens);
+    expect(screen.getByText(t.presetReviewOtherTokensNote)).toBeTruthy();
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(fieldOf(/^NEAR/), title)).toBe(true);
+    expect(before(title, fieldOf(/^USDC\(NEAR\)/))).toBe(true);
+  });
+
+  it("has no such title when every token offered is in the mix", () => {
+    state.available = new Map([["near", 5]]);
+    renderModal(mixedSource, { filled: false });
+    expect(screen.queryByText(t.presetReviewOtherTokens)).toBeNull();
+  });
+
+  it("holding none of the mix: says what the others do, and they can fund it", async () => {
+    renderModal(noneHeldSource, { filled: false });
+    expect(screen.getByText(t.presetReviewOtherTokensNote)).toBeTruthy();
+    expect(screen.getByText(t.presetReviewEnterAmount)).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole("button", { name: t.depositAmountMax })[0]);
+    expect(createButton().disabled).toBe(false);
+  });
+
+  it("offers no ✕: leaving a field empty is how a token stays out", () => {
+    renderModal(mixedSource, { filled: false });
+    expect(screen.queryByRole("button", { name: new RegExp(`^${t.presetReviewRemoveToken} `) })).toBeNull();
+  });
+
+  it("does not ask for an amount once an Allocate is in transit", async () => {
+    const { rerender } = renderModal(mixedSource, { filled: false });
+    fireEvent.change(fieldOf(/^NEAR/), { target: { value: "5" } });
+    state.create.mockRejectedValue(new RealAllocateUnconfirmedError("technical detail", "rec-1", "unconfirmed"));
+    await clickPrimary(t.presetReviewCreate);
+    // The NEAR left; USDC is still offered and empty, so no amount is chosen any more.
+    state.available = new Map([[USDC, 20]]);
+    rerender();
+    expect(screen.queryByText(t.presetReviewEnterAmount)).toBeNull();
+  });
+
+  it("with nothing to offer it keeps its own message, not this one", () => {
+    state.available = new Map();
+    renderModal(mixedSource, { filled: false });
+    expect(screen.getByText(t.presetReviewNoFunds)).toBeTruthy();
+    expect(screen.queryByText(t.presetReviewEnterAmount)).toBeNull();
   });
 });
 
@@ -825,5 +972,150 @@ describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-
     renderModal();
     expect(screen.getByText(t.storageCostPricesNotLive)).toBeTruthy();
     expect(createButton().disabled).toBe(true);
+  });
+});
+
+// D-397 (plan 041): a mix created straight from the editor signs through this same screen.
+describe("PresetReviewModal — a new mix from the editor (D-397)", () => {
+  const t = shellTranslations.en;
+  const sourceFor = (rows: NewPortfolioDraft["rows"]): ReviewSource => ({
+    kind: "new",
+    input: { name: DRAFT.name, presetId: DRAFT.presetId, rows },
+  });
+  beforeEach(resetFunds);
+  afterEach(cleanup);
+
+  // 🔴 What is signed does not depend on the way in.
+  it("signs exactly what a saved draft with the same rows signs", async () => {
+    renderModal(draftSource, { withBack: false });
+    await clickPrimary(t.presetReviewCreate);
+    cleanup();
+    renderModal(sourceFor(DRAFT.rows));
+    await clickPrimary(t.presetReviewCreate);
+
+    expect(state.create).toHaveBeenCalledTimes(2);
+    const [fromDraft, fromEditor] = state.create.mock.calls;
+    expect(fromEditor[0]).toBe(fromDraft[0]);
+    expect(fromEditor[1]).toEqual(fromDraft[1]);
+    expect(fromEditor[2]).toBe(fromDraft[2]);
+    expect(fromEditor[3]).toEqual(fromDraft[3]);
+  });
+
+  it("signed, it lands on the portfolio and closes, and leaves a saved draft alone", async () => {
+    const { onBack, onClose, onCreated } = renderModal(sourceFor(DRAFT.rows));
+    await clickPrimary(t.presetReviewCreate);
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+    expect(state.retire).not.toHaveBeenCalled();
+    expect(state.discard).not.toHaveBeenCalled();
+  });
+
+  it("with the funds in transit, only Close remains, which closes everything, and a saved draft stays", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    state.create.mockRejectedValue(new RealAllocateUnconfirmedError("x", "rec-1", "unconfirmed"));
+    const { onBack, onClose } = renderModal(sourceFor(DRAFT.rows));
+    await clickPrimary(t.presetReviewCreate);
+
+    expect(state.discard).not.toHaveBeenCalled();
+    expect(state.retire).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: t.presetReviewBack })).toBeNull();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: t.realAllocateClose }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(state.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("Escape and a click outside go back, with the name as it stands here, so nothing built is lost", () => {
+    const { onBack, onClose } = renderModal(sourceFor(DRAFT.rows));
+    fireEvent.change(screen.getByLabelText(t.portfolioNameLabel), { target: { value: "Renamed" } });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onBack).toHaveBeenLastCalledWith("Renamed");
+    fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    expect(onBack).toHaveBeenCalledTimes(2);
+    expect(onBack).toHaveBeenLastCalledWith("Renamed");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("mid-signature nothing goes back either", async () => {
+    state.create.mockImplementation(() => new Promise<void>(() => {}));
+    const { onBack } = renderModal(sourceFor(DRAFT.rows));
+    await clickPrimary(t.presetReviewCreate);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it("a mix from scratch is the user's own: no line about a starting point", () => {
+    renderModal({ kind: "new", input: { name: "Mine", presetId: null, rows: DRAFT.rows } });
+    expect(screen.queryByText(t.presetReviewNotAdvice)).toBeNull();
+  });
+
+  // Covered until now through the retired "create" mode of `AddFundsModal`.
+  it("names each leg of the signature, as creating a portfolio", async () => {
+    state.create.mockImplementation(() => new Promise<void>(() => {}));
+    const { rerender } = renderModal(sourceFor(DRAFT.rows));
+    await clickPrimary(t.presetReviewCreate);
+    state.stage = "preparing";
+    rerender();
+    expect(screen.getByText(t.realStagePreparing)).toBeTruthy();
+    state.stage = "awaiting-credit";
+    rerender();
+    expect(screen.getByText(t.realStageAwaitingCredit)).toBeTruthy();
+    state.stage = null;
+  });
+
+  it("a draft saved before the 10-token cap is held back, and says why", () => {
+    const ids = tokenRegistry.filter((token) => isPortfolioOfferable(token.id)).map((token) => token.id).slice(0, 11);
+    const rows = ids.map((tokenId, i) => ({ tokenId, targetPct: i === 0 ? 50 : 5, tolerancePct: 10, locked: false }));
+    renderModal(sourceFor(rows));
+    expect(screen.getByText(editorTranslations.en.appTooManyTokens.replace("{max}", "10"))).toBeTruthy();
+    expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each([
+    ["an earlier transfer unconfirmed: it says so, and still lets the user create", [{ id: "rec-1", op: "setup", portfolioId: null }], true],
+    ["nothing in transit: it says nothing", [], false],
+  ])("%s", (_label, pending, shown) => {
+    state.pending = pending;
+    renderModal(sourceFor(DRAFT.rows));
+    expect(screen.queryByText(t.pendingAllocateFundingNotice) !== null).toBe(shown);
+    expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(false);
+    state.pending = undefined;
+  });
+
+  // Covered until now, for this path, only by the retired "create" mode's own test.
+  describe("a token outside the catalog (D-396, D-389)", () => {
+    const DOGE = "nep141:doge.omft.near";
+
+    it("is shown with no field, and never signed", async () => {
+      state.available = new Map([["near", 5], [DOGE, 1000]]);
+      renderModal(sourceFor(DRAFT.rows));
+      expect(screen.getAllByRole("spinbutton")).toHaveLength(1);
+      expect(screen.getByText("DOGE")).toBeTruthy();
+      expect(screen.getByText(editorTranslations.en.addTokensNotAvailableYet)).toBeTruthy();
+
+      await clickPrimary(t.presetReviewCreate);
+      const changeset = state.create.mock.calls[0][1];
+      expect(changeset.allocations.map((a: { tokenId: string }) => a.tokenId)).toEqual(["near"]);
+    });
+
+    it("alone in the account, there is nothing to sign, and it says so", () => {
+      state.available = new Map([[DOGE, 1000]]);
+      renderModal(sourceFor(DRAFT.rows));
+      expect(screen.getByText(t.presetReviewNoFunds)).toBeTruthy();
+      expect(screen.queryByText(t.presetReviewEnterAmount)).toBeNull();
+      expect((screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("a token with no buy route still comes in, to be converted (D-491)", () => {
+      state.available = new Map([[MPDAO, 1000]]);
+      renderModal(sourceFor(DRAFT.rows));
+      expect(screen.getByRole("spinbutton", { name: /mpDAO/ })).toBeTruthy();
+    });
   });
 });

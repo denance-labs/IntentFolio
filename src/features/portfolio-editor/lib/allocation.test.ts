@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildScratchTargets,
   buildTargetsFromCurrentPortfolio,
   currentUsdWeightPct,
   demotePromotedAtZero,
@@ -477,47 +476,6 @@ describe("setAllLockState", () => {
     const initial = targets(["A", 40, true], ["B", 60, true]);
     const result = setAllLockState(initial, false);
     expect(result.every((target) => !target.locked)).toBe(true);
-  });
-});
-
-// --- buildScratchTargets (7.5b-08 atomic create) ---
-
-describe("buildScratchTargets", () => {
-  it("weights funded targets by USD share (summing to 100)", () => {
-    // BTC 1×80000 = 80000 (80%), ETH 10×2000 = 20000 (20%).
-    const result = buildScratchTargets({ [T_BTC]: 1, [T_ETH]: 10 }, [], prices, 10);
-    const btc = result.find((t) => t.tokenId === T_BTC)!;
-    const eth = result.find((t) => t.tokenId === T_ETH)!;
-    expect(Number(btc.targetPct)).toBeCloseTo(80, 2);
-    expect(Number(eth.targetPct)).toBeCloseTo(20, 2);
-    const sum = result.reduce((s, t) => s + (Number(t.targetPct) || 0), 0);
-    expect(sum).toBeCloseTo(100, 2);
-    expect(btc.tolerancePct).toBe(10);
-  });
-
-  it("folds rounding drift onto the largest funded target so the set sums to exactly 100", () => {
-    // Three equal-value funded tokens: 33.33 each rounds to 99.99 → +0.01 onto one.
-    const result = buildScratchTargets(
-      { [T_BTC]: 1, [T_ETH]: 40, [T_USDC]: 80000 },
-      [],
-      prices,
-      10
-    );
-    const sum = result.reduce((s, t) => s + (Number(t.targetPct) || 0), 0);
-    expect(Number(sum.toFixed(2))).toBe(100);
-  });
-
-  it("adds target-only tokens at 0% and ignores ones already funded", () => {
-    const result = buildScratchTargets({ [T_BTC]: 1 }, [T_ETH, T_BTC], prices, 10);
-    const eth = result.find((t) => t.tokenId === T_ETH)!;
-    expect(Number(eth.targetPct)).toBe(0);
-    // T_BTC stays a single funded target — not duplicated as a 0% target-only row.
-    expect(result.filter((t) => t.tokenId === T_BTC)).toHaveLength(1);
-    expect(Number(result.find((t) => t.tokenId === T_BTC)!.targetPct)).toBeCloseTo(100, 2);
-  });
-
-  it("returns an empty set when there are no funds and no target-only tokens", () => {
-    expect(buildScratchTargets({}, [], prices, 10)).toEqual([]);
   });
 });
 

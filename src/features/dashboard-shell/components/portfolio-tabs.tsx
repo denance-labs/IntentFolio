@@ -4,23 +4,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, House, Plus } from "lucide-react";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
+import { useFundableGeneralBalance } from "../hooks/use-fundable-general-balance";
 import { shellTranslations } from "../lib/translations";
 import { portfolioColor } from "../lib/portfolio-color";
 import { Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
 import { appPortfolioCap } from "@/features/vault/lib/change-set-preflight";
 import { PortfolioTabMenu } from "./portfolio-tab-menu";
-import { CreatePortfolioFlow } from "./create-portfolio-flow";
 import { PortfolioRenameModal } from "./portfolio-rename-modal";
 import { PortfolioDeleteModal } from "./portfolio-delete-modal";
 import type { ValidationResult } from "../lib/portfolio-validation";
 
 type ModalState =
   | { type: "none" }
-  | { type: "create" }
-  | { type: "blocked" }
+  | { type: "new-window" }
   | { type: "rename"; portfolioId: string; currentName: string }
   | { type: "rename-draft" }
+  | { type: "delete-draft" }
   | { type: "delete"; portfolioId: string };
 
 // The mobile <select>'s value for the draft's option. Not a portfolio id: those are numeric
@@ -33,8 +33,7 @@ export function PortfolioTabs({
   onMiCuentaClick,
   onPortfolioTabSelect,
   draftTab,
-  onDraftSaved,
-  onPortfolioCreated,
+  onNewPortfolio,
   signedOut = false,
   values,
 }: {
@@ -51,11 +50,15 @@ export function PortfolioTabs({
     active: boolean;
     onSelect: () => void;
     rename: (name: string, existingNames: string[]) => ValidationResult;
+    /** D-560: "Delete draft" in its menu, after asking. Nothing is signed. */
+    discard: () => void;
   };
-  /** After "+" saved a New Portfolio Draft: the shell lands on its tab (019-4). */
-  onDraftSaved?: () => void;
-  /** After "+" signed a new portfolio into existence: the shell lands on it (016 block 2.4). */
-  onPortfolioCreated?: () => void;
+  /**
+   * "+" with nothing in the way. The shell hosts the creation flow, not this strip: the flow can
+   * end in a signature, and the shell drops the strip when the wallet status changes, which would
+   * take the signature's screen and its "funds in transit" notice with it (D-298, D-397).
+   */
+  onNewPortfolio?: () => void;
   /** No wallet connected: "+" builds the anonymous draft (D-359). */
   signedOut?: boolean;
   /**
@@ -80,8 +83,13 @@ export function PortfolioTabs({
   const draftActive = !miCuentaActive && (draftTab?.active ?? false);
   // 022-D (D-455): one draft per account. While one is saved "+" waits: it looks muted and
   // opens a window that says why, with the way to the draft (029 B-22: a disabled button with
-  // a title said nothing on a phone, to a keyboard or to a screen reader).
-  const newBlockedByDraft = !!draftTab;
+  // a title said nothing on a phone, to a keyboard or to a screen reader). D-397: only until
+  // there are funds. With them a new portfolio is signed, not saved, so the draft is not in the
+  // way and stays as it is: the same window then offers both, the draft or a new one. Signed out
+  // there is nothing to sign with, whatever the read says.
+  const fundable = useFundableGeneralBalance();
+  const canCreateBesideDraft = !signedOut && fundable.status === "known" && fundable.fundable;
+  const newBlockedByDraft = !!draftTab && !canCreateBesideDraft;
   // D-476: at the cap "+" waits the same way, so no draft is built that could never be created.
   // The cap names its own reason, ahead of the draft's, and offers no way out (deleting means
   // choosing which). The Setup pre-flight still checks the chain's count before signing, for a
@@ -89,15 +97,32 @@ export function PortfolioTabs({
   const portfolioCap = appPortfolioCap();
   const newBlockedByCap = portfolios.length >= portfolioCap;
   const newBlocked = newBlockedByCap || newBlockedByDraft;
-  const newBlockedMessage = newBlockedByCap
+  const offersNewBesideDraft = !newBlocked && !!draftTab;
+  // What the window says. With a draft it follows the balance while open, so funds arriving add the
+  // way to a new portfolio in place, and funds leaving take it away.
+  const newWindowMessage = newBlockedByCap
     ? t.addPortfolioCapReached.replace("{max}", String(portfolioCap))
-    : newBlockedByDraft
-      ? t.addPortfolioDraftWaiting
-      : undefined;
+    : offersNewBesideDraft
+      ? t.addPortfolioDraftChoice.replace("{name}", () => draftTab.name)
+      : !newBlockedByDraft
+        ? undefined
+        : signedOut || fundable.status === "known"
+          ? t.addPortfolioDraftWaiting
+          : fundable.status === "loading"
+            ? t.draftCheckingBalance
+            : t.myAccountBalanceUnreadable;
+  // Nothing left to say (the draft discarded elsewhere): a window closes, and does not come back
+  // unasked with the next draft.
+  const windowNeeded = newWindowMessage !== undefined;
+  const windowStale =
+    (modal.type === "new-window" && !windowNeeded) || (modal.type === "delete-draft" && !draftTab);
+  useEffect(() => {
+    if (windowStale) setModal({ type: "none" });
+  }, [windowStale]);
   const newButtonProps = {
-    onClick: () => setModal(newBlocked ? { type: "blocked" } : { type: "create" }),
-    "aria-haspopup": newBlocked ? ("dialog" as const) : undefined,
-    "aria-describedby": newBlocked ? "portfolio-tabs-new-blocked" : undefined,
+    onClick: () => (windowNeeded ? setModal({ type: "new-window" }) : onNewPortfolio?.()),
+    "aria-haspopup": windowNeeded ? ("dialog" as const) : undefined,
+    "aria-describedby": windowNeeded ? "portfolio-tabs-new-blocked" : undefined,
   };
   const accountValue = values ? (values.fundingUsd === null ? "—" : formatUsd(values.fundingUsd)) : null;
   const selectDot = !miCuentaActive && !draftActive && activePortfolio ? portfolioColor(activePortfolio.id).dot : null;
@@ -310,11 +335,13 @@ export function PortfolioTabs({
                     <span className="rounded-md border border-slate-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       {t.draftTabBadge}
                     </span>
-                    {/* 022-G (D-458): only Rename; Discard stays in the draft's view. */}
+                    {/* 022-G (D-458): Rename. D-560: Delete too, as on a portfolio; the view keeps its button. */}
                     <PortfolioTabMenu
                       portfolioId={DRAFT_OPTION}
                       portfolioName={draftTab.name}
                       onRename={() => setModal({ type: "rename-draft" })}
+                      onDelete={() => setModal({ type: "delete-draft" })}
+                      deleteLabel={t.draftCardDiscard}
                     />
                   </div>
                 )}
@@ -469,6 +496,8 @@ export function PortfolioTabs({
                     portfolioId={DRAFT_OPTION}
                     portfolioName={draftTab.name}
                     onRename={() => setModal({ type: "rename-draft" })}
+                    onDelete={() => setModal({ type: "delete-draft" })}
+                    deleteLabel={t.draftCardDiscard}
                   />
                 ) : !miCuentaActive && activePortfolio && (
                   <PortfolioTabMenu
@@ -489,19 +518,19 @@ export function PortfolioTabs({
           </div>
         </div>
         {/* What a screen reader hears with "+" while it waits; the window says it again. */}
-        {newBlockedMessage ? (
+        {newWindowMessage ? (
           <span id="portfolio-tabs-new-blocked" className="sr-only">
-            {newBlockedMessage}
+            {newWindowMessage}
           </span>
         ) : null}
       </div>
 
-      {modal.type === "blocked" && newBlockedMessage && (
+      {modal.type === "new-window" && newWindowMessage && (
         <Modal titleId="portfolio-tabs-new-blocked-title" onClose={() => setModal({ type: "none" })}>
           <h2 id="portfolio-tabs-new-blocked-title" className="text-lg font-semibold text-slate-100">
             {t.addPortfolio}
           </h2>
-          <p className="mt-2 text-sm text-slate-300">{newBlockedMessage}</p>
+          <p className="mt-2 text-sm text-slate-300">{newWindowMessage}</p>
           <div className="mt-6 flex flex-wrap justify-end gap-3">
             <button
               type="button"
@@ -517,21 +546,30 @@ export function PortfolioTabs({
                   setModal({ type: "none" });
                   draftTab.onSelect();
                 }}
+                // The new portfolio is what "+" asked for, so it takes the main button when offered.
+                className={
+                  offersNewBesideDraft
+                    ? "rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                    : "rounded-xl bg-cyan-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                }
+              >
+                {t.addPortfolioBlockedGoTo.replace("{name}", () => draftTab.name)}
+              </button>
+            ) : null}
+            {offersNewBesideDraft ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setModal({ type: "none" });
+                  onNewPortfolio?.();
+                }}
                 className="rounded-xl bg-cyan-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
               >
-                {t.addPortfolioBlockedGoTo.replace("{name}", draftTab.name)}
+                {t.addPortfolioBuildNew}
               </button>
             ) : null}
           </div>
         </Modal>
-      )}
-      {modal.type === "create" && (
-        <CreatePortfolioFlow
-          onClose={() => setModal({ type: "none" })}
-          onDraftSaved={onDraftSaved}
-          onCreated={onPortfolioCreated}
-          signedOut={signedOut}
-        />
       )}
       {modal.type === "rename" && (
         <PortfolioRenameModal
@@ -543,6 +581,36 @@ export function PortfolioTabs({
       )}
       {modal.type === "delete" && (
         <PortfolioDeleteModal portfolioId={modal.portfolioId} onClose={() => setModal({ type: "none" })} />
+      )}
+      {modal.type === "delete-draft" && draftTab && (
+        <Modal titleId="portfolio-tabs-delete-draft-title" onClose={() => setModal({ type: "none" })}>
+          <h2 id="portfolio-tabs-delete-draft-title" className="text-lg font-semibold text-slate-100">
+            {t.portfolioDeleteTitle.replace("{name}", () => draftTab.name)}
+          </h2>
+          {/* The same question as the button in the draft's view. */}
+          <p className="mt-2 text-sm text-slate-300">
+            {canCreateBesideDraft ? t.draftReadyDiscardQuestion : t.draftCardDiscardQuestion}
+          </p>
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setModal({ type: "none" })}
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            >
+              {t.cancel}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModal({ type: "none" });
+                draftTab.discard();
+              }}
+              className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+            >
+              {t.portfolioDeleteConfirmAction}
+            </button>
+          </div>
+        </Modal>
       )}
       {modal.type === "rename-draft" && draftTab && (
         <PortfolioRenameModal

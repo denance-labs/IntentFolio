@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
 import { TokenIcon } from "@/features/market/lib/token-icons";
@@ -13,10 +13,6 @@ import { useVaultPrecheck } from "@/features/vault/hooks/use-vault-precheck";
 import { APP_MAX_TOKENS_PER_PORTFOLIO, growsPastAppTokenCap } from "@/features/vault/lib/change-set-preflight";
 import { VaultPrecheckNotice } from "@/features/vault/components/vault-precheck-notice";
 import { RelayPausedNotice } from "@/features/vault/components/relay-paused-notice";
-import {
-  PORTFOLIO_NAME_MAX_LENGTH,
-  validatePortfolioName,
-} from "@/features/dashboard-shell/lib/portfolio-validation";
 import { shellTranslations } from "@/features/dashboard-shell/lib/translations";
 import { MIN_FUNDED_USD } from "@/features/dashboard-shell/lib/general-balance";
 import { normalizeWalletError, type WalletErrorKind } from "@/features/wallet/adapter/normalize-error";
@@ -33,14 +29,7 @@ import { useLoginWallet } from "@/features/login-wallet";
 import { changeSetNoticeCopy } from "./confirm-changes-modal";
 import { formatDecimalForInput, percentChipAmount } from "../lib/decimal-input";
 import { amountChipClass, Modal } from "./portfolio-primitives";
-import { colorForSymbol, formatUsd, formatCrypto, formatTokenAmount } from "../lib/format";
-import { buildScratchTargets } from "../lib/allocation";
-import { buildChangeSet, changeSummaryToSignatureText, summarizeChangeSet } from "../lib/changeset";
-import {
-  StorageCostLine,
-  storageQuoteProblem,
-  useSetupStorageQuote,
-} from "@/features/dashboard-shell/components/storage-cost-line";
+import { colorForSymbol, formatUsd, formatCrypto } from "../lib/format";
 import type { translations } from "../lib/translations";
 import type { CurrentPortfolioQty } from "../types";
 
@@ -49,24 +38,18 @@ type T = (typeof translations)["en"];
 // Quick-fill chips for the allocate inputs (mirrors preset-review-modal).
 const PERCENT_CHIPS = [25, 50, 75] as const;
 
-type SharedProps = {
+type Props = {
   t: T;
-  // Live available General Balance per token (already net of any pending draft moves in
-  // edit mode; raw General Balance in create mode).
+  // Live available General Balance per token, already net of any pending draft moves.
   available: Map<string, number>;
   // Effective portfolio balances — drives the held-amount line + USD-desc order.
-  // Empty in create mode (brand-new portfolio).
   existingBalances: CurrentPortfolioQty;
   // Token ids that are part of the portfolio composition (target rows), even when they
   // hold no funds yet. Drives the "in portfolio" chip so a target-only token (0%, no
-  // balance) is flagged just like a funded one. Empty/omitted in create mode.
+  // balance) is flagged just like a funded one.
   compositionTokenIds?: readonly string[];
   prices: TokenPriceMap;
   onClose: () => void;
-};
-
-type EditProps = SharedProps & {
-  mode: "edit";
   // Applies one allocation (token → qty) from General Balance into the draft.
   onAllocate: (tokenId: string, qty: number) => void;
   // The funding account's balance is still being read: an empty list then means nothing yet.
@@ -88,15 +71,6 @@ type EditProps = SharedProps & {
     onFunded: (credited: Array<{ tokenId: string; qty: number }>) => void;
   };
 };
-
-type CreateProps = SharedProps & {
-  mode: "create";
-  existingNames: string[];
-  defaultTolerancePct: number;
-  onBack: () => void;
-};
-
-type Props = EditProps | CreateProps;
 
 type Entry = {
   id: string;
@@ -125,33 +99,36 @@ const listSymbols = (tokenIds: string[], lang: string) =>
 // instance would show the balance from before the transfer and offer to sign again over
 // funds in transit (D-298) — and a failure would land on nobody. Only the outcome ends it.
 const ignoreClose = () => {};
-const NO_ALLOCATIONS: Readonly<Record<string, number>> = {};
 
 // D-529: "Add funds" only assigns what the funding account holds; new targets come in through
-// "Add tokens" (`AddTargetsModal`). Create mode has had no caller since 019-5 and leaves with D-397.
-export function AddFundsModal(props: Props) {
-  const { t, available, existingBalances, compositionTokenIds, prices, onClose, mode } = props;
+// "Add tokens" (`AddTargetsModal`).
+export function AddFundsModal({
+  t,
+  available,
+  existingBalances,
+  compositionTokenIds,
+  prices,
+  onClose,
+  onAllocate,
+  balanceLoading = false,
+  onRetryBalance,
+  onDeposit,
+  realFunding,
+}: Props) {
   const { lang } = useLanguage();
   const shellT = shellTranslations[lang];
-  const { createPortfolioWithChangeSet, allocateIntoPortfolio, realAllocateStage, relaySends, vaultLive } = usePortfolio();
-  const realFunding = props.mode === "edit" ? props.realFunding : undefined;
+  const { allocateIntoPortfolio, realAllocateStage, relaySends, vaultLive } = usePortfolio();
   // Asked on open, never in the click (017-2). An edit without real funding never signs here.
-  const relayPaused = useRelayPaused(relaySends && (mode === "create" || !!realFunding));
+  const relayPaused = useRelayPaused(relaySends && !!realFunding);
   // D-356: an earlier Allocate still in transit may be part of the balance offered here.
   const { intentsAccountId } = useLoginWallet();
-  const { pending: pendingAllocates } = usePendingAllocates(mode === "create" || realFunding ? intentsAccountId : null);
+  const { pending: pendingAllocates } = usePendingAllocates(realFunding ? intentsAccountId : null);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   // Raw allocate input per token (kept as typed; clamped to available at read time).
   const [amounts, setAmounts] = useState<Record<string, string>>({});
 
-  // Create-mode chrome state.
-  const [name, setName] = useState(() =>
-    mode === "create"
-      ? uniqueName(`Portfolio ${props.existingNames.length + 1}`, props.existingNames)
-      : ""
-  );
   const [isSigning, setIsSigning] = useState(false);
   const [signError, setSignError] = useState<{ kind: WalletErrorKind; message: string } | null>(null);
   // Same terminal state as `preset-review-modal` (D-298): once set, only "Close" remains.
@@ -227,7 +204,7 @@ export function AddFundsModal(props: Props) {
       return a.symbol.localeCompare(b.symbol);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- priceOf reads props.prices
-  }, [available, existingBalances, compositionTokenIds, prices, mode]);
+  }, [available, existingBalances, compositionTokenIds, prices]);
 
   const q = search.trim().toLowerCase();
   const visible = q
@@ -268,38 +245,13 @@ export function AddFundsModal(props: Props) {
   const anyRowError = entries.some((e) => rowBelowMin(e) || rowOverMax(e));
   const hasFunds = Object.keys(allocations).length > 0;
 
-  // Create mode: the Setup exactly as it will be signed — every funded token joins the
-  // composition — so its Storage Cost (D-528) is priced from the same changeset the click signs.
-  // GROSS amounts: the cost is deducted downstream, once.
-  const defaultTolerancePct = props.mode === "create" ? props.defaultTolerancePct : undefined;
-  const createChangeset = useMemo(
-    () =>
-      mode === "create"
-        ? buildChangeSet([], buildScratchTargets(allocations, [], prices, defaultTolerancePct), allocations)
-        : null,
-    [mode, allocations, prices, defaultTolerancePct]
-  );
-  const compositionForStorage = useMemo(
-    () => (createChangeset?.tokenAdditions ?? []).map((a) => a.tokenId),
-    [createChangeset]
-  );
-  const storageQuote = useSetupStorageQuote({
-    portfolioName: name.trim(),
-    compositionTokenIds: compositionForStorage,
-    grossAllocations: createChangeset ? allocations : NO_ALLOCATIONS,
-  });
-  const storageProblem = storageQuoteProblem(storageQuote, shellT);
-
-  // The app's cap on a growing composition (D-528). Create: every funded token joins it. Edit:
-  // the tokens joining — funded from outside the composition — on top of it.
+  // The app's cap on a growing composition (D-528): the tokens joining, funded from outside the
+  // composition, on top of it.
   const capBlocked = useMemo(() => {
-    if (mode === "create") return growsPastAppTokenCap(0, compositionForStorage.length);
     const current = new Set(compositionTokenIds ?? []);
     const joining = Object.keys(allocations).filter((id) => !current.has(id));
     return growsPastAppTokenCap(current.size, current.size + joining.length);
-  }, [mode, compositionForStorage, compositionTokenIds, allocations]);
-
-  const nameValidation = mode === "create" ? validatePortfolioName(name, props.existingNames) : null;
+  }, [compositionTokenIds, allocations]);
 
   // Real portfolio with funds selected: the primary signs (P5).
   const signsNow = !!realFunding && hasFunds;
@@ -307,29 +259,18 @@ export function AddFundsModal(props: Props) {
 
   // A pause the click ran into (the firewall brake cannot be seen on open) blocks the retry too.
   // The vault would refuse this Allocate (017-9b): asked on open, and only where this confirm signs.
-  const vaultBlock = useVaultPrecheck(
-    vaultLive && (mode === "create" ? hasFunds : signsNow) ? { kind: "allocate", tokenIds: Object.keys(allocations) } : null
-  );
+  const vaultBlock = useVaultPrecheck(vaultLive && signsNow ? { kind: "allocate", tokenIds: Object.keys(allocations) } : null);
   const relayBlocked = relayPaused || signError?.kind === "relay-paused" || !!vaultBlock;
   const canConfirm =
-    mode === "edit"
-      ? hasFunds && !anyRowError && !isSigning && !capBlocked && !(signsNow && (blockedByDraft || relayBlocked))
-      : !!nameValidation?.ok &&
-        hasFunds &&
-        !anyRowError &&
-        !isSigning &&
-        !relayBlocked &&
-        !capBlocked &&
-        storageQuote?.ok === true;
+    hasFunds && !anyRowError && !isSigning && !capBlocked && !(signsNow && (blockedByDraft || relayBlocked));
   // Only where this confirm would sign: a draft-only edit stays usable while paused.
-  const showRelayPaused = relayPaused && !unconfirmedReason && (mode === "create" || signsNow);
+  const showRelayPaused = relayPaused && !unconfirmedReason && signsNow;
   const showVaultBlock = !!vaultBlock && !showRelayPaused && !unconfirmedReason;
   // D-356, and D-405 for a top-up: not during or after this modal's own attempt (its record
   // would be the one counted). A top-up says it from the open, so it never pushes the amount
   // chips down mid-tap, and for a pending top-up of this same portfolio too: the D-326 strip on
   // the page sits behind this modal's overlay.
-  const showPendingNotice =
-    (mode === "create" || !!realFunding) && !!pendingAllocates?.length && !isSigning && !unconfirmedReason;
+  const showPendingNotice = !!realFunding && !!pendingAllocates?.length && !isSigning && !unconfirmedReason;
 
   // P3: the credit restarts the withdrawal clock of the WHOLE position of a token the
   // portfolio already holds, not just of the amount being added.
@@ -350,13 +291,13 @@ export function AddFundsModal(props: Props) {
   }
 
   function handleEditConfirm() {
-    if (props.mode !== "edit" || !canConfirm) return;
-    for (const [id, qty] of Object.entries(allocations)) props.onAllocate(id, qty);
+    if (!canConfirm) return;
+    for (const [id, qty] of Object.entries(allocations)) onAllocate(id, qty);
     onClose();
   }
 
   async function handleRealFundingConfirm() {
-    // 🔴 Terminal state, as in create mode: the primary is "Close" and this guard is what
+    // 🔴 Terminal state, as in `preset-review-modal`: the primary is "Close" and this guard is what
     // keeps a second click from signing the same funds again (D-298).
     if (unconfirmedReason) {
       onClose();
@@ -380,7 +321,7 @@ export function AddFundsModal(props: Props) {
         tokenAdditions,
       }));
     } catch (e) {
-      // Same split as create mode: submitted-but-unconfirmed is not a signature failure.
+      // Same split as `preset-review-modal`: submitted-but-unconfirmed is not a signature failure.
       if (e instanceof RealAllocateUnconfirmedError) setUnconfirmedReason(e.reason);
       else if (e instanceof AmountExceedsBalanceError) setBalanceChanged(true);
       else if (e instanceof RealChangeSetInvalidError) setChangeSetReason(e.reason);
@@ -416,45 +357,6 @@ export function AddFundsModal(props: Props) {
     }
   }
 
-  async function handleCreateConfirm() {
-    // 🔴 Terminal state: the primary is "Close" here. This guard — not the button label — is
-    // what keeps a second click from signing the same funds again.
-    if (unconfirmedReason) {
-      onClose();
-      return;
-    }
-    if (props.mode !== "create" || !canConfirm || !createChangeset || !storageQuote?.ok) return;
-    setIsSigning(true);
-    setSignError(null);
-    setBalanceChanged(false);
-    setChangeSetReason(null);
-    try {
-      const summary = summarizeChangeSet(createChangeset, [], symbolFor);
-      const text = changeSummaryToSignatureText(summary, name.trim());
-      await createPortfolioWithChangeSet(name.trim(), createChangeset, text, storageQuote);
-      onClose();
-    } catch (e) {
-      // Same split as `preset-review-modal`: a submitted-but-unconfirmed live Allocate is
-      // NOT a signature failure — the funds are recoverable — and gets its own copy.
-      if (e instanceof RealAllocateUnconfirmedError) setUnconfirmedReason(e.reason);
-      // Before `normalizeWalletError`, which would show "Couldn't complete the signature" plus
-      // a message in base units — for something that was never signed.
-      else if (e instanceof AmountExceedsBalanceError) setBalanceChanged(true);
-      // The pre-flight refused the Setup before signing (e.g. the 16-portfolio cap, D-361).
-      else if (e instanceof RealChangeSetInvalidError) setChangeSetReason(e.reason);
-      else setSignError(normalizeWalletError(e));
-    } finally {
-      setIsSigning(false);
-    }
-  }
-
-  function nameError(): string | null {
-    if (!nameValidation || nameValidation.ok) return null;
-    if (nameValidation.error === "nameEmpty") return shellT.portfolioNameEmpty;
-    if (nameValidation.error === "nameTooLong") return shellT.portfolioNameTooLong.replace("{max}", String(PORTFOLIO_NAME_MAX_LENGTH));
-    if (nameValidation.error === "nameDuplicate") return shellT.portfolioNameDuplicate;
-    return null;
-  }
   function errorHeadline(kind: WalletErrorKind): string {
     if (kind === "cancel") return shellT.signErrorCancelled;
     if (kind === "unavailable") return shellT.signErrorUnavailable;
@@ -465,19 +367,16 @@ export function AddFundsModal(props: Props) {
     return shellT.signErrorGeneric;
   }
 
-  const title = mode === "create" ? shellT.presetReviewTitle : t.addFundsTitle;
-  const onDeposit = props.mode === "edit" ? props.onDeposit : undefined;
-  const balanceLoading = props.mode === "edit" && !!props.balanceLoading;
-  const onRetryBalance = props.mode === "edit" ? props.onRetryBalance : undefined;
+  const title = t.addFundsTitle;
   // D-529: nothing to assign, known (not still loading or unread, not emptied by a failed Allocate).
   // Unread (D-541) shares its layout: no search over a list that cannot be filled.
-  const fundingEmpty = mode === "edit" && entries.length === 0 && !balanceLoading && !unconfirmedReason;
+  const fundingEmpty = entries.length === 0 && !balanceLoading && !unconfirmedReason;
 
   return (
     <Modal
       titleId="add-tokens-title"
       onClose={isSigning ? ignoreClose : onClose}
-      initialFocusRef={(mode === "create" ? undefined : searchRef) as RefObject<HTMLElement> | undefined}
+      initialFocusRef={searchRef}
       maxWidth="max-w-lg"
     >
       <h2 id="add-tokens-title" className="text-lg font-semibold text-slate-100">
@@ -508,42 +407,6 @@ export function AddFundsModal(props: Props) {
         disabled={unconfirmedReason !== null || (!!realFunding && isSigning)}
         className="m-0 min-w-0 border-0 p-0 disabled:opacity-60"
       >
-        {mode === "create" ? (
-          <div className="mt-4">
-            <label htmlFor="add-tokens-name" className="mb-1.5 block text-sm font-medium text-slate-300">
-              {shellT.portfolioNameLabel}
-            </label>
-            <input
-              id="add-tokens-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={PORTFOLIO_NAME_MAX_LENGTH}
-              placeholder={shellT.portfolioNamePlaceholder}
-              aria-describedby={name !== "" && nameError() ? undefined : "add-tokens-name-hint"}
-              className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-                name !== "" && !nameValidation?.ok ? "border-rose-500" : "border-slate-700 focus:border-slate-500"
-              }`}
-            />
-            <div className="mt-1 flex items-start justify-between gap-2">
-              {name !== "" && nameError() ? (
-                <p role="alert" className="text-xs text-rose-400">
-                  {nameError()}
-                </p>
-              ) : (
-                <p id="add-tokens-name-hint" className="text-xs text-slate-400">
-                  {shellT.portfolioNameHint}
-                </p>
-              )}
-              <span className="shrink-0 text-xs tabular-nums text-slate-400">
-                {shellT.portfolioNameCounter
-                  .replace("{count}", String(name.length))
-                  .replace("{max}", String(PORTFOLIO_NAME_MAX_LENGTH))}
-              </span>
-            </div>
-          </div>
-        ) : null}
-
         {/* Nothing to search in an empty funding account; with no field, the Deposit takes the focus. */}
         {fundingEmpty ? null : (
           <div className="mt-4">
@@ -558,9 +421,6 @@ export function AddFundsModal(props: Props) {
           </div>
         )}
 
-        {mode === "create" && (
-          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t.addTokensToAllocate}</p>
-        )}
         <div
           ref={listRef}
           role="list"
@@ -687,15 +547,6 @@ export function AddFundsModal(props: Props) {
                         <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">
                           ≈ {formatUsd(amt * e.price)}
                         </span>
-                        {/* D-528: the token the Storage Cost is charged in says what reaches the portfolio. */}
-                        {storageQuote?.ok && storageQuote.tokenId === e.id ? (
-                          <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-300">
-                            {shellT.storageCostNet.replace(
-                              "{amount}",
-                              `${formatTokenAmount(amt - storageQuote.qty, e.price)} ${e.symbol}`
-                            )}
-                          </span>
-                        ) : null}
                         {/* D-319: Max writes the whole float, wider than the field; the cut is only
                             visual (the value signed is the field's), so say it is all of it. */}
                         {wholeBalance && (
@@ -760,18 +611,7 @@ export function AddFundsModal(props: Props) {
             {t.appTooManyTokens.replace("{max}", String(APP_MAX_TOKENS_PER_PORTFOLIO))}
           </p>
         ) : null}
-        {mode === "create" && storageQuote?.ok ? (
-          <StorageCostLine quote={storageQuote} usdPrice={priceOf(storageQuote.tokenId)} t={shellT} />
-        ) : mode === "create" && storageProblem ? (
-          <p className="mt-3 text-[11px] leading-snug text-amber-200">
-            {storageProblem}
-          </p>
-        ) : null}
       </fieldset>
-
-      {mode === "create" ? (
-        <p className="mt-4 text-[11px] leading-snug text-slate-400">{shellT.presetReviewNotAdvice}</p>
-      ) : null}
 
       {/* One always-mounted live region, so the outcome is announced when it appears. */}
       <div role="status" aria-live="polite">
@@ -862,23 +702,17 @@ export function AddFundsModal(props: Props) {
           <button
             ref={backRef}
             type="button"
-            onClick={mode === "create" ? props.onBack : onClose}
+            onClick={onClose}
             disabled={isSigning}
             className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
           >
-            {mode === "create" ? shellT.presetReviewBack : t.cancel}
+            {t.cancel}
           </button>
         )}
         <button
           ref={primaryRef}
           type="button"
-          onClick={
-            mode === "create"
-              ? handleCreateConfirm
-              : signsNow || unconfirmedReason
-                ? handleRealFundingConfirm
-                : handleEditConfirm
-          }
+          onClick={signsNow || unconfirmedReason ? handleRealFundingConfirm : handleEditConfirm}
           // "Close" must stay usable even when the refetched balance leaves nothing to submit.
           disabled={unconfirmedReason ? false : !canConfirm}
           aria-describedby={
@@ -890,33 +724,17 @@ export function AddFundsModal(props: Props) {
           }
           className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
         >
-          {mode === "create"
-            ? unconfirmedReason
-              ? shellT.realAllocateClose
+          {unconfirmedReason
+            ? t.addTokensClose
+            : !signsNow
+              ? t.addTokensApply
               : isSigning
                 ? inFlightButtonLabel(realAllocateStage, t)
                 : signError || balanceChanged || changeSetReason
-                  ? shellT.presetReviewRetry
-                  : shellT.presetReviewCreate
-            : unconfirmedReason
-              ? t.addTokensClose
-              : !signsNow
-                ? t.addTokensApply
-                : isSigning
-                  ? inFlightButtonLabel(realAllocateStage, t)
-                  : signError || balanceChanged || changeSetReason
-                    ? t.addTokensRetry
-                    : t.addTokensSignAndAdd}
+                  ? t.addTokensRetry
+                  : t.addTokensSignAndAdd}
         </button>
       </div>
     </Modal>
   );
-}
-
-// First unused "<base>" / "<base> N" so the default name never collides (mirrors preset-review).
-function uniqueName(base: string, existing: string[]): string {
-  if (!existing.includes(base)) return base;
-  let i = 2;
-  while (existing.includes(`${base} ${i}`)) i++;
-  return `${base} ${i}`;
 }

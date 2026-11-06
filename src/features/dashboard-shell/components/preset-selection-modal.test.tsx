@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import { shellTranslations } from "../lib/translations";
 
 const state = vi.hoisted(() => ({ lang: "en" as "en" | "es" }));
@@ -12,7 +13,8 @@ vi.mock("../context/language-context", () => ({
 import { PresetSelectionModal } from "./preset-selection-modal";
 
 function cardFor(name: string): HTMLElement {
-  return screen.getByRole("button", { name: new RegExp(`^${name}`) });
+  // Escaped: "NEAR + Stocks" holds a "+".
+  return screen.getByRole("button", { name: new RegExp(`^${name.replace(/[+]/g, "\\+")}`) });
 }
 
 // 016 1.4 / T6 + Q6: the badge and the descriptor chip each sit on exactly one card, and the
@@ -41,10 +43,46 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     expect(cardFor(t.presetSatoshiName).textContent).toContain(t.presetSatoshiTag);
   });
 
-  // 016 block 2: the chooser opens on the starting point (Balanced) — and on a card, not on
-  // the tolerance "?", whose tooltip would otherwise open over the grid every time.
-  it("opens with focus on the Balanced card, so the tolerance tooltip stays closed", () => {
-    expect(document.activeElement).toBe(cardFor(t.presetBalancedName));
+  // The chooser opens on a card, not on the tolerance "?", whose tooltip would otherwise open
+  // over the grid every time. D-558: the first stock card, which also keeps the stocks in view
+  // at 390 px.
+  it("opens with focus on the first stock card, so the tolerance tooltip stays closed", () => {
+    expect(document.activeElement).toBe(cardFor(t.presetBigTechName));
+  });
+
+  // D-558: the presets holding stocks lead, marked, with their note once.
+  it("shows the stock presets first, in their own block with the note", () => {
+    const block = screen.getByRole("region", { name: t.presetStocksTitle });
+    const cards = within(block).getAllByRole("button");
+    expect(cards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining(t.presetBigTechName),
+      expect.stringContaining(t.presetNearStocksName),
+    ]);
+    expect(block.textContent).toContain(editorTranslations[lang].stockSectionNote);
+    const all = screen.getAllByRole("button").filter((b) => b.textContent?.includes(t.presetBandLabel));
+    expect(all[0]).toBe(cards[0]);
+    expect(all[1]).toBe(cards[1]);
+    expect(all).toHaveLength(8);
+    for (const card of cards) {
+      expect(card.textContent).toContain(t.presetStocksChip);
+      expect(card.className).toContain("border-fuchsia-300/60");
+    }
+  });
+
+  it("leaves the other presets unmarked, and the starting point on Balanced", () => {
+    const card = cardFor(t.presetBalancedName);
+    expect(card.textContent).not.toContain(t.presetStocksChip);
+    expect(card.className).toContain("border-slate-700");
+    expect(card.className).not.toContain("fuchsia");
+    expect(cardFor(t.presetBigTechName).textContent).not.toContain(t.presetStartingPointBadge);
+  });
+
+  it("lists the stocks first inside a card and names each one for screen readers", () => {
+    const card = cardFor(t.presetNearStocksName);
+    const text = card.textContent ?? "";
+    expect(text.indexOf("NVDA")).toBeLessThan(text.indexOf("NEAR 40%"));
+    expect(text).toContain(`${editorTranslations[lang].stockChipEtf}: QQQ 20%`);
+    expect(text).toContain(`${editorTranslations[lang].stockChipStock}: NVDA 20%`);
   });
 
   // 021 R6: every preset card shows its risk as a colored bar, and says the level in words.

@@ -11,9 +11,24 @@ import { SIMULATION_DEFAULT_USD } from "../lib/new-portfolio-draft-simulation";
 
 // 016 block 2.2. The editor's contract: a preset loads exactly, "from scratch" starts empty,
 // nothing invalid is ever saved, and what is saved is a composition the vault accepts —
-// row by row what the screen showed.
+// row by row what the screen showed. D-397: what its footer offers follows the funds.
 
-const state = vi.hoisted(() => ({ lang: "en" as "en" | "es" }));
+const state = vi.hoisted(() => ({
+  lang: "en" as "en" | "es",
+  fundable: { status: "known", fundable: false, tokenIds: [], usd: 0 } as Record<string, unknown>,
+  review: null as null | Record<string, unknown>,
+}));
+vi.mock("../hooks/use-fundable-general-balance", () => ({ useFundableGeneralBalance: () => state.fundable }));
+vi.mock("./preset-review-modal", () => ({
+  PresetReviewModal: (props: { onBack: (name: string) => void; onClose: () => void; onCreated?: () => void }) => {
+    state.review = props;
+    return (
+      <div role="dialog" aria-label="funds-screen">
+        <button type="button" onClick={() => props.onBack("Renamed there")}>funds-back</button>
+      </div>
+    );
+  },
+}));
 vi.mock("../context/language-context", () => ({
   useLanguage: () => ({ lang: state.lang, setLang: vi.fn() }),
 }));
@@ -40,23 +55,40 @@ function renderEditor({
   existingNames = [] as string[],
   withBack = true,
   draft = undefined as NewPortfolioDraft | undefined,
-  funded = undefined as boolean | undefined,
+  funded = undefined as boolean | null | undefined,
+  signedOut = false,
+  savedDraftName = null as string | null,
+  balanceUnreadable = false,
 } = {}) {
   const onSaved = vi.fn();
   const onBack = vi.fn();
   const onClose = vi.fn();
-  render(
+  const onCreated = vi.fn();
+  const view = (fundedNow: boolean | null | undefined, savedNow: string | null = savedDraftName, draftNow: NewPortfolioDraft | null | undefined = draft) => (
     <NewPortfolioDraftEditor
       presetId={presetId}
       existingNames={existingNames}
       onSaved={onSaved}
       onBack={withBack ? onBack : undefined}
       onClose={onClose}
-      draft={draft}
-      funded={funded}
+      draft={draftNow}
+      funded={fundedNow}
+      signedOut={signedOut}
+      savedDraftName={savedNow}
+      balanceUnreadable={balanceUnreadable}
+      onCreated={onCreated}
     />
   );
-  return { onSaved, onBack, onClose };
+  const { rerender } = render(view(funded));
+  return {
+    onSaved,
+    onBack,
+    onClose,
+    onCreated,
+    setFunded: (next: boolean | null) => rerender(view(next)),
+    setSavedDraft: (next: string | null) => rerender(view(funded, next)),
+    discardResumed: () => rerender(view(funded, savedDraftName, null)),
+  };
 }
 
 const stored = () => readNewPortfolioDraft("alice.near");
@@ -66,14 +98,209 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftEditor (%s)", (lang) => {
   const te = editorTranslations[lang];
   const pctInput = (symbol: string) => screen.getByLabelText(`${te.target} ${symbol}`) as HTMLInputElement;
   const tolInput = (symbol: string) => screen.getByLabelText(`${te.band} ${symbol}`) as HTMLInputElement;
-  const saveButton = () => screen.getByRole("button", { name: t.draftCreate });
+  const saveButton = () => screen.getByRole("button", { name: t.draftSaveDraft });
+  const createButton = () => screen.getByRole("button", { name: t.draftCreate });
   const blocker = () => document.getElementById("draft-editor-blocker")?.textContent ?? null;
 
   beforeEach(() => {
     state.lang = lang;
+    state.review = null;
+    state.fundable = { status: "known", fundable: false, tokenIds: [], usd: 0 };
     window.localStorage.clear();
   });
   afterEach(cleanup);
+
+  // D-397 (plan 041, P1): the table of the plan, one row each.
+  describe("the footer follows the funds", () => {
+    const saved = () => screen.queryByRole("button", { name: t.draftSaveDraft });
+    const created = () => screen.queryByRole("button", { name: t.draftCreate });
+
+    it("signed out: 'Create portfolio' saves, as ever, and nothing else is offered", () => {
+      const { onSaved } = renderEditor({ signedOut: true, funded: true });
+      expect(saved()).toBeNull();
+      fireEvent.click(createButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(state.review).toBeNull();
+    });
+
+    it("with a wallet and no funds: only 'Save draft'", () => {
+      const { onSaved } = renderEditor({ funded: false });
+      expect(created()).toBeNull();
+      fireEvent.click(saveButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(stored()?.name).toBe(t.presetSatoshiName);
+    });
+
+    it("with funds: 'Create portfolio' opens the funds screen with the mix, and saves nothing", () => {
+      const { onSaved } = renderEditor({ funded: true });
+      fireEvent.click(createButton());
+      expect(screen.getByRole("dialog", { name: "funds-screen" })).toBeTruthy();
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(stored()).toBeNull();
+      const source = state.review?.source as { kind: string; input: { name: string; rows: { tokenId: string }[] } };
+      expect(source.kind).toBe("new");
+      expect(source.input.name).toBe(t.presetSatoshiName);
+      expect(source.input.rows.map((r) => r.tokenId)).toEqual([BTC, ETH, NEAR]);
+    });
+
+    it("with funds: 'Save draft' is the other action, and it saves", () => {
+      const { onSaved } = renderEditor({ funded: true });
+      fireEvent.click(saveButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(state.review).toBeNull();
+      expect(stored()?.rows).toHaveLength(3);
+    });
+
+    it("hands the funds screen the landing and the way to close the flow", () => {
+      const { onClose, onCreated } = renderEditor({ funded: true });
+      fireEvent.click(createButton());
+      expect(state.review?.onClose).toBe(onClose);
+      expect(state.review?.onCreated).toBe(onCreated);
+    });
+
+    it.each([
+      ["still being read", false, () => t.draftCheckingBalance],
+      ["unreadable", true, () => t.myAccountBalanceUnreadable],
+    ])("with the balance %s: creating is blocked, with the reason, and saving is not", (_label, balanceUnreadable, reason) => {
+      const { onSaved } = renderEditor({ funded: null, balanceUnreadable });
+      expect(blocker()).toBe(reason());
+      expect(createButton().getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(createButton());
+      expect(state.review).toBeNull();
+      fireEvent.click(saveButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it("an invalid mix blocks both, and 'Create portfolio' takes the user to the problem", () => {
+      renderEditor({ presetId: null, funded: true });
+      expect(createButton().getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(createButton());
+      expect(state.review).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: t.draftAddToken }));
+      fireEvent.click(saveButton());
+      expect(stored()).toBeNull();
+    });
+
+    it("resuming a saved draft has one action, even with funds: it saves", () => {
+      const draft = { v: 1 as const, name: "Mine", presetId: null, updatedAt: 1, rows: [{ tokenId: NEAR, targetPct: 100, tolerancePct: 10, locked: false }] };
+      const { onSaved } = renderEditor({ draft, funded: true });
+      expect(created()).toBeNull();
+      fireEvent.click(saveButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    // A discard from another tab leaves the form as it is, and saving writes it again.
+    it("a resumed draft discarded elsewhere stays what it was: one action, saving", () => {
+      const draft = { v: 1 as const, name: "Mine", presetId: null, updatedAt: 1, rows: [{ tokenId: NEAR, targetPct: 100, tolerancePct: 10, locked: false }] };
+      const { discardResumed, onSaved } = renderEditor({ draft, funded: true });
+      discardResumed();
+      expect(created()).toBeNull();
+      fireEvent.click(saveButton());
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it("the actions follow the balance while the editor is open", () => {
+      const { setFunded } = renderEditor({ funded: false });
+      expect(created()).toBeNull();
+      setFunded(true);
+      expect(created()).toBeTruthy();
+      expect(saved()).toBeTruthy();
+      setFunded(false);
+      expect(created()).toBeNull();
+      expect(saved()).toBeTruthy();
+    });
+  });
+
+  // D-397 (plan 041, P2): a mix built beside a saved draft never replaces it.
+  describe("with a draft saved", () => {
+    const savedLine = () => t.draftAlreadySaved.replace("{name}", "My mix");
+
+    it("names it, and does not offer to save", () => {
+      renderEditor({ funded: true, savedDraftName: "My mix" });
+      expect(screen.getByText(savedLine())).toBeTruthy();
+      expect(screen.queryByRole("button", { name: t.draftSaveDraft })).toBeNull();
+      fireEvent.click(createButton());
+      expect(state.review).not.toBeNull();
+    });
+
+    it("the balance falling to zero blocks creating, and still offers no way to replace it", () => {
+      const { setFunded, onSaved } = renderEditor({ funded: true, savedDraftName: "My mix" });
+      setFunded(false);
+      expect(screen.queryByRole("button", { name: t.draftSaveDraft })).toBeNull();
+      expect(blocker()).toBe(t.presetReviewNoFunds);
+      fireEvent.click(createButton());
+      expect(state.review).toBeNull();
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(stored()).toBeNull();
+    });
+
+    it("a draft saved from another tab while the editor is open stops the offer to save", () => {
+      const { setSavedDraft } = renderEditor({ funded: true });
+      expect(screen.getByRole("button", { name: t.draftSaveDraft })).toBeTruthy();
+      setSavedDraft("My mix");
+      expect(screen.queryByRole("button", { name: t.draftSaveDraft })).toBeNull();
+      expect(screen.getByText(savedLine())).toBeTruthy();
+    });
+
+    it("with the balance not read yet, creating is blocked and saving still is not offered", () => {
+      renderEditor({ funded: null, savedDraftName: "My mix" });
+      expect(blocker()).toBe(t.draftCheckingBalance);
+      expect(screen.queryByRole("button", { name: t.draftSaveDraft })).toBeNull();
+      expect(createButton().getAttribute("aria-disabled")).toBe("true");
+    });
+
+    it("a name with a replacement pattern reads as typed", () => {
+      renderEditor({ funded: true, savedDraftName: "US$& mix" });
+      expect(screen.getByText(t.draftAlreadySaved.replace("{name}", () => "US$& mix"))).toBeTruthy();
+    });
+
+    it("the name it suggests avoids the draft's", () => {
+      renderEditor({ funded: true, savedDraftName: t.presetSatoshiName });
+      expect((screen.getByLabelText(t.portfolioNameLabel) as HTMLInputElement).value).toBe(`${t.presetSatoshiName} 2`);
+    });
+  });
+
+  // D-397 (plan 041): the funds screen is another view of this dialog.
+  describe("coming back from the funds screen", () => {
+    it("finds everything as it was, with the name changed there, and the focus on the main button", () => {
+      renderEditor({ presetId: "satoshi", funded: true });
+      fireEvent.change(pctInput("nBTC"), { target: { value: "60" } });
+      const edited = [pctInput("nBTC").value, pctInput("ETH").value, pctInput("NEAR").value];
+      fireEvent.click(createButton());
+      expect(screen.queryByLabelText(`${te.target} nBTC`)).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "funds-back" }));
+
+      expect((screen.getByLabelText(t.portfolioNameLabel) as HTMLInputElement).value).toBe("Renamed there");
+      expect([pctInput("nBTC").value, pctInput("ETH").value, pctInput("NEAR").value]).toEqual(edited);
+      expect(document.activeElement).toBe(createButton());
+    });
+  });
+
+  // D-397 (plan 041, P4).
+  describe("Add token marks what the funding account holds", () => {
+    const openPicker = () => fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
+    const rowOf = (name: string) => screen.getByRole("button", { name: new RegExp(`${name}$`) }).closest("li")!;
+
+    it("only the fundable tokens, and in the same words in both languages' table", () => {
+      state.fundable = { status: "known", fundable: true, tokenIds: [NEAR], usd: 5 };
+      renderEditor({ presetId: null, funded: true });
+      openPicker();
+      expect(within(rowOf("NEAR Protocol")).getByText(t.draftPickerInFundingAccount)).toBeTruthy();
+      expect(screen.getAllByText(t.draftPickerInFundingAccount)).toHaveLength(1);
+    });
+
+    it.each([
+      ["while it is read", { status: "loading" }],
+      ["when it is unreadable", { status: "error", retry: () => {} }],
+      ["with nothing fundable", { status: "known", fundable: false, tokenIds: [], usd: 0 }],
+    ])("marks nothing %s", (_label, fundable) => {
+      state.fundable = fundable;
+      renderEditor({ presetId: null });
+      openPicker();
+      expect(screen.queryByText(t.draftPickerInFundingAccount)).toBeNull();
+    });
+  });
 
   it("loads a preset exactly: rows, %, its tolerance, its name, its origin", () => {
     renderEditor({ presetId: "satoshi" });
@@ -242,6 +469,29 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftEditor (%s)", (lang) => {
     expect(screen.getByText("Dai Stablecoin (on Ethereum)")).toBeTruthy();
     expect(screen.getByText(te.addTokensNotAvailableYet)).toBeTruthy();
     expect(screen.queryByRole("button", { name: new RegExp(`^${te.addTokensAddAction} DAI`) })).toBeNull();
+  });
+
+  // D-558: a stock stays marked once it is in the mix, and an ETF says so.
+  it("marks the stocks in the composition, and only them", () => {
+    renderEditor({ presetId: "nearStocks" });
+    expect(screen.getAllByText(te.stockChipStock)).toHaveLength(2);
+    expect(screen.getAllByText(te.stockChipEtf)).toHaveLength(1);
+  });
+
+  // D-558: the same list as a portfolio's "Add tokens": the stocks lead, with their note once.
+  it("lists the stocks first in the token picker", () => {
+    renderEditor({ presetId: "balanced" });
+    fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
+    const stocks = within(screen.getByRole("list", { name: te.stockSectionTitle })).getAllByRole("listitem");
+    expect(stocks.map((li) => li.querySelector("span.font-semibold")?.textContent)).toEqual([
+      "AAPL",
+      "AMZN",
+      "GOOGL",
+      "NVDA",
+      "QQQ",
+      "TSLA",
+    ]);
+    expect(screen.getAllByText(te.stockSectionNote)).toHaveLength(1);
   });
 
   it("shows ZEC, in the catalog but not withdrawable yet (D-389), as not available", () => {

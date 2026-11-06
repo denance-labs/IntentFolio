@@ -3,14 +3,19 @@
 import { useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
-import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
+import {
+  matchesStockSearch,
+  StockRowChip,
+  StockTokenSections,
+} from "@/features/portfolio-editor/components/stock-token-sections";
 import { colorForSymbol } from "@/features/portfolio-editor/lib/format";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import type { TokenId } from "@/features/intents-account/mock-contract/types";
 import { APP_MAX_TOKENS_PER_PORTFOLIO } from "@/features/vault/lib/change-set-preflight";
 import { useLanguage } from "../context/language-context";
+import { useFundableGeneralBalance } from "../hooks/use-fundable-general-balance";
 import type { NewPortfolioDraftRow } from "../lib/new-portfolio-draft";
 import { draftHasToken } from "../lib/new-portfolio-draft-editing";
 import { shellTranslations } from "../lib/translations";
@@ -52,6 +57,10 @@ export function DraftTokenPickerContent({
   const t = shellTranslations[lang];
   const te = editorTranslations[lang];
   const [search, setSearch] = useState("");
+  // D-397 (plan 041, P4): what the funding account holds, by the rule of what the funds screen
+  // offers, so a token is not marked and then missing there. Nothing while it is not read.
+  const fundable = useFundableGeneralBalance();
+  const inFundingAccount = new Set<string>(fundable.status === "known" ? fundable.tokenIds : []);
 
   const q = search.trim().toLowerCase();
   const visible = q
@@ -59,7 +68,8 @@ export function DraftTokenPickerContent({
         (tk) =>
           tk.symbol.toLowerCase().includes(q) ||
           tk.name.toLowerCase().includes(q) ||
-          tk.category.toLowerCase().includes(q)
+          tk.category.toLowerCase().includes(q) ||
+          matchesStockSearch(tk.id, q, te)
       )
     : PICKER_TOKENS;
   const atMax = rows.length >= APP_MAX_TOKENS_PER_PORTFOLIO;
@@ -83,8 +93,12 @@ export function DraftTokenPickerContent({
       {visible.length === 0 ? (
         <p className="mt-2 px-3 py-8 text-center text-sm text-slate-400">{te.noTokensFound}</p>
       ) : (
-        <ul className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5">
-          {visible.map((tk) => {
+        <StockTokenSections
+          items={visible}
+          idOf={(tk) => tk.id}
+          t={te}
+          className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
+          renderRow={(tk) => {
             const inDraft = draftHasToken(rows, tk.id);
             const unavailable = !inDraft && atMax;
             const outOfCatalog = !isPortfolioOfferable(tk.id);
@@ -104,9 +118,14 @@ export function DraftTokenPickerContent({
                   style={{ backgroundColor: `${colorForSymbol(tk.symbol).hex}22` }}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-100">{tk.symbol}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-slate-100">{tk.symbol}</span>
+                    <StockRowChip tokenId={tk.id} t={te} />
+                  </span>
                   <span className="block truncate text-[11px] text-slate-400">{tk.name}</span>
-                  {isStockToken(tk.id) ? <span className="block text-[11px] text-slate-400">{te.stockTargetNote}</span> : null}
+                  {inFundingAccount.has(tk.id) ? (
+                    <span className="block text-[11px] leading-snug text-emerald-300">{t.draftPickerInFundingAccount}</span>
+                  ) : null}
                 </span>
                 {outOfCatalog ? (
                   <span className="shrink-0 text-[11px] text-amber-400">{te.addTokensNotAvailableYet}</span>
@@ -133,8 +152,8 @@ export function DraftTokenPickerContent({
                 )}
               </li>
             );
-          })}
-        </ul>
+          }}
+        />
       )}
       <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-5 border-t border-slate-800 bg-slate-950 px-6 pb-6 pt-3">
         <button type="button" onClick={onBack} className={SECONDARY_BUTTON}>

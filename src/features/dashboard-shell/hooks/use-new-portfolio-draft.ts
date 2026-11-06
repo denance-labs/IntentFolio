@@ -7,6 +7,7 @@ import {
   discardNewPortfolioDraft,
   discardNewPortfolioDraftIfUnchanged,
   draftFromSnapshot,
+  draftsReplacedOnConnect,
   getNewPortfolioDraftsSnapshot,
   saveNewPortfolioDraft,
   saveNewPortfolioDraftSimulationUsd,
@@ -14,10 +15,21 @@ import {
   type NewPortfolioDraft,
   type NewPortfolioDraftInput,
   type NewPortfolioDraftValidation,
+  type ReplacedOnConnect,
 } from "../lib/new-portfolio-draft";
 
 // No drafts on the server render; the client snapshot takes over after hydration.
 const getServerSnapshot = () => "";
+
+/** D-397: the accounts' drafts the anonymous one would replace on connecting, live like the rest. */
+export function useDraftsReplacedOnConnect(): ReplacedOnConnect[] {
+  const raw = useSyncExternalStore(
+    subscribeNewPortfolioDrafts,
+    getNewPortfolioDraftsSnapshot,
+    getServerSnapshot
+  );
+  return useMemo(() => draftsReplacedOnConnect(raw), [raw]);
+}
 
 export type UseNewPortfolioDraftResult = {
   draft: NewPortfolioDraft | null;

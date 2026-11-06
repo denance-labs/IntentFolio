@@ -17,9 +17,9 @@ export type FundableGeneralBalance =
   | { status: "known"; fundable: boolean; tokenIds: TokenId[]; usd: number };
 
 /**
- * Whether the General Balance can fund a new portfolio right now (any token worth ≥ $1) —
- * the one fact that picks the creation path (016 block 2): with funds, create and sign as
- * today; without, design a New Portfolio Draft first; with a draft and funds, confirm it.
+ * Whether the General Balance can fund a new portfolio right now (any token worth at least
+ * MIN_FUNDED_USD) — the one fact that picks the creation path (016 block 2, D-397): with funds,
+ * create and sign; without, save a New Portfolio Draft; with a draft and funds, confirm it.
  * It is read from the balance, not from a deposit event, so every way in (QR, the NEAR
  * wallet tab, My Account's standalone Deposit button) resolves the same way.
  *

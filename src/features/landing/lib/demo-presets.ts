@@ -43,6 +43,8 @@ const PRESET_TITLES: Record<PresetId, { en: string; es: string }> = {
   stables: { en: "Stablecoins", es: "Estables" },
   satoshi: { en: "Satoshi", es: "Satoshi" },
   pioneers: { en: "Pioneers", es: "Pioneros" },
+  bigTech: { en: "Big Tech", es: "Big Tech" },
+  nearStocks: { en: "NEAR + Stocks", es: "NEAR + Acciones" },
 };
 
 export function buildDemoPresets(lang: "en" | "es"): DemoPreset[] {

@@ -49,6 +49,10 @@ export const shellTranslations = {
     addPortfolioCapShort: "Max {max} portfolios",
     // 029 B-22: the window "+" opens while it waits (a draft saved, or the cap).
     addPortfolioBlockedGoTo: "Go to “{name}”",
+    // D-397: "+" with a draft saved and funds offers both.
+    addPortfolioDraftChoice:
+      "You already have the draft “{name}” saved. You can go to it, or build a new portfolio: that one isn't saved as a draft, it's created when you sign.",
+    addPortfolioBuildNew: "Build a new portfolio",
     addPortfolioBlockedClose: "Close",
     addPortfolioComing: "Add portfolio (coming in 1.3)",
     selectPortfolio: "Active portfolio",
@@ -385,6 +389,13 @@ export const shellTranslations = {
     presetSatoshiDesc: "Bitcoin-heavy with ETH and NEAR. High conviction, wide tolerance.",
     presetPioneersName: "Pioneers",
     presetPioneersDesc: "Bitcoin, the first cryptocurrency, and Ethereum, the first with smart contracts. Just the two.",
+    // D-558: the presets holding stocks.
+    presetStocksTitle: "Portfolios with stocks",
+    presetStocksChip: "Stocks",
+    presetBigTechName: "Big Tech",
+    presetBigTechDesc: "Big US tech names and a Nasdaq-100 ETF, tokenized.",
+    presetNearStocksName: "NEAR + Stocks",
+    presetNearStocksDesc: "Mostly stocks, with NEAR alongside.",
     // Preset review / create (5.6)
     presetReviewTitle: "Review your portfolio",
     presetReviewComposition: "Target composition",
@@ -397,9 +408,11 @@ export const shellTranslations = {
     presetReviewCreate: "Sign & assign funds",
     presetReviewRetry: "Retry",
     presetReviewBack: "Back",
-    presetReviewRemoved: "Removed",
     presetReviewRemoveToken: "Remove",
-    presetReviewAddToken: "Add",
+    // D-553: the funds start empty; these say what is on offer and what is still missing.
+    presetReviewOtherTokens: "Other tokens in your account",
+    presetReviewOtherTokensNote: "Not in this portfolio's mix. If you add them, they convert as the portfolio moves toward your targets.",
+    presetReviewEnterAmount: "Enter an amount for at least one token to create this portfolio.",
     // New Portfolio Draft editor (016 block 2.2): a portfolio built before depositing.
     draftEditorTitle: "Build your portfolio",
     draftEditorSubtitle: "You can build it before depositing; you confirm it when your funds arrive.",
@@ -407,7 +420,7 @@ export const shellTranslations = {
     draftEditorSubtitleFunded: "Build it and confirm it with your funds.",
     draftBasedOnPreset: "Based on {preset}",
     draftAddToken: "Add token",
-    // 019-4: saving lands on the draft's tab, signed in or not; the deposit is a button there.
+    // D-397: with funds it opens the funds screen. Signed out it saves, and lands on the draft's tab.
     draftCreate: "Create portfolio",
     draftTargetNotPositive: "Set a share above 0% or remove this token.",
     draftCheckingBalance: "Checking your balance…",
@@ -418,6 +431,15 @@ export const shellTranslations = {
     // keeps the draft in this browser (nothing is signed).
     draftEditModeBanner: "Edit mode — save the draft to keep your changes.",
     draftSaveDraft: "Save draft",
+    // D-397: the editor of a new mix with a draft already saved, which it never replaces.
+    draftAlreadySaved: "You already have the draft “{name}” saved. This one isn't saved as a draft: it's created when you sign.",
+    // D-397: signed out, next to "Connect": connecting that account replaces its older draft.
+    draftReplacedOnConnect:
+      "This browser already has the draft “{name}” from {account}. If you connect that account, this one replaces it.",
+    draftReplacedOnConnectMany:
+      "This browser already has the draft “{name}” from {account} and {count} more. If you connect one of those accounts, this one replaces its draft.",
+    // D-397: the token picker marks what the funding account holds.
+    draftPickerInFundingAccount: "In your funding account",
     // The "This is how $10,000 would be split…" block of the editor and the draft's tab (D-358,
     // copy D-504). A reference at today's prices: conditional and approximate (D-456). The
     // amount field sits between draftSimWith and draftSimWouldHold.
@@ -446,7 +468,7 @@ export const shellTranslations = {
     // The same draft once the General Balance can fund it (016 block 2.4).
     // D-413: says where the money comes from — it may have been there before the draft.
     // {amount} is what the General Balance can put in (lines worth MIN_FUNDED_USD, one cent).
-    draftReadyTitle: "You have {amount} in your funding account — assign it to “{name}” to start it",
+    draftReadyTitle: "You have {amount} in your funding account — assign funds to “{name}” to start it",
     draftReadyConfirm: "Assign funds to this portfolio",
     draftReadyDiscardQuestion: "Delete this draft? Your funds stay in your funding account.",
     // 029 B-13: the same amount, short, over the actions under the table (the title is out of view there).
@@ -464,7 +486,7 @@ export const shellTranslations = {
     welcomeNotNow: "Not now",
     // 029 B-23: the window offered on opening a $0 portfolio with funds in the funding account
     // (the draft's uses `draftReadyTitle`); its buttons are `draftReadyConfirm` and this.
-    assignFundsPortfolioTitle: "You have {amount} in your funding account — assign it to “{name}”",
+    assignFundsPortfolioTitle: "You have {amount} in your funding account — assign funds to “{name}”",
     assignFundsNotNow: "Not now",
     presetReviewRemaining: "{amount} stays in your funding account.",
     // D-528: the Setup's Storage Cost. Never "fee" or "commission"; no mention of a refund.
@@ -652,6 +674,9 @@ export const shellTranslations = {
     addPortfolioCapReached: "Llegaste al máximo de {max} portfolios por cuenta: elimina uno para crear otro.",
     addPortfolioCapShort: "Máximo {max} portfolios",
     addPortfolioBlockedGoTo: "Ir a «{name}»",
+    addPortfolioDraftChoice:
+      "Ya tienes el borrador «{name}» guardado. Puedes ir a él o armar un portfolio nuevo: ese no se guarda como borrador, se crea cuando firmas.",
+    addPortfolioBuildNew: "Armar un portfolio nuevo",
     addPortfolioBlockedClose: "Cerrar",
     addPortfolioComing: "Agregar portfolio (disponible en 1.3)",
     selectPortfolio: "Portfolio activo",
@@ -951,6 +976,12 @@ export const shellTranslations = {
     presetSatoshiDesc: "Bitcoin pesado con ETH y NEAR. Alta convicción, tolerancia amplia.",
     presetPioneersName: "Pioneros",
     presetPioneersDesc: "Bitcoin, la primera criptomoneda, y Ethereum, la primera con contratos inteligentes. Solo los dos.",
+    presetStocksTitle: "Portfolios con acciones",
+    presetStocksChip: "Acciones",
+    presetBigTechName: "Big Tech",
+    presetBigTechDesc: "Grandes tecnológicas de EE. UU. y un ETF del Nasdaq-100, tokenizados.",
+    presetNearStocksName: "NEAR + Acciones",
+    presetNearStocksDesc: "Mayormente acciones, con NEAR al lado.",
     // Preset review / create (5.6)
     presetReviewTitle: "Revisa tu portfolio",
     presetReviewComposition: "Composición objetivo",
@@ -963,9 +994,10 @@ export const shellTranslations = {
     presetReviewCreate: "Firmar y asignar fondos",
     presetReviewRetry: "Reintentar",
     presetReviewBack: "Volver",
-    presetReviewRemoved: "Quitados",
     presetReviewRemoveToken: "Quitar",
-    presetReviewAddToken: "Agregar",
+    presetReviewOtherTokens: "Otros tokens de tu cuenta",
+    presetReviewOtherTokensNote: "No están en la mezcla de este portfolio. Si los agregas, se irán convirtiendo a medida que avanza hacia tus objetivos.",
+    presetReviewEnterAmount: "Ingresa un monto en al menos un token para crear este portfolio.",
     draftEditorTitle: "Arma tu portfolio",
     draftEditorSubtitle: "Puedes armarlo antes de depositar; lo confirmas cuando lleguen tus fondos.",
     draftEditorSubtitleFunded: "Ármalo y confírmalo con tus fondos.",
@@ -979,6 +1011,12 @@ export const shellTranslations = {
     draftKeepEditing: "Seguir editando",
     draftEditModeBanner: "Modo edición — guarda el borrador para conservar los cambios.",
     draftSaveDraft: "Guardar borrador",
+    draftAlreadySaved: "Ya tienes el borrador «{name}» guardado. Este no se guarda como borrador: se crea cuando firmas.",
+    draftReplacedOnConnect:
+      "Este navegador ya tiene el borrador «{name}» de {account}. Si conectas esa cuenta, este lo reemplaza.",
+    draftReplacedOnConnectMany:
+      "Este navegador ya tiene el borrador «{name}» de {account} y {count} más. Si conectas una de esas cuentas, este reemplaza su borrador.",
+    draftPickerInFundingAccount: "En tu cuenta de fondos",
     draftSimTitle: "Vista previa de tu reparto",
     draftSimWith: "Así se repartirían",
     draftSimWouldHold: "entre tus tokens, según los porcentajes objetivo que elegiste:",
@@ -998,7 +1036,7 @@ export const shellTranslations = {
     draftCardDiscardQuestion: "¿Eliminar este borrador?",
     draftCardDiscardYes: "Sí",
     draftCardDiscardNo: "No",
-    draftReadyTitle: "Tienes {amount} en tu cuenta de fondos — asígnalo a «{name}» para ponerlo en marcha",
+    draftReadyTitle: "Tienes {amount} en tu cuenta de fondos — asigna fondos a «{name}» para ponerlo en marcha",
     draftReadyConfirm: "Asignar fondos a este portfolio",
     draftReadyDiscardQuestion: "¿Eliminar este borrador? Tus fondos quedan en tu cuenta de fondos.",
     draftReadyBalanceLine: "Tienes {amount} en tu cuenta de fondos",
@@ -1009,7 +1047,7 @@ export const shellTranslations = {
     welcomeCta: "Armar mi primer portfolio",
     welcomeCtaAnother: "Armar un portfolio",
     welcomeNotNow: "Ahora no",
-    assignFundsPortfolioTitle: "Tienes {amount} en tu cuenta de fondos — asígnalo a «{name}»",
+    assignFundsPortfolioTitle: "Tienes {amount} en tu cuenta de fondos — asigna fondos a «{name}»",
     assignFundsNotNow: "Ahora no",
     presetReviewRemaining: "Te quedan {amount} en tu cuenta de fondos.",
     storageCostLabel: "Costo de almacenamiento (único, al crear el portfolio)",

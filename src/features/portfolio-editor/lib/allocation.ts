@@ -32,60 +32,6 @@ export function buildTargetsFromCurrentPortfolio(tokens: TokenDefinition[], curr
     });
 }
 
-// Create-mode (7.5b-08): synthesize a target set for a brand-new portfolio from the
-// chosen allocations. Each funded token's target is its USD weight across the funded
-// total, so targets start == initial weights (mirrors allocateToPortfolio's behaviour
-// in the editor). Tokens added without funds (target-only) start at 0%. Rounding drift
-// is folded onto the largest funded target so the funded set sums to exactly 100.
-export function buildScratchTargets(
-  allocations: Record<string, number>,
-  targetOnlyIds: string[],
-  prices: TokenPriceMap,
-  defaultTolerancePct = 10
-): TargetAllocation[] {
-  const funded = Object.entries(allocations).filter(([, qty]) => qty > 0);
-
-  let totalUsd = 0;
-  const usdById = new Map<string, number>();
-  for (const [id, qty] of funded) {
-    const price = prices[id]?.usdPrice ?? getTokenById(id)?.fallbackUsdPrice ?? 0;
-    const usd = qty * price;
-    usdById.set(id, usd);
-    totalUsd += usd;
-  }
-
-  const fundedTargets = funded.map(([id]) => {
-    const pct = totalUsd > 0 ? Number((((usdById.get(id) ?? 0) / totalUsd) * 100).toFixed(2)) : 0;
-    return makeTarget(id, pct, defaultTolerancePct, false);
-  });
-
-  if (fundedTargets.length > 0) {
-    const sum = fundedTargets.reduce((s, t) => s + (Number(t.targetPct) || 0), 0);
-    const drift = Number((100 - sum).toFixed(2));
-    if (Math.abs(drift) >= 0.01) {
-      let bestIndex = 0;
-      let bestValue = -Infinity;
-      fundedTargets.forEach((t, i) => {
-        const v = Number(t.targetPct) || 0;
-        if (v > bestValue) {
-          bestValue = v;
-          bestIndex = i;
-        }
-      });
-      fundedTargets[bestIndex] = {
-        ...fundedTargets[bestIndex],
-        targetPct: Number((bestValue + drift).toFixed(2)),
-      };
-    }
-  }
-
-  const targetOnlyTargets = targetOnlyIds
-    .filter((id) => !(allocations[id] > 0))
-    .map((id) => makeTarget(id, 0, defaultTolerancePct, false));
-
-  return [...fundedTargets, ...targetOnlyTargets];
-}
-
 // USD-weighted share (%) of one token across an effective portfolio (committed balances
 // + draft deltas), using the same (qty × price) / totalUsd weighting as the rendered
 // rows. Seeds a freshly-allocated token's target at its current weight so funding from

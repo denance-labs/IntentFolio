@@ -11,6 +11,7 @@ import {
   discardNewPortfolioDraft,
   discardNewPortfolioDraftIfUnchanged,
   draftToTargets,
+  draftsReplacedOnConnect,
   moveAnonymousDraftToAccount,
   parseNewPortfolioDraft,
   readNewPortfolioDraft,
@@ -643,5 +644,56 @@ describe("subscribeNewPortfolioDrafts", () => {
     saveNewPortfolioDraft("alice.near", balanced(), []);
     window.dispatchEvent(new StorageEvent("storage", { key: NEW_PORTFOLIO_DRAFT_KEY }));
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+// D-397 (plan 041, P3): the same rule `moveAnonymousDraftToAccount` applies, told beforehand.
+describe("draftsReplacedOnConnect", () => {
+  const stored = (name: string, updatedAt: number) => ({
+    v: 1,
+    name,
+    presetId: null,
+    updatedAt,
+    rows: [{ tokenId: "near", targetPct: 100, tolerancePct: 10, locked: false }],
+  });
+  const raw = (store: Record<string, unknown>) => JSON.stringify(store);
+
+  it("lists the accounts' older drafts, the most recent first", () => {
+    expect(
+      draftsReplacedOnConnect(
+        raw({ [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100), "a.near": stored("Old", 10), "b.near": stored("Recent", 90) })
+      )
+    ).toEqual([
+      { accountId: "b.near", name: "Recent" },
+      { accountId: "a.near", name: "Old" },
+    ]);
+  });
+
+  it.each([
+    ["no anonymous draft", { "a.near": stored("Mine", 10) }],
+    ["an invalid anonymous draft", { [ANONYMOUS_DRAFT_SLOT]: { v: 1 }, "a.near": stored("Mine", 10) }],
+    ["no account draft", { [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100) }],
+    ["an invalid account draft", { [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100), "a.near": { v: 1 } }],
+    // Then the anonymous one is what goes on connecting, so there is nothing to warn about.
+    ["a newer account draft", { [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100), "a.near": stored("Mine", 200) }],
+    ["a tie, which keeps the account's", { [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100), "a.near": stored("Mine", 100) }],
+  ])("lists nothing with %s", (_label, store) => {
+    expect(draftsReplacedOnConnect(raw(store))).toEqual([]);
+  });
+
+  it("lists nothing on corrupt or empty storage", () => {
+    expect(draftsReplacedOnConnect("{not json")).toEqual([]);
+    expect(draftsReplacedOnConnect("")).toEqual([]);
+  });
+
+  it("agrees with what connecting does", () => {
+    window.localStorage.setItem(
+      NEW_PORTFOLIO_DRAFT_KEY,
+      raw({ [ANONYMOUS_DRAFT_SLOT]: stored("Anon", 100), "a.near": stored("Mine", 10), "b.near": stored("Later", 200) })
+    );
+    const listed = draftsReplacedOnConnect(window.localStorage.getItem(NEW_PORTFOLIO_DRAFT_KEY) ?? "");
+    expect(listed.map((d) => d.accountId)).toEqual(["a.near"]);
+    expect(moveAnonymousDraftToAccount("a.near")).toBe("moved");
+    expect(readNewPortfolioDraft("a.near")?.name).toBe("Anon");
   });
 });

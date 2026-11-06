@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
-import type { NewPortfolioDraft, NewPortfolioDraftValidation } from "../lib/new-portfolio-draft";
+import { NEW_PORTFOLIO_DRAFT_KEY, type NewPortfolioDraft, type NewPortfolioDraftValidation } from "../lib/new-portfolio-draft";
 import { shellTranslations } from "../lib/translations";
 import { SIMULATION_DEFAULT_USD } from "../lib/new-portfolio-draft-simulation";
 
@@ -12,6 +12,9 @@ import { SIMULATION_DEFAULT_USD } from "../lib/new-portfolio-draft-simulation";
 // Composition's rules; "Save draft" hands the rows to the caller, "Cancel" drops them.
 
 const state = vi.hoisted(() => ({ lang: "en" as "en" | "es" }));
+vi.mock("../hooks/use-fundable-general-balance", () => ({
+  useFundableGeneralBalance: () => ({ status: "known", fundable: false, tokenIds: [], usd: 0 }),
+}));
 vi.mock("../context/language-context", () => ({
   useLanguage: () => ({ lang: state.lang, setLang: vi.fn() }),
 }));
@@ -347,5 +350,82 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftView (%s)", (lang) => {
     renderView("ready");
     fireEvent.click(screen.getByRole("button", { name: t.draftCardDiscard }));
     expect(screen.getByRole("group", { name: t.draftReadyDiscardQuestion })).toBeTruthy();
+  });
+});
+
+// D-397 (plan 041, P3): next to "Connect", while connecting the wrong account can still be avoided.
+describe("NewPortfolioDraftView — the draft that connecting would replace", () => {
+  const t = shellTranslations.en;
+  const stored = (name: string, updatedAt: number) => ({ ...DRAFT, name, updatedAt });
+  const seed = (store: Record<string, unknown>) =>
+    window.localStorage.setItem(NEW_PORTFOLIO_DRAFT_KEY, JSON.stringify(store));
+  const view = (variant: "signed-out" | "waiting") => (
+    <NewPortfolioDraftView
+      draft={stored("Anon", 100)}
+      onSaveRows={() => ({ ok: true })}
+      onDiscard={vi.fn()}
+      onSimulationUsdChange={vi.fn()}
+      {...(variant === "signed-out" ? { variant, onConnect: vi.fn() } : { variant, onDeposit: vi.fn() })}
+    />
+  );
+
+  beforeEach(() => {
+    state.lang = "en";
+    window.localStorage.clear();
+  });
+  afterEach(cleanup);
+
+  it("names the draft and the account", () => {
+    seed({ "*anonymous": stored("Anon", 100), "alice.near": stored("Her mix", 50) });
+    render(view("signed-out"));
+    expect(
+      screen.getByText(t.draftReplacedOnConnect.replace("{name}", "Her mix").replace("{account}", "alice.near"))
+    ).toBeTruthy();
+  });
+
+  it("with several: the most recent, and how many more", () => {
+    seed({ "*anonymous": stored("Anon", 100), "a.near": stored("Old", 10), "b.near": stored("Recent", 90), "c.near": stored("Mid", 50) });
+    render(view("signed-out"));
+    expect(
+      screen.getByText(
+        t.draftReplacedOnConnectMany.replace("{name}", "Recent").replace("{account}", "b.near").replace("{count}", "2")
+      )
+    ).toBeTruthy();
+  });
+
+  it("a name with placeholders or replacement patterns reads as typed", () => {
+    seed({ "*anonymous": stored("Anon", 100), "alice.near": stored("{count} $& mix", 50), "bob.near": stored("Older", 10) });
+    render(view("signed-out"));
+    const shown = screen.getByText(/This browser already has/).textContent;
+    expect(shown).toContain("“{count} $& mix” from alice.near and 1 more");
+  });
+
+  it("follows the store: a draft discarded elsewhere takes the notice with it", () => {
+    seed({ "*anonymous": stored("Anon", 100), "alice.near": stored("Her mix", 50) });
+    render(view("signed-out"));
+    expect(screen.getByText(/This browser already has/)).toBeTruthy();
+    act(() => {
+      seed({ "*anonymous": stored("Anon", 100) });
+      window.dispatchEvent(new StorageEvent("storage", { key: NEW_PORTFOLIO_DRAFT_KEY }));
+    });
+    expect(screen.queryByText(/This browser already has/)).toBeNull();
+  });
+
+  it("cuts a long account", () => {
+    const id = `0x${"a".repeat(40)}`;
+    seed({ "*anonymous": stored("Anon", 100), [id]: stored("Her mix", 50) });
+    render(view("signed-out"));
+    expect(screen.queryByText(new RegExp(id))).toBeNull();
+    expect(screen.getByText(new RegExp(`${id.slice(0, 12)}…${id.slice(-8)}`))).toBeTruthy();
+  });
+
+  it("says nothing with no other draft, or with a wallet connected", () => {
+    seed({ "*anonymous": stored("Anon", 100) });
+    render(view("signed-out"));
+    expect(screen.queryByText(/This browser already has/)).toBeNull();
+    cleanup();
+    seed({ "*anonymous": stored("Anon", 100), "alice.near": stored("Her mix", 50) });
+    render(view("waiting"));
+    expect(screen.queryByText(/This browser already has/)).toBeNull();
   });
 });

@@ -1,12 +1,15 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { useRef } from "react";
 import { InfoTooltip, Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
+import { STOCK_HEADING_CLASS, StockChip, StockIcon, StockSlot } from "@/features/market/lib/stock-marker";
+import { isStockToken, stockKind } from "@/features/market/lib/stock-tokens";
 import { getTokenById } from "@/features/market/lib/token-registry";
+import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import {
   portfolioPresets,
   STARTING_POINT_PRESET_ID,
+  type PortfolioPreset,
   type PresetId,
   type PresetRisk,
 } from "@/content/portfolio-presets";
@@ -22,6 +25,8 @@ export const PRESET_NAME_KEY: Record<PresetId, keyof ShellTranslations> = {
   stables: "presetStablesName",
   satoshi: "presetSatoshiName",
   pioneers: "presetPioneersName",
+  bigTech: "presetBigTechName",
+  nearStocks: "presetNearStocksName",
 };
 const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
   conservative: "presetConservativeDesc",
@@ -30,6 +35,8 @@ const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
   stables: "presetStablesDesc",
   satoshi: "presetSatoshiDesc",
   pioneers: "presetPioneersDesc",
+  bigTech: "presetBigTechDesc",
+  nearStocks: "presetNearStocksDesc",
 };
 // Neutral descriptor chip for presets whose name alone says little about the mix (T6).
 const TAG_KEY: Partial<Record<PresetId, keyof ShellTranslations>> = {
@@ -48,51 +55,92 @@ const RISK_BAR: Record<PresetRisk, { width: string; color: string; label: keyof 
   veryHigh: { width: "80%", color: "bg-orange-400", label: "presetRiskVeryHigh" },
 };
 
-/** A card of the chooser: a preset, or "start from scratch". */
-export type PresetChoice = PresetId | "scratch";
-
 function symbolFor(tokenId: string): string {
   return getTokenById(tokenId)?.symbol ?? tokenId;
 }
 
+// D-558: the presets holding a stock lead the chooser, in a block of their own.
+const holdsStock = (preset: PortfolioPreset) => preset.slots.some((slot) => isStockToken(slot.tokenId));
+const STOCK_PRESETS = portfolioPresets.filter(holdsStock);
+const OTHER_PRESETS = portfolioPresets.filter((preset) => !holdsStock(preset));
+// Opens on the first one: focusing a card further down would scroll the stocks away at 390 px.
+const INITIAL_FOCUS_PRESET_ID = STOCK_PRESETS[0]?.id ?? STARTING_POINT_PRESET_ID;
+
+// The border color is left to each card: two of them on one element resolve by stylesheet order.
 const CARD_CLASS =
-  "flex flex-col gap-2 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-left transition hover:border-cyan-400/60 hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "flex flex-col gap-2 rounded-2xl border bg-slate-900 p-4 text-left transition hover:border-cyan-400/60 hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
 const CHIP_CLASS = "rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none";
 
 export function PresetSelectionModal({
   onClose,
   onSelectPreset,
   onSelectScratch,
-  pendingChoice = null,
 }: {
   onClose: () => void;
   onSelectPreset: (presetId: PresetId) => void;
   onSelectScratch: () => void;
-  /**
-   * A card chosen while the balance is still being read (016 block 2.2): it shows the wait
-   * and every card ignores clicks until the flow moves on. `aria-disabled`, not `disabled`,
-   * so the focused card keeps focus.
-   */
-  pendingChoice?: PresetChoice | null;
 }) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
-  // Initial focus goes to the starting-point card (Balanced, 016 block 2), not the tolerance
-  // "?" above the grid: focusing that button opens its tooltip over a card every time.
+  const te = editorTranslations[lang];
+  // Initial focus goes to a card, not the tolerance "?" above the grid: focusing that button
+  // opens its tooltip over a card every time.
   const startCardRef = useRef<HTMLButtonElement>(null);
-  const waiting = pendingChoice !== null;
 
-  const choose = (select: () => void) => () => {
-    if (!waiting) select();
+  const presetCard = (preset: PortfolioPreset) => {
+    const tagKey = TAG_KEY[preset.id];
+    const isStockPreset = holdsStock(preset);
+    // Stable: the stocks first, each group in the preset's own order.
+    const slots = [...preset.slots].sort(
+      (a, b) => Number(isStockToken(b.tokenId)) - Number(isStockToken(a.tokenId))
+    );
+    return (
+      <button
+        key={preset.id}
+        ref={preset.id === INITIAL_FOCUS_PRESET_ID ? startCardRef : undefined}
+        type="button"
+        onClick={() => onSelectPreset(preset.id)}
+        className={`${CARD_CLASS} ${isStockPreset ? "border-fuchsia-300/60" : "border-slate-700"}`}
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm font-semibold text-slate-100">{t[PRESET_NAME_KEY[preset.id]]}</span>
+            {isStockPreset ? <StockChip label={t.presetStocksChip} /> : null}
+            {preset.id === STARTING_POINT_PRESET_ID ? (
+              <span className={`${CHIP_CLASS} border-cyan-400/40 bg-cyan-400/10 text-cyan-200`}>
+                {t.presetStartingPointBadge}
+              </span>
+            ) : null}
+            {tagKey ? <span className={`${CHIP_CLASS} border-slate-600 text-slate-300`}>{t[tagKey]}</span> : null}
+          </span>
+          <span className="shrink-0 pt-0.5 text-[11px] text-slate-400">
+            ±{preset.tolerancePct}% {t.presetBandLabel}
+          </span>
+        </span>
+        <RiskBar risk={preset.risk} t={t} />
+        <span className="text-xs leading-snug text-slate-400">{t[DESC_KEY[preset.id]]}</span>
+        <span className="mt-1 flex flex-wrap gap-1">
+          {slots.map((slot) =>
+            isStockToken(slot.tokenId) ? (
+              <StockSlot
+                key={slot.tokenId}
+                symbol={symbolFor(slot.tokenId)}
+                pct={slot.targetPct}
+                label={stockKind(slot.tokenId) === "etf" ? te.stockChipEtf : te.stockChipStock}
+              />
+            ) : (
+              <span
+                key={slot.tokenId}
+                className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[11px] tabular-nums text-slate-300"
+              >
+                {symbolFor(slot.tokenId)} {slot.targetPct}%
+              </span>
+            )
+          )}
+        </span>
+      </button>
+    );
   };
-
-  const checking = (choice: PresetChoice): ReactNode =>
-    pendingChoice === choice ? (
-      <span className="mt-1 flex items-center gap-1.5 text-[11px] text-cyan-200">
-        <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
-        {t.draftCheckingBalance}
-      </span>
-    ) : null;
 
   return (
     <Modal
@@ -112,64 +160,27 @@ export function PresetSelectionModal({
         <InfoTooltip label={t.presetToleranceQuestion}>{t.presetToleranceTooltip}</InfoTooltip>
       </p>
 
+      {STOCK_PRESETS.length > 0 ? (
+        <section aria-labelledby="preset-stocks-title" className="mt-4">
+          <h3 id="preset-stocks-title" className={STOCK_HEADING_CLASS}>
+            <StockIcon className="h-3.5 w-3.5 shrink-0" />
+            {t.presetStocksTitle}
+          </h3>
+          <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{te.stockSectionNote}</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">{STOCK_PRESETS.map(presetCard)}</div>
+        </section>
+      ) : null}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {portfolioPresets.map((preset) => {
-          const tagKey = TAG_KEY[preset.id];
-          return (
-            <button
-              key={preset.id}
-              ref={preset.id === STARTING_POINT_PRESET_ID ? startCardRef : undefined}
-              type="button"
-              onClick={choose(() => onSelectPreset(preset.id))}
-              aria-disabled={waiting}
-              aria-busy={pendingChoice === preset.id}
-              className={`${CARD_CLASS} ${waiting && pendingChoice !== preset.id ? "opacity-50" : ""}`}
-            >
-              <span className="flex items-start justify-between gap-2">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-sm font-semibold text-slate-100">{t[PRESET_NAME_KEY[preset.id]]}</span>
-                  {preset.id === STARTING_POINT_PRESET_ID ? (
-                    <span className={`${CHIP_CLASS} border-cyan-400/40 bg-cyan-400/10 text-cyan-200`}>
-                      {t.presetStartingPointBadge}
-                    </span>
-                  ) : null}
-                  {tagKey ? (
-                    <span className={`${CHIP_CLASS} border-slate-600 text-slate-300`}>
-                      {t[tagKey]}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 pt-0.5 text-[11px] text-slate-400">
-                  ±{preset.tolerancePct}% {t.presetBandLabel}
-                </span>
-              </span>
-              <RiskBar risk={preset.risk} t={t} />
-              <span className="text-xs leading-snug text-slate-400">{t[DESC_KEY[preset.id]]}</span>
-              <span className="mt-1 flex flex-wrap gap-1">
-                {preset.slots.map((slot) => (
-                  <span
-                    key={slot.tokenId}
-                    className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[11px] tabular-nums text-slate-300"
-                  >
-                    {symbolFor(slot.tokenId)} {slot.targetPct}%
-                  </span>
-                ))}
-              </span>
-              {checking(preset.id)}
-            </button>
-          );
-        })}
+        {OTHER_PRESETS.map(presetCard)}
 
         <button
           type="button"
-          onClick={choose(onSelectScratch)}
-          aria-disabled={waiting}
-          aria-busy={pendingChoice === "scratch"}
-          className={`${CARD_CLASS} border-dashed ${waiting && pendingChoice !== "scratch" ? "opacity-50" : ""}`}
+          onClick={onSelectScratch}
+          className={`${CARD_CLASS} border-dashed border-slate-700`}
         >
           <span className="text-sm font-semibold text-slate-100">{t.presetScratchName}</span>
           <span className="text-xs leading-snug text-slate-400">{t.presetScratchDesc}</span>
-          {checking("scratch")}
         </button>
       </div>
 

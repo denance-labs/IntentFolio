@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Lock, LockOpen, Plus, X } from "lucide-react";
 import { InfoTooltip, Modal, SumChip } from "@/features/portfolio-editor/components/portfolio-primitives";
+import { StockRowChip } from "@/features/portfolio-editor/components/stock-token-sections";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { RULE_MESSAGE_KEYS, type RuleCode } from "@/features/portfolio-editor/lib/validation";
@@ -44,6 +45,7 @@ import { shellTranslations } from "../lib/translations";
 import { DraftCompositionBar, useDraftCompositionColors } from "./draft-composition";
 import { DraftTokenPickerContent } from "./draft-token-picker";
 import { NewPortfolioDraftSimulation } from "./new-portfolio-draft-simulation";
+import { PresetReviewModal } from "./preset-review-modal";
 import { PRESET_NAME_KEY } from "./preset-selection-modal";
 
 // 016 block 2.2 — the New Portfolio Draft editor: a portfolio designed before any deposit
@@ -55,6 +57,10 @@ import { PRESET_NAME_KEY } from "./preset-selection-modal";
 // It is the Composition editor's sibling, not a reuse: the % arithmetic comes from the
 // same pure functions (through new-portfolio-draft-editing), but the table, its slider
 // and its funded columns stay out (plan B2).
+//
+// D-397 (plan 041): with funds, a new mix is created from here. "Create portfolio" opens the funds
+// screen, the same one a saved draft confirms on, as another view of this dialog, so "Back" finds
+// everything as it was. Saving a draft is a separate action, and it never replaces a saved one.
 
 const ROW_GRID = "sm:grid sm:grid-cols-[minmax(0,1fr)_6rem_2.75rem_6.5rem_2.75rem] sm:items-center sm:gap-x-3";
 const FIELD_BOX = "flex h-11 items-center rounded-xl border px-3 transition sm:h-9";
@@ -62,6 +68,9 @@ const ICON_BUTTON =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:h-9 sm:w-9";
 const SECONDARY_BUTTON =
   "rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+// Tinted, so "Save draft" does not read as one more way out next to "Back".
+const SAVE_DRAFT_BUTTON =
+  "rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
 
 // The rules engine names its messages by key; the editor's translation table holds them.
 const ruleMessage = (te: Record<string, string>, code: RuleCode) => te[RULE_MESSAGE_KEYS[code]];
@@ -69,7 +78,7 @@ const ruleMessage = (te: Record<string, string>, code: RuleCode) => te[RULE_MESS
 const symbolFor = (tokenId: string) => getTokenById(tokenId)?.symbol ?? tokenId;
 const tokenNameFor = (tokenId: string) => getTokenById(tokenId)?.name ?? "";
 
-type View = "editor" | "picker";
+type View = "editor" | "picker" | "funds";
 type Leave = "back" | "close";
 type FieldEdit = { tokenId: TokenId; text: string };
 
@@ -81,6 +90,10 @@ export function NewPortfolioDraftEditor({
   onBack,
   onClose,
   funded = false,
+  balanceUnreadable = false,
+  signedOut = false,
+  savedDraftName = null,
+  onCreated,
 }: {
   /** The preset to start from, or null for "start from scratch". Ignored with `draft`. */
   presetId: PresetId | null;
@@ -91,8 +104,19 @@ export function NewPortfolioDraftEditor({
   /** Back to the preset chooser; without it the secondary button cancels. */
   onBack?: () => void;
   onClose: () => void;
-  /** D-400: the General Balance can already fund it (≥ $1), so the subtitle does not wait on a deposit. */
-  funded?: boolean;
+  /**
+   * Whether the General Balance can fund it, which picks the footer's actions and follows the
+   * balance while the editor is open. null: not known yet, or the read failed.
+   */
+  funded?: boolean | null;
+  /** With `funded` null: the read failed, rather than still being in flight. */
+  balanceUnreadable?: boolean;
+  /** No wallet connected (D-359): the only action saves the anonymous draft. */
+  signedOut?: boolean;
+  /** A saved draft this mix is not (it is `draft` when resuming). It is named, and never replaced. */
+  savedDraftName?: string | null;
+  /** After a portfolio was signed into existence from the funds screen. */
+  onCreated?: () => void;
 }) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
@@ -104,11 +128,13 @@ export function NewPortfolioDraftEditor({
     if (draft) return { name: draft.name, presetId: draft.presetId, rows: normalizeDraftLocks(draft.rows) };
     const base = presetId ? t[PRESET_NAME_KEY[presetId]] : `Portfolio ${existingNames.length + 1}`;
     return {
-      name: uniqueDefaultName(base, existingNames),
+      name: uniqueDefaultName(base, savedDraftName ? [...existingNames, savedDraftName] : existingNames),
       presetId,
       rows: presetId ? presetDraftRows(presetId) : [],
     };
   });
+  // Fixed on mount like `initial`: a draft discarded from another tab does not turn this into a new mix.
+  const [resuming] = useState(() => !!draft);
   const originPresetId = initial.presetId;
   const newTokenTolerance = draftDefaultTolerance(originPresetId);
 
@@ -131,6 +157,7 @@ export function NewPortfolioDraftEditor({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const primaryButtonRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -139,6 +166,21 @@ export function NewPortfolioDraftEditor({
   const validation = validateNewPortfolioDraft(input, existingNames);
   const blocker = !validation.ok ? validation : saveFailure;
   const canSave = validation.ok;
+
+  // What the footer offers (plan 041, P1). Signed out and when resuming a draft it only saves. With
+  // a wallet it creates unless there are known to be no funds; with a draft saved it creates even
+  // then, blocked, because saving is not on offer: that would replace the saved draft.
+  const createsPortfolio = !signedOut && !resuming && (funded !== false || savedDraftName !== null);
+  const offersSaveDraft = createsPortfolio && savedDraftName === null;
+  const createBlockedReason =
+    !createsPortfolio || funded === true
+      ? null
+      : funded === false
+        ? t.presetReviewNoFunds
+        : balanceUnreadable
+          ? t.myAccountBalanceUnreadable
+          : t.draftCheckingBalance;
+  const primaryEnabled = canSave && createBlockedReason === null;
   const dirty =
     name.trim() !== initial.name.trim() || JSON.stringify(rows) !== JSON.stringify(initial.rows);
 
@@ -146,15 +188,15 @@ export function NewPortfolioDraftEditor({
   const colorOf = useDraftCompositionColors(rows);
   const totalPct = rows.reduce((sum, r) => sum + r.targetPct, 0);
 
-  // Focus follows the view: into the search on open, back to "+ Add token" on return.
-  const viewMounted = useRef(false);
+  // Focus follows the view: into the search on open, and back to what opened it on return. The
+  // funds screen takes the focus itself, as any dialog does.
+  const lastView = useRef<View | null>(null);
   useEffect(() => {
-    if (!viewMounted.current) {
-      viewMounted.current = true;
-      return;
-    }
+    const from = lastView.current;
+    lastView.current = view;
+    if (from === null) return;
     if (view === "picker") searchRef.current?.focus();
-    else addButtonRef.current?.focus();
+    else if (view === "editor") (from === "funds" ? primaryButtonRef : addButtonRef).current?.focus();
   }, [view]);
 
   // The leave confirmation takes focus to its safe answer, and gives it back on "keep editing".
@@ -252,7 +294,7 @@ export function NewPortfolioDraftEditor({
   const reasonMessage = (v: Exclude<NewPortfolioDraftValidation, { ok: true }>) =>
     draftValidationMessage(v, rows, t, te);
 
-  const blockerText = blocker && !blocker.ok ? draftBlockerText(blocker, rows, t, te) : null;
+  const blockerText = blocker && !blocker.ok ? draftBlockerText(blocker, rows, t, te) : createBlockedReason;
 
   // The disabled-looking button stays focusable and, pressed, takes the user to the problem.
   function focusProblem(v: Exclude<NewPortfolioDraftValidation, { ok: true }>) {
@@ -277,7 +319,27 @@ export function NewPortfolioDraftEditor({
     else setSaveFailure(result);
   }
 
+  function handleCreate() {
+    if (!validation.ok) focusProblem(validation);
+    else if (createBlockedReason === null) setView("funds");
+  }
+
   const nameInvalid = name !== "" && !validation.ok && validation.reason === "invalid-name";
+
+  if (view === "funds") {
+    return (
+      <PresetReviewModal
+        source={{ kind: "new", input }}
+        existingNames={existingNames}
+        onBack={(reviewedName) => {
+          setName(reviewedName);
+          setView("editor");
+        }}
+        onClose={onClose}
+        onCreated={onCreated}
+      />
+    );
+  }
 
   if (view === "picker") {
     return (
@@ -307,7 +369,7 @@ export function NewPortfolioDraftEditor({
           </span>
         ) : null}
       </div>
-      <p className="mt-1 text-sm text-slate-400">{funded ? t.draftEditorSubtitleFunded : t.draftEditorSubtitle}</p>
+      <p className="mt-1 text-sm text-slate-400">{funded === true ? t.draftEditorSubtitleFunded : t.draftEditorSubtitle}</p>
 
       {/* Name */}
       <label htmlFor="draft-editor-name" className="mt-4 mb-1.5 block text-sm font-medium text-slate-300">
@@ -421,7 +483,10 @@ export function NewPortfolioDraftEditor({
                           style={{ backgroundColor: `${colorOf(row.tokenId).hex}22` }}
                         />
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-slate-100">{symbol}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-slate-100">{symbol}</span>
+                            <StockRowChip tokenId={row.tokenId} t={te} />
+                          </span>
                           <span className="block truncate text-[11px] text-slate-400">{tokenNameFor(row.tokenId)}</span>
                         </span>
                       </div>
@@ -600,6 +665,11 @@ export function NewPortfolioDraftEditor({
       {/* Sticky footer: the save blocker stays visible wherever the row at fault is. The
           negative margins cancel the Modal's p-6 so it sits flush with the dialog edge. */}
       <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-5 border-t border-slate-800 bg-slate-950 px-6 pb-6 pt-3">
+        {savedDraftName !== null && !confirmLeave ? (
+          <p className="mb-2 text-xs leading-snug text-slate-400">
+            {t.draftAlreadySaved.replace("{name}", () => savedDraftName)}
+          </p>
+        ) : null}
         {blockerText ? (
           <p id="draft-editor-blocker" className="mb-2 text-xs leading-snug text-amber-200">
             {blockerText}
@@ -625,25 +695,32 @@ export function NewPortfolioDraftEditor({
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3">
+          // Three buttons do not fit in a row at 390 px: there the main one takes its own, on top.
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               ref={backButtonRef}
               type="button"
               onClick={() => requestLeave(onBack ? "back" : "close")}
-              className={SECONDARY_BUTTON}
+              className={`${SECONDARY_BUTTON} ${offersSaveDraft ? "order-2 sm:order-none sm:mr-auto" : ""}`}
             >
               {onBack ? t.presetReviewBack : t.cancel}
             </button>
+            {offersSaveDraft ? (
+              <button type="button" onClick={handleSave} className={`${SAVE_DRAFT_BUTTON} order-3 sm:order-none`}>
+                {t.draftSaveDraft}
+              </button>
+            ) : null}
             <button
+              ref={primaryButtonRef}
               type="button"
-              onClick={handleSave}
-              aria-disabled={!canSave}
+              onClick={createsPortfolio ? handleCreate : handleSave}
+              aria-disabled={!primaryEnabled}
               aria-describedby={blockerText ? "draft-editor-blocker" : undefined}
               className={`rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-                canSave ? "hover:bg-cyan-200" : "cursor-not-allowed opacity-40"
-              }`}
+                offersSaveDraft ? "order-1 w-full sm:order-none sm:w-auto" : ""
+              } ${primaryEnabled ? "hover:bg-cyan-200" : "cursor-not-allowed opacity-40"}`}
             >
-              {t.draftCreate}
+              {createsPortfolio || signedOut ? t.draftCreate : t.draftSaveDraft}
             </button>
           </div>
         )}

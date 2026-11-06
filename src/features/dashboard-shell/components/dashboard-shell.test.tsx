@@ -26,6 +26,7 @@ import { shellTranslations } from "../lib/translations";
 const ACCOUNT = "alice.near";
 
 const state = vi.hoisted(() => ({
+  pendingAllocates: undefined as undefined | Array<{ id: string; op: string; portfolioId: string | null }>,
   login: { status: "connected", intentsAccountId: "alice.near" },
   portfolios: [] as Array<{ id: string; name: string; deposits: Record<string, number> }>,
   portfoliosLoading: false,
@@ -57,6 +58,9 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 vi.mock("../context/language-context", () => ({ useLanguage: () => ({ lang: "en", setLang: vi.fn() }) }));
+vi.mock("@/features/vault/hooks/use-pending-allocates", () => ({
+  usePendingAllocates: () => ({ pending: state.pendingAllocates, isFetching: false }),
+}));
 vi.mock("../context/portfolio-context", () => ({
   usePortfolio: () => ({
     portfolios: state.portfolios,
@@ -145,8 +149,7 @@ vi.mock("./portfolio-tabs", () => ({
   PortfolioTabs: (props: {
     onMiCuentaClick: () => void;
     draftTab?: { name: string; active: boolean; onSelect: () => void };
-    onDraftSaved?: () => void;
-    onPortfolioCreated?: () => void;
+    onNewPortfolio?: () => void;
   }) => {
     state.tabsProps = props;
     return (
@@ -157,8 +160,7 @@ vi.mock("./portfolio-tabs", () => ({
             tab-draft
           </button>
         )}
-        <button type="button" onClick={props.onDraftSaved}>tabs-draft-saved</button>
-        <button type="button" onClick={props.onPortfolioCreated}>tabs-created</button>
+        <button type="button" onClick={props.onNewPortfolio}>tabs-new</button>
       </div>
     );
   },
@@ -268,6 +270,7 @@ beforeEach(() => {
   state.receiveProps = null;
   state.flowProps = null;
   state.tabsProps = null;
+  state.pendingAllocates = undefined;
   state.routerPush.mockClear();
   state.viewProps = null;
   state.accountProps = null;
@@ -395,7 +398,9 @@ describe("DashboardShell — landing on the new portfolio", () => {
     state.portfolios = [{ id: "p1", name: "Old", deposits: {} }];
     setDashboardSection(ACCOUNT, "account");
     renderShell();
-    click("tabs-created");
+    click("tabs-new");
+    expect(state.flowProps).toMatchObject({ startNew: true });
+    click("flow-created");
     expect(screen.getByText("portfolio-content")).toBeTruthy();
     expect(getDashboardSection(ACCOUNT)).toBe("portfolio");
   });
@@ -842,16 +847,37 @@ describe("DashboardShell — the draft's tab (019-4)", () => {
   });
 
   it.each([
-    ["from My Account's creation", "account", "flow-draft-saved", () => click("card-confirm")],
-    ["from the tabs' '+'", "portfolio", "tabs-draft-saved", () => {}],
-  ] as const)("saving a draft %s lands on its tab", (_label, from, saved, open) => {
+    ["from My Account's creation", "account", "card-confirm"],
+    ["from the tabs' '+'", "portfolio", "tabs-new"],
+  ] as const)("saving a draft %s lands on its tab", (_label, from, open) => {
     state.portfolios = [{ id: "p1", name: "Old", deposits: {} }];
     setDashboardSection(ACCOUNT, from);
     renderShell();
-    open();
-    click(saved);
+    click(open);
+    click("flow-draft-saved");
     expect(screen.getByText("draft-view:waiting")).toBeTruthy();
     expect(getDashboardSection(ACCOUNT)).toBe("draft");
+  });
+
+  // D-560: the tab's menu.
+  it("deleting from the menu with the draft on screen leaves for My Account", () => {
+    state.portfolios = [{ id: "p1", name: "Old", deposits: {} }];
+    setDashboardSection(ACCOUNT, "draft");
+    renderShell();
+    act(() => (state.tabsProps!.draftTab as { discard: () => void }).discard());
+    expect(state.discardDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("my-account-view")).toBeTruthy();
+    expect(getDashboardSection(ACCOUNT)).toBe("account");
+  });
+
+  it("deleting from the menu with a portfolio on screen stays there", () => {
+    state.portfolios = [{ id: "p1", name: "Old", deposits: {} }];
+    setDashboardSection(ACCOUNT, "portfolio");
+    renderShell();
+    act(() => (state.tabsProps!.draftTab as { discard: () => void }).discard());
+    expect(state.discardDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("portfolio-content")).toBeTruthy();
+    expect(getDashboardSection(ACCOUNT)).toBe("portfolio");
   });
 
   it("discarding leaves for My Account", () => {
@@ -1240,6 +1266,24 @@ describe("DashboardShell — the funds-to-assign window (029 B-23)", () => {
     click(t.draftReadyConfirm);
     expect(prompt()).toBeNull();
     expect(state.flowProps).toMatchObject({ afterDeposit: undefined });
+  });
+
+  // D-307's rule, needed since a portfolio created beside a saved draft leaves it here (D-397).
+  it("stays shut with an Allocate still unconfirmed, and offers once nothing is in transit", () => {
+    state.pendingAllocates = [{ id: "rec-1", op: "setup", portfolioId: null }];
+    const { rerender } = renderShell();
+    expect(prompt()).toBeNull();
+
+    state.pendingAllocates = [];
+    rerender();
+    expect(prompt()?.textContent).toContain(READY_LINE);
+  });
+
+  // The other ways in are the shell's own, and they must keep confirming the saved draft.
+  it("only the tabs' '+' asks for a new portfolio", () => {
+    renderShell();
+    click(t.draftReadyConfirm);
+    expect(state.flowProps?.startNew).toBeFalsy();
   });
 
   it("'Not now' closes it, and it does not come back on the next visit", () => {

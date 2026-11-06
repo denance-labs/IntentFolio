@@ -229,8 +229,8 @@ export function parseNewPortfolioDraft(value: unknown): NewPortfolioDraft | null
 
 /**
  * Draft rows → the editor's `TargetAllocation[]`, the shape `buildChangeSet([], targets,
- * allocations)` turns into the Setup's `tokenAdditions`. Row ids follow the preset flow
- * (`target-<tokenId>`); they are UI-only and never reach the changeset.
+ * allocations)` turns into the Setup's `tokenAdditions`. Row ids (`target-<tokenId>`) are UI-only
+ * and never reach the changeset.
  */
 export function draftToTargets(draft: Pick<NewPortfolioDraft, "rows">): TargetAllocation[] {
   return draft.rows.map((row) => ({
@@ -380,6 +380,29 @@ export function discardNewPortfolioDraftIfUnchanged(accountId: string, updatedAt
   delete store[accountId];
   writeStore(store);
   forgetAssignFundsPrompt(accountId, DRAFT_SUBJECT);
+}
+
+export type ReplacedOnConnect = { accountId: string; name: string };
+
+/**
+ * D-397 (plan 041, P3): the accounts' drafts in this browser that the anonymous draft would replace
+ * if that account connected, the most recently saved first. Only those saved before it: the older
+ * of the two is the one `moveAnonymousDraftToAccount` drops, so with a newer account draft it is the
+ * anonymous one that goes, and there is nothing to warn about here.
+ */
+export function draftsReplacedOnConnect(raw: string): ReplacedOnConnect[] {
+  const store = parseStore(raw);
+  if (!Object.prototype.hasOwnProperty.call(store, ANONYMOUS_DRAFT_SLOT)) return [];
+  const anonymous = parseNewPortfolioDraft(store[ANONYMOUS_DRAFT_SLOT]);
+  if (!anonymous) return [];
+  return Object.entries(store)
+    .flatMap(([accountId, stored]) => {
+      if (accountId === ANONYMOUS_DRAFT_SLOT) return [];
+      const draft = parseNewPortfolioDraft(stored);
+      return draft && anonymous.updatedAt > draft.updatedAt ? [{ accountId, draft }] : [];
+    })
+    .sort((a, b) => b.draft.updatedAt - a.draft.updatedAt)
+    .map(({ accountId, draft }) => ({ accountId, name: draft.name }));
 }
 
 export type MoveAnonymousDraftResult = "moved" | "kept-account" | "none";

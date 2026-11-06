@@ -10,8 +10,10 @@ type PortfolioTabMenuProps = {
   disabled?: boolean;
   disabledTitle?: string;
   onRename: () => void;
-  /** 027 A-9a: portfolios only — the New Portfolio Draft is discarded from its own view. */
+  /** 027 A-9a for a portfolio; D-560 for the New Portfolio Draft, which also keeps the button in its view. */
   onDelete?: () => void;
+  /** What the delete item says. By default, a portfolio's. */
+  deleteLabel?: string;
 };
 
 export function PortfolioTabMenu({
@@ -21,6 +23,7 @@ export function PortfolioTabMenu({
   disabledTitle,
   onRename,
   onDelete,
+  deleteLabel,
 }: PortfolioTabMenuProps) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
@@ -129,9 +132,9 @@ export function PortfolioTabMenu({
               type="button"
               role="menuitem"
               onClick={handleDelete}
-              className="w-full px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-slate-800 hover:text-rose-200 focus:outline-none focus-visible:bg-slate-800"
+              className="w-full whitespace-nowrap px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-slate-800 hover:text-rose-200 focus:outline-none focus-visible:bg-slate-800"
             >
-              {t.portfolioDelete}
+              {deleteLabel ?? t.portfolioDelete}
             </button>
           )}
         </div>
