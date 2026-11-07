@@ -1,5 +1,5 @@
-// The relayer's sender (D-329, D-330, 017-1): sign one transaction, send it ONCE, and say what
-// the answer proves. SERVER ONLY — it holds the relayer's FunctionCall keys.
+// The relayer's sender (D-329, D-330, 017-1): sign one transaction, send it, and say what the
+// answer proves. SERVER ONLY — it holds the relayer's FunctionCall keys.
 //
 // The contract with `handleRelayRequest` (relay-service.ts) lives in the throws:
 //   - resolves with the execution outcome — the chain ran the tx (a revert is still an answer);
@@ -8,10 +8,12 @@
 //     or the node refused the tx at validation (every attempt refused for its nonce, or any other
 //     refusal — an exhausted allowance, an expired block hash; relay-rpc-provider.ts).
 //
-// The one retry left is a RE-SIGN on InvalidNonce, and it is bounded. That refusal proves the
+// The one retry here is a RE-SIGN on InvalidNonce, and it is bounded. That refusal proves the
 // tx never ran: another relay request on the same key took the nonce first (two users at once).
-// With a single POST per signed tx there is no earlier copy of THIS tx that could have taken it,
-// which is exactly what made near-api-js's own re-sign unsafe (it re-posted first, D-329).
+// `sendSigned` only reports it for the first post of a tx, when there is no earlier copy of THIS
+// tx that could have taken the nonce. That is exactly what made near-api-js's own re-sign unsafe
+// (it re-posted first, D-329). A re-post that gets refused comes back `unknown` and is never
+// signed again; re-posting the same bytes is relay-rpc-provider.ts's job (D-557).
 //
 // The key pool (D-367) makes the collision rare instead of serial: each target holds several
 // keys, each with its own nonce. A send starts on a random one — instances share no memory, so
@@ -58,7 +60,7 @@ export function createRelaySender({
       // anything is sent — so even an unanswered send can be followed on the explorer.
       const txHash = baseEncode(createHash("sha256").update(encodeTransaction(signed.transaction)).digest());
 
-      const result = await rpc.sendOnce(Buffer.from(encodeTransaction(signed)).toString("base64"));
+      const result = await rpc.sendSigned(Buffer.from(encodeTransaction(signed)).toString("base64"));
       if (result.kind === "outcome") return result.outcome;
       if (result.kind === "unknown") throw new RelayOutcomeUnknownError(result.error, txHash);
       // Refused before running, and a new nonce would not change the reason.

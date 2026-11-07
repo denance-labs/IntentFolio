@@ -28,7 +28,8 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
           className="flex items-baseline gap-0 rounded-lg transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
         >
           <span className="text-lg font-bold text-white tracking-tight sm:text-xl">IntentFolio</span>
-          <span className="text-sm text-slate-400 sm:text-base">.app</span>
+          {/* Not `sm:text-base`: `base` is also a theme color, and that class would paint it near-black. */}
+          <span className="text-sm text-slate-400 sm:text-[1rem]">.app</span>
         </Link>
 
         {/* Right side */}

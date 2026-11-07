@@ -66,7 +66,7 @@ vi.mock("near-api-js", () => ({
   },
 }));
 
-/** What the one `send_tx` POST answers (relay-rpc-provider.ts `sendOnce`). */
+/** What each `send_tx` POST answers (relay-rpc-provider.ts `sendSigned`). */
 function rpcAnswers(response: () => Promise<Response>) {
   const fetchMock = vi.fn(response);
   vi.stubGlobal("fetch", fetchMock);
@@ -167,7 +167,7 @@ describe("POST /api/relay — D-246 FunctionCall key routing", () => {
   });
 });
 
-describe("POST /api/relay — one send, and an unanswered one is not a failure (D-329, D-330)", () => {
+describe("POST /api/relay — one signature, and an unanswered send is not a failure (D-329, D-330, D-557)", () => {
   beforeEach(() => {
     sentTransactions.length = 0;
     vi.stubEnv("RELAYER_ACCOUNT_ID", "relayer.near");
@@ -180,7 +180,7 @@ describe("POST /api/relay — one send, and an unanswered one is not a failure (
     vi.unstubAllGlobals();
   });
 
-  it("answers 504 unknown-outcome with the hash when the node returns a 503 — and posts once", async () => {
+  it("answers 504 unknown-outcome with the hash when the node returns a 503 and no upstream is left — and posts once", async () => {
     const fetchMock = rpcAnswers(() => Promise.resolve(new Response("unavailable", { status: 503 })));
 
     const response = await POST(request("verifier", INTENTS_CONTRACT_ID));
@@ -188,6 +188,45 @@ describe("POST /api/relay — one send, and an unanswered one is not a failure (
     expect(response.status).toBe(504);
     expect(await response.json()).toMatchObject({ ok: false, code: "unknown-outcome", txHash: "tx-hash" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sentTransactions).toHaveLength(1);
+  });
+
+  it("with a keyed primary, a 502 on the send lands on the fallback: 200 with the outcome (D-557)", async () => {
+    vi.stubEnv("NEAR_RPC_API_KEY", "rpc-key");
+    const answers = [() => Promise.resolve(new Response("<html>502</html>", { status: 502 })), EXECUTED];
+    const fetchMock = rpcAnswers(() => answers.shift()!());
+
+    const response = await POST(request("verifier", INTENTS_CONTRACT_ID));
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [[, firstInit], [, secondInit]] = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(secondInit.body).toBe(firstInit.body);
+    expect(firstInit.headers).toHaveProperty("X-API-Key", "rpc-key");
+    expect(secondInit.headers).not.toHaveProperty("X-API-Key");
+    expect(sentTransactions).toHaveLength(1);
+  });
+
+  it("with a keyed primary, a refused re-post is 504 unknown-outcome and is not signed again (D-557)", async () => {
+    vi.stubEnv("NEAR_RPC_API_KEY", "rpc-key");
+    const refused = {
+      error: {
+        name: "HANDLER_ERROR",
+        cause: { name: "INVALID_TRANSACTION", info: {} },
+        data: { TxExecutionError: { InvalidTxError: { InvalidNonce: { ak_nonce: 50, tx_nonce: 42 } } } },
+      },
+    };
+    const answers = [
+      () => Promise.resolve(new Response("<html>502</html>", { status: 502 })),
+      () => Promise.resolve(new Response(JSON.stringify(refused), { status: 200 })),
+    ];
+    const fetchMock = rpcAnswers(() => answers.shift()!());
+
+    const response = await POST(request("verifier", INTENTS_CONTRACT_ID));
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ ok: false, code: "unknown-outcome", txHash: "tx-hash" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(sentTransactions).toHaveLength(1);
   });
 

@@ -66,6 +66,9 @@ export function HeroSection({ comingSoon }: { comingSoon: boolean }) {
             <motion.p variants={item} className="text-xl text-slate-300 mt-4 max-w-sm">
               {t.sub}
             </motion.p>
+            <motion.p variants={item} className="text-sm text-slate-400 mt-3 max-w-md">
+              {t.spreadNote}
+            </motion.p>
             {/* D-532: multichain on the first screen, not halfway down the page. */}
             <motion.p variants={item} className="text-sm text-slate-400 mt-4 max-w-md">
               {t.wallets}

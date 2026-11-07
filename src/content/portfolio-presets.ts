@@ -181,3 +181,11 @@ export const STARTING_POINT_PRESET_ID: PresetId = "balanced";
 export function getPreset(id: PresetId): PortfolioPreset | undefined {
   return portfolioPresets.find((p) => p.id === id);
 }
+
+// D-561: the URL parameter that enters the app with a preset open in the editor. It only picks
+// one of these templates, so a link cannot bring a composition of its own.
+export const PRESET_ENTRY_PARAM = "preset";
+
+export function parsePresetId(value: string | null): PresetId | null {
+  return portfolioPresets.find((p) => p.id === value)?.id ?? null;
+}

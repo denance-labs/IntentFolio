@@ -527,15 +527,15 @@ describe("PortfolioTabs — color and value", () => {
     expect(screen.getByRole("tab", { name: "Old $612.40" })).toBeTruthy();
   });
 
-  it("My Account shows its funding account, and says so to a screen reader", () => {
+  it("Funding shows its balance under its name, read out together", () => {
     render(<PortfolioTabs onMiCuentaClick={vi.fn()} values={values} />);
-    expect(screen.getByRole("tab", { name: "My account, funding account $1,234.50" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Funding $1,234.50" })).toBeTruthy();
   });
 
   // D-541: before the funding account is read, a dash — never a $0 it does not know.
   it("My Account's funding account not read yet: a dash", () => {
     render(<PortfolioTabs onMiCuentaClick={vi.fn()} values={{ ...values, fundingUsd: null }} />);
-    expect(screen.getByRole("tab", { name: "My account, funding account —" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Funding —" })).toBeTruthy();
   });
 
   it("the name is in the portfolio's color, the same on every render", () => {

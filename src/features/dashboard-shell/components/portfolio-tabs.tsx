@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, House, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Wallet } from "lucide-react";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
 import { useFundableGeneralBalance } from "../hooks/use-fundable-general-balance";
@@ -211,10 +211,13 @@ export function PortfolioTabs({
             aria-label={t.portfolioTabsLabel}
             // Not `flex-1`: sized to its tabs, so "+" follows the last one, and shrinks (then
             // scrolls) only when they do not fit — that is when "+" ends up at the right edge.
-            className="hidden min-w-0 items-center sm:flex"
+            className="hidden min-w-0 items-stretch sm:flex"
           >
             {onMiCuentaClick && (
               <>
+                {/* D-561: an anchor of its own, told apart from the portfolios by its shape: a solid
+                    surface and an icon chip, even when not selected. Cyan is free for it because
+                    portfolio colors leave cyan out (portfolio-color.ts). */}
                 <button
                   type="button"
                   role="tab"
@@ -222,37 +225,43 @@ export function PortfolioTabs({
                   // D-360: where the focus lands when the draft's tab it was on is discarded.
                   data-focus-landing={miCuentaActive ? "" : undefined}
                   onClick={onMiCuentaClick}
-                  className={`relative flex shrink-0 flex-col items-start whitespace-nowrap rounded-xl border px-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-                    accountValue !== null ? "py-1" : "py-1.5"
-                  } ${
+                  className={`relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-2xl border py-1 pl-2 pr-4 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
                     miCuentaActive
-                      ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
-                      : "border-slate-700 text-slate-300 font-medium hover:text-slate-100"
+                      ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-200"
+                      : "border-slate-700 bg-surface text-slate-100 hover:border-cyan-400/40"
                   }`}
                 >
-                  {/* 029 B-16: the house marks the overview, apart from the portfolios. */}
-                  <span className="inline-flex items-center gap-1.5">
-                    <House aria-hidden="true" className="h-3.5 w-3.5" />
-                    {t.myAccountTab}
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                      miCuentaActive ? "bg-cyan-400/20 text-cyan-200" : "bg-cyan-400/10 text-cyan-300"
+                    }`}
+                  >
+                    <Wallet className="h-4 w-4" />
                   </span>
-                  {/* The name a screen reader hears is "My account, funding account $12.00":
-                      the figure is not the account's total (029 B-16). The space keeps it from
-                      reading "account$12.00"; between flex items it takes no room on screen. */}
-                  {accountValue !== null && <span className="sr-only">{t.myAccountTabValueLabel}</span>}
-                  {accountValue !== null && " "}
-                  {accountValue !== null && (
-                    <span
-                      className={`text-xs font-normal tabular-nums ${miCuentaActive ? "text-cyan-100/80" : "text-slate-400"}`}
-                    >
-                      {accountValue}
-                    </span>
-                  )}
+                  <span className="flex flex-col items-start">
+                    <span>{t.myAccountTab}</span>
+                    {/* The space keeps a screen reader from hearing "Funding$12.00"; between flex
+                        items it takes no room on screen. */}
+                    {accountValue !== null && " "}
+                    {accountValue !== null && (
+                      <span
+                        className={`text-xs font-normal tabular-nums ${miCuentaActive ? "text-cyan-100/80" : "text-slate-300"}`}
+                      >
+                        {accountValue}
+                      </span>
+                    )}
+                  </span>
                   {miCuentaBadge && (
                     <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-400" />
                   )}
                 </button>
-                {/* Apart from the portfolios: My Account is not one more of them. */}
-                <div aria-hidden="true" className="mx-2 h-5 w-px shrink-0 bg-slate-700" />
+                {/* Apart from the portfolios: Funding is not one more of them. With no portfolio on
+                    its right, "+" already keeps its own distance from the line. */}
+                <div
+                  aria-hidden="true"
+                  className={`ml-4 h-7 w-px shrink-0 self-center bg-slate-700 ${hasSelectOptions ? "mr-4" : ""}`}
+                />
               </>
             )}
             <div className="relative min-w-0">
@@ -403,13 +412,20 @@ export function PortfolioTabs({
                   aria-pressed={miCuentaActive}
                   data-focus-landing={miCuentaActive ? "" : undefined}
                   onClick={onMiCuentaClick}
-                  className={`relative inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                  className={`relative inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border pl-1.5 pr-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
                     miCuentaActive
-                      ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
-                      : "border-slate-700 text-slate-400 hover:text-slate-100"
+                      ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-200"
+                      : "border-slate-700 bg-surface text-slate-100 hover:border-cyan-400/40"
                   }`}
                 >
-                  <House aria-hidden="true" className="h-3.5 w-3.5" />
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
+                      miCuentaActive ? "bg-cyan-400/20 text-cyan-200" : "bg-cyan-400/10 text-cyan-300"
+                    }`}
+                  >
+                    <Wallet className="h-3.5 w-3.5" />
+                  </span>
                   {t.myAccountTab}
                   {miCuentaBadge && (
                     <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-400" />

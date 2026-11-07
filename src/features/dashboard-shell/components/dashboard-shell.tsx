@@ -65,6 +65,8 @@ import { DashboardHeader } from "./dashboard-header";
 import { ConnectWalletModal } from "./connect-wallet-modal";
 import { PortfolioTabs } from "./portfolio-tabs";
 import { CreatePortfolioFlow } from "./create-portfolio-flow";
+import { PRESET_ENTRY_PARAM, parsePresetId, type PresetId } from "@/content/portfolio-presets";
+import { appPortfolioCap } from "@/features/vault/lib/change-set-preflight";
 import { useNewPortfolioDraft } from "../hooks/use-new-portfolio-draft";
 import { moveAnonymousDraftToAccount } from "../lib/new-portfolio-draft";
 import { NewPortfolioDraftView } from "./new-portfolio-draft-view";
@@ -193,7 +195,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   // "after-deposit": B1 — a wallet deposit for the draft just landed; confirm it once the
   // General Balance shows it (016 block 2.4).
   const [createFlow, setCreateFlow] = useState<
-    | { kind: "new"; startNew?: boolean }
+    | { kind: "new"; startNew?: boolean; presetId?: PresetId }
     | { kind: "after-deposit"; tokenId: string; qty: number }
     | null
   >(null);
@@ -271,6 +273,30 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
     setSignedOutSection(null);
     clearSignedOutSection();
   }, [basePath]);
+
+  // D-561: the landing demo's "Start with this mix". Read once and dropped at once, like the
+  // entry's mark, so neither a reload nor Back opens the editor again.
+  const [entryPreset, setEntryPreset] = useState<PresetId | null>(null);
+  useEffect(() => {
+    const { pathname, search, hash } = window.location;
+    const params = new URLSearchParams(search);
+    if (!params.has(PRESET_ENTRY_PARAM)) return;
+    setEntryPreset(parsePresetId(params.get(PRESET_ENTRY_PARAM)));
+    params.delete(PRESET_ENTRY_PARAM);
+    const query = params.toString();
+    window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}${hash}`);
+  }, []);
+  // Opens once it is known who is entering, and only where the tabs' "+" would let a new mix start:
+  // with a saved draft and nothing to fund a second portfolio with, that draft is what they find.
+  useEffect(() => {
+    if (entryPreset === null || loginRestoring) return;
+    if (loginConnected && (portfoliosLoading || fundable.status === "loading")) return;
+    setEntryPreset(null);
+    const canFundBesideDraft = loginConnected && fundable.status === "known" && fundable.fundable;
+    if (newPortfolioDraft !== null && !canFundBesideDraft) return;
+    if (portfolios.length >= appPortfolioCap()) return;
+    setCreateFlow({ kind: "new", startNew: true, presetId: entryPreset });
+  }, [entryPreset, loginRestoring, loginConnected, portfoliosLoading, fundable, newPortfolioDraft, portfolios.length]);
 
   // Whether this load has been signed out at some point (022-A): see the effect below.
   const sawSignedOutRef = useRef(false);
@@ -1580,6 +1606,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           onCreated={landOnPortfolio}
           signedOut={!loginConnected}
           startNew={createFlow.kind === "new" && createFlow.startNew}
+          startPresetId={createFlow.kind === "new" ? createFlow.presetId : undefined}
         />
       )}
       {welcomeOpen && (

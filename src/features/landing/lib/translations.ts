@@ -8,6 +8,8 @@ export const landingTranslations = {
       badge: "Meta Pool · NEAR",
       headline: "Build your portfolio with no fees, and earn spread along the way.",
       sub: "Pick your mix and your portfolio moves toward it on its own. Every move aims to leave you a spread in your favor, and keeps aiming once you've reached your target.",
+      // D-561: the headline rests on this word, and nothing else on the page defines it.
+      spreadNote: "A spread is the price difference from the market that each move aims to leave in your favor.",
       // D-532: the brands and families of the Connect Wallet picker (wallet-picker.tsx), and the
       // signed-out draft (D-359/D-393) — keep both in step with it.
       wallets: "Connect with MetaMask, Phantom, Meteor, or any NEAR, EVM, Solana, TON, Stellar or Tron wallet. You can try IntentFolio without connecting your wallet.",
@@ -31,6 +33,7 @@ export const landingTranslations = {
       eyebrow: "Composition",
       title: "Watch a portfolio come together",
       body: "Pick a starting point and your targets snap into place. Try a few presets — this is the allocation your portfolio keeps itself aligned to.",
+      startWithMix: "Start with this mix",
     },
     multiChain: {
       eyebrow: "Multi-chain by default",
@@ -48,10 +51,17 @@ export const landingTranslations = {
       closing: "Every move, on the way and once there, aims to capture a spread in your favor.",
     },
     performance: {
-      eyebrow: "Results",
+      eyebrow: "Example",
       title: "Earn on the way to your targets",
       body: "From the first move toward your targets, each one aims to capture a spread in your favor, and it keeps going once you're there. This is what those spreads can add up to over time.",
-      caption: "Illustrative example. Not a guarantee of future returns.",
+      chart: {
+        title: "Cumulative spread",
+        mark: "Example",
+        base: "On a $10,000 portfolio",
+        move: "Move {n}",
+        summary: "Example chart. On a $10,000 portfolio, the cumulative spread goes from {first} after the first move to {last} after {count} moves.",
+        caption: "Illustrative figures. Not a guarantee of future returns.",
+      },
     },
     metaPool: {
       title: "Incubated by Meta Pool",
@@ -97,6 +107,7 @@ export const landingTranslations = {
       badge: "Meta Pool · NEAR",
       headline: "Arma tu portfolio sin pagar comisiones, y ganando spread en el camino.",
       sub: "Elige tu mezcla y tu portfolio avanza solo hacia ella. Cada movimiento busca dejarte un spread a favor, y lo sigue buscando cuando ya llegó a tu objetivo.",
+      spreadNote: "El spread es la diferencia de precio frente al mercado que cada movimiento busca dejarte a favor.",
       wallets: "Conéctate con MetaMask, Phantom, Meteor o cualquier wallet de NEAR, EVM, Solana, TON, Stellar o Tron. Puedes probar IntentFolio sin conectar tu wallet.",
       getStarted: "Abrir la app",
     },
@@ -118,6 +129,7 @@ export const landingTranslations = {
       eyebrow: "Composición",
       title: "Mira cómo se arma un portfolio",
       body: "Elige un punto de partida y tus objetivos se acomodan solos. Prueba algunos presets — esta es la composición que tu portfolio mantiene alineada.",
+      startWithMix: "Empieza con esta mezcla",
     },
     multiChain: {
       eyebrow: "Multi-red por defecto",
@@ -134,10 +146,17 @@ export const landingTranslations = {
       closing: "Cada movimiento, en el camino y una vez que llegó, busca capturar un spread a tu favor.",
     },
     performance: {
-      eyebrow: "Resultados",
+      eyebrow: "Ejemplo",
       title: "Ganas en el camino a tus objetivos",
       body: "Desde el primer movimiento hacia tus objetivos, cada uno busca capturar un spread a tu favor, y sigue cuando ya llegaste. Esto es lo que esos spreads pueden sumar con el tiempo.",
-      caption: "Ejemplo ilustrativo. No garantiza rendimientos futuros.",
+      chart: {
+        title: "Spread acumulado",
+        mark: "Ejemplo",
+        base: "Sobre un portfolio de $10,000",
+        move: "Movimiento {n}",
+        summary: "Gráfico de ejemplo. Sobre un portfolio de $10,000, el spread acumulado va de {first} tras el primer movimiento a {last} tras {count} movimientos.",
+        caption: "Cifras ilustrativas. No garantizan rendimientos futuros.",
+      },
     },
     metaPool: {
       title: "Incubado por Meta Pool",

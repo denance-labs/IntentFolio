@@ -7,6 +7,7 @@ import { ANONYMOUS_DRAFT_SLOT, discardNewPortfolioDraft, saveNewPortfolioDraft }
 import { shellTranslations } from "../lib/translations";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
 import { getTokenById } from "@/features/market/lib/token-registry";
+import { mockContract } from "@/features/intents-account/mock-contract";
 import type { DepositStatusEntry } from "@/features/bridge";
 import type { WithdrawalInFlightRecord } from "@/features/intents-account/mock-contract/types";
 import { extractAccountEvents, type ChainHistoryEvent } from "@/features/vault/lib/vault-history";
@@ -117,11 +118,11 @@ function renderView({ withPortfolios = false, signedOut = false } = {}) {
 }
 
 const card = () => screen.queryByRole("heading", { name: CARD_TITLE });
-const emptyState = () => screen.queryByRole("heading", { name: t.myAccountTitle });
+const emptyState = () => screen.queryByTestId("account-empty-state");
 const banner = () => screen.queryByText(t.createPortfolioCtaBody);
 // The empty state's own Deposit — the account summary above it carries another (021 R3).
 const emptyStateDeposit = () =>
-  within(emptyState()!.parentElement!.parentElement!).getByRole("button", { name: t.myAccountAddFunds });
+  within(emptyState()!).getByRole("button", { name: t.myAccountAddFunds });
 
 beforeEach(() => {
   state.fundable = { status: "known", fundable: false, tokenIds: [], usd: 0 };
@@ -351,9 +352,9 @@ describe("IntentsAccountView — a new account can build its portfolio first", (
   // D-450: the Deposit that sat beside Build was the third way in to the same step.
   it("a new account: Build is the empty state's one button; Deposit lives in the summary", () => {
     const { onCreatePortfolio, onAddFunds } = renderView();
-    const summaryButtons = () => screen.getByText(t.myAccountTotalValue).closest("dl")!.parentElement!.parentElement!;
+    const summaryButtons = () => screen.getByTestId("account-summary");
     const build = buildFirst()!;
-    const emptyStateButtons = within(emptyState()!.parentElement!.parentElement!).getAllByRole("button");
+    const emptyStateButtons = within(emptyState()!).getAllByRole("button");
     expect(emptyStateButtons.map((b) => b.textContent)).not.toContain(t.myAccountAddFunds);
     expect(build.className).toContain("bg-cyan-500");
     expect(build.hasAttribute("data-focus-landing")).toBe(true);
@@ -469,9 +470,20 @@ describe("IntentsAccountView — Recent activity with the finished history", () 
     for (const label of [t.depositStatusCredited, t.activityDoneSent, t.activityDoneConfirmed]) {
       const first = feed.getAllByText(label)[0];
       // On the date line, not a chip beside the row.
-      expect(first.parentElement?.className).toContain("text-xs");
+      expect(first.closest(".text-xs")).not.toBeNull();
       expect(first.className).not.toContain("rounded-full");
     }
+  });
+
+  it("D-561: with one way to end, the check alone on a phone and the word still read aloud", () => {
+    ready(S217_EVENTS);
+    render(<IntentsAccountView />);
+    const feed = within(screen.getByRole("region", { name: t.recentActivityHeading }));
+    for (const label of [t.activityDoneConfirmed, t.depositStatusCredited]) {
+      expect(feed.getAllByText(label)[0].className).toContain("sr-only sm:not-sr-only");
+    }
+    // "Sent" tells an outcome apart from "Delivered": in words at every width.
+    expect(feed.getAllByText(t.activityDoneSent)[0].className).not.toContain("sr-only");
   });
 
   it("while the read is in flight it says so, and a failed read offers a retry — never 'nothing'", () => {
@@ -554,26 +566,23 @@ describe("IntentsAccountView — Recent activity with the finished history", () 
 // 021 R3 + R4: the summary is the same in every state, and "In portfolios" says how many.
 // Priced at the registry fallback (no live prices in these tests): NEAR = $1.58.
 describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
-  const summary = () => screen.getByText(t.myAccountTotalValue).closest("dl")!;
+  const summary = () => screen.getByTestId("account-summary");
   // Each figure is the <dd> right after its label's <dt>.
   const figure = (label: string) =>
     within(summary())
       .getAllByRole("term")
       .find((dt) => dt.textContent!.startsWith(label))!.nextElementSibling!.textContent;
-  const inPortfoliosLabel = () =>
-    within(summary())
-      .getAllByRole("term")
-      .find((dt) => dt.textContent!.startsWith(t.myAccountInPortfolios))!.textContent;
+  const inPortfolios = (count: number) =>
+    count === 1 ? t.myAccountInPortfoliosOne : t.myAccountInPortfoliosMany.replace("{n}", String(count));
   // The summary's buttons, not the empty state's Deposit below it.
-  const summaryButtons = () => summary().parentElement!.parentElement!;
+  const summaryButtons = summary;
   const withdraw = () => within(summaryButtons()).getByRole("button", { name: t.myAccountWithdraw }) as HTMLButtonElement;
 
   it("an empty account: every figure at $0, both buttons, Withdraw disabled", () => {
     const { onAddFunds } = renderView();
     expect(figure(t.myAccountTotalValue)).toBe(formatUsd(0));
     expect(figure(t.myAccountGeneralBalance)).toBe(formatUsd(0));
-    expect(figure(t.myAccountInPortfolios)).toBe(formatUsd(0));
-    expect(inPortfoliosLabel()).toBe(`${t.myAccountInPortfolios} (0)`);
+    expect(figure(inPortfolios(0))).toBe(formatUsd(0));
     fireEvent.click(within(summaryButtons()).getByRole("button", { name: t.myAccountAddFunds }));
     expect(onAddFunds).toHaveBeenCalledTimes(1);
     expect(withdraw().disabled).toBe(true);
@@ -581,13 +590,29 @@ describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
     expect(emptyState()).toBeTruthy();
   });
 
+  // D-561: the figure that leads is the funding account, the same one as the tab; not the total.
+  it("the lead figure is the funding account, with the total on the line under it", () => {
+    state.balance = new Map([["near", 1]]);
+    state.portfolios = [{ id: "p1", name: "One", deposits: { near: 2 } }];
+    renderView({ withPortfolios: true });
+    const [lead, total, portfolios] = within(summary()).getAllByRole("definition");
+    expect(lead.textContent).toBe(formatUsd(1.58));
+    expect(lead.className).toContain("text-5xl");
+    expect(total.textContent).toBe(formatUsd(4.74));
+    expect(portfolios.textContent).toBe(formatUsd(3.16));
+    expect(within(summary()).getAllByRole("term").map((dt) => dt.textContent)).toEqual([
+      t.myAccountGeneralBalance,
+      t.myAccountTotalValue,
+      t.myAccountInPortfoliosOne,
+    ]);
+  });
+
   it("only a General Balance: it is the total, and Withdraw is enabled", () => {
     state.balance = new Map([["near", 1]]);
     renderView();
     expect(figure(t.myAccountTotalValue)).toBe(formatUsd(1.58));
     expect(figure(t.myAccountGeneralBalance)).toBe(formatUsd(1.58));
-    expect(figure(t.myAccountInPortfolios)).toBe(formatUsd(0));
-    expect(inPortfoliosLabel()).toBe(`${t.myAccountInPortfolios} (0)`);
+    expect(figure(inPortfolios(0))).toBe(formatUsd(0));
     expect(withdraw().disabled).toBe(false);
   });
 
@@ -599,9 +624,33 @@ describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
     renderView({ withPortfolios: true });
     expect(figure(t.myAccountTotalValue)).toBe(formatUsd(4.74));
     expect(figure(t.myAccountGeneralBalance)).toBe(formatUsd(0));
-    expect(figure(t.myAccountInPortfolios)).toBe(formatUsd(4.74));
-    expect(inPortfoliosLabel()).toBe(`${t.myAccountInPortfolios} (2)`);
+    expect(figure(inPortfolios(2))).toBe(formatUsd(4.74));
     expect(withdraw().disabled).toBe(true);
+  });
+
+  it("while something is moving, the note stays inside the card", () => {
+    renderView();
+    expect(screen.queryByText(t.myAccountInTransitNote)).toBeNull();
+
+    cleanup();
+    state.pendingAllocates = [{}];
+    renderView();
+    expect(summary().contains(screen.getByText(t.myAccountInTransitNote))).toBe(true);
+  });
+
+  it("the total spread stays inside the card, only once there is some", () => {
+    const events = vi.spyOn(mockContract, "getEvents");
+    renderView();
+    expect(screen.queryByText(t.myAccountTotalSpreadNote)).toBeNull();
+
+    cleanup();
+    events.mockReturnValue([{ kind: "external_rebalance", attributed_spread: 2.5 }] as unknown as ReturnType<
+      typeof mockContract.getEvents
+    >);
+    renderView();
+    expect(summary().textContent).toContain(`${t.myAccountTotalSpreadLabel}: ${formatUsd(2.5)}`);
+    expect(summary().contains(screen.getByText(t.myAccountTotalSpreadNote))).toBe(true);
+    events.mockRestore();
   });
 
   // D-406: a draft card's button is the one primary — waiting (deposit for it) or ready
@@ -633,15 +682,14 @@ describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
     saveDraft();
     renderView({ withPortfolios: true });
     expect(card()).toBeTruthy();
-    expect(inPortfoliosLabel()).toBe(`${t.myAccountInPortfolios} (1)`);
-    expect(figure(t.myAccountInPortfolios)).toBe(formatUsd(1.58));
+    expect(figure(inPortfolios(1))).toBe(formatUsd(1.58));
 
     cleanup();
     state.balance = new Map([["near", 5]]);
     state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 7.9 };
     renderView({ withPortfolios: true });
     expect(screen.getByRole("button", { name: t.draftReadyConfirm })).toBeTruthy();
-    expect(inPortfoliosLabel()).toBe(`${t.myAccountInPortfolios} (1)`);
+    expect(figure(inPortfolios(1))).toBe(formatUsd(1.58));
     expect(figure(t.myAccountTotalValue)).toBe(formatUsd(9.48));
   });
 });
@@ -649,8 +697,8 @@ describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
 // 022-A (D-453): no wallet connected. The same summary at $0, a note that says why, and the
 // only money action is connecting.
 describe("IntentsAccountView — signed out (022-A)", () => {
-  const summary = () => screen.getByText(t.myAccountTotalValue).closest("dl")!;
-  const summaryButtons = () => summary().parentElement!.parentElement!;
+  const summary = () => screen.getByTestId("account-summary");
+  const summaryButtons = summary;
   const note = () => screen.queryByText(t.myAccountSignedOutNote);
 
   beforeEach(() => {
@@ -662,7 +710,7 @@ describe("IntentsAccountView — signed out (022-A)", () => {
     expect(within(summary()).getAllByRole("definition")[0].textContent).toBe(formatUsd(0));
     // In line, inside the totals' card: not a banner of its own.
     expect(note()).toBeTruthy();
-    expect(summary().parentElement!.contains(note())).toBe(true);
+    expect(summary().contains(note())).toBe(true);
 
     fireEvent.click(within(summaryButtons()).getByRole("button", { name: t.walletConnect }));
     expect(onConnect).toHaveBeenCalledTimes(1);
@@ -747,7 +795,7 @@ describe("IntentsAccountView — D-335: other tokens inside the General Balance"
       ["nep141:usn", 1],
     ]);
     render(<IntentsAccountView />);
-    const section = screen.getByRole("region", { name: t.myAccountGeneralBalance });
+    const section = screen.getByRole("region", { name: t.myAccountTokensHeading });
     expect(section.querySelector("h3")?.textContent).toBe(t.myAccountOtherBalances);
     expect(screen.queryAllByRole("heading", { level: 2, name: t.myAccountOtherBalances })).toHaveLength(0);
   });
@@ -942,26 +990,65 @@ describe("IntentsAccountView — a bridge deposit row names its token (D-421)", 
   });
 });
 
-// D-524: each Funding account row shows what one token is worth, under its name.
+// D-524: each Funding account row shows what one token is worth; since D-561, labelled and under its name.
 describe("IntentsAccountView — the price of one token on each row (D-524)", () => {
-  it("shows the unit price, and nothing for a token without one", () => {
+  it("shows the unit price under the token, and nothing for a token without one", () => {
     const near = getTokenById("near")!;
     state.balance = new Map([
       ["near", 2],
       ["unknown.near", 3],
     ]);
     renderView({ withPortfolios: true });
-    const nearRow = screen.getByText(near.name).parentElement!;
-    expect(within(nearRow).getByText(formatUsd(near.fallbackUsdPrice!))).toBeTruthy();
-    const unknownRow = screen.getAllByText("unknown.near")[0].parentElement!;
-    expect(unknownRow.querySelectorAll("p")).toHaveLength(2);
+    const tokens = within(screen.getByRole("region", { name: t.myAccountTokensHeading }));
+    const price = tokens.getByText(`${t.myAccountTokenPrice} ${formatUsd(near.fallbackUsdPrice!)}`);
+    expect(price.parentElement!.textContent).toContain("NEAR Protocol");
+    expect(tokens.getAllByText(new RegExp(`^${t.myAccountTokenPrice} `))).toHaveLength(1);
+  });
+});
+
+// D-561: a row said the same token three times: "USDC(NEAR)", "USDC (on NEAR)", "14.61 USDC(NEAR)".
+describe("IntentsAccountView — a token row says each thing once (D-561)", () => {
+  const USDC_NEAR = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+  const ETH_NEAR = "nep141:eth.bridge.near";
+  const AURORA = "nep141:aaaaaa20d9e0e2461697782ef11675f668207961.factory.bridge.near";
+  const tokens = () => within(screen.getByRole("region", { name: t.myAccountTokensHeading }));
+
+  it("the network once, in the symbol: no name that repeats it, and the amount in the plain ticker", () => {
+    state.balance = new Map([
+      [USDC_NEAR, 14],
+      [AURORA, 3],
+    ]);
+    renderView({ withPortfolios: true });
+    expect(tokens().getAllByText("USDC(NEAR)")).toHaveLength(1);
+    expect(tokens().queryByText("USDC (on NEAR)")).toBeNull();
+    expect(tokens().getByText("14 USDC")).toBeTruthy();
+    expect(tokens().getAllByText("AURORA")).toHaveLength(1);
+    expect(tokens().queryByText("Aurora")).toBeNull();
+    expect(tokens().getByText("3 AURORA")).toBeTruthy();
+  });
+
+  it("the name stays where the symbol does not say it: the network of an ETH, the name of NEAR", () => {
+    state.balance = new Map([
+      [ETH_NEAR, 1],
+      ["near", 1],
+    ]);
+    renderView({ withPortfolios: true });
+    expect(tokens().getByText("Ethereum (on NEAR)")).toBeTruthy();
+    expect(tokens().getByText("NEAR Protocol")).toBeTruthy();
+  });
+
+  it("a token the registry does not know keeps its id, with a bare amount rather than \"3 ?\"", () => {
+    state.balance = new Map([["unknown.near", 3]]);
+    renderView({ withPortfolios: true });
+    expect(tokens().getByText("unknown.near")).toBeTruthy();
+    expect(tokens().getByText("3")).toBeTruthy();
   });
 });
 
 // D-541: with the balance read down, the mock fallback (empty for a real account) was shown as a
 // $0 funding account and "your funding account is empty".
 describe("IntentsAccountView — the funding account not read yet", () => {
-  const totalsCard = () => screen.getByText(t.myAccountTotalValue).closest("dl")!;
+  const totalsCard = () => screen.getByTestId("account-summary");
 
   it("a failed first read: no $0 and no empty state — the error, with a Retry that re-reads", () => {
     const retry = vi.fn();

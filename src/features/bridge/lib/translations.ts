@@ -7,7 +7,7 @@ export const bridgeTranslations = {
     withdrawStep2Title: "Select destination network",
     withdrawNoAssets: "No withdrawable balance",
     withdrawNoAssetsBody: "Deposit to your account first.",
-    withdrawNoAssetsStockBody: "Stocks can't be withdrawn: sell them for USDC from My account first.",
+    withdrawNoAssetsStockBody: "Stocks can't be withdrawn: sell them for USDC from Funding first.",
     receiveModalTitle: "Deposit",
     // Triage 016 T4b: a deposit is never allocated on its own — it waits in the General Balance.
     receiveModalSubtitle: "It goes to your funding account. Then you add it to your portfolios.",
@@ -265,7 +265,7 @@ export const bridgeTranslations = {
     withdrawStep2Title: "Selecciona la red de destino",
     withdrawNoAssets: "Sin saldo retirable",
     withdrawNoAssetsBody: "Primero deposita en tu cuenta.",
-    withdrawNoAssetsStockBody: "Los stocks no se retiran: primero véndelos por USDC desde Mi cuenta.",
+    withdrawNoAssetsStockBody: "Los stocks no se retiran: primero véndelos por USDC desde Fondos.",
     receiveModalTitle: "Depositar",
     receiveModalSubtitle: "Va a tu cuenta de fondos. Después lo asignas a tus portfolios.",
     receiveModalSubtitleDraft: "Para crear «{name}»: deposita cualquier token.",

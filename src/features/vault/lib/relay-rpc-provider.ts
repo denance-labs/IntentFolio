@@ -1,6 +1,6 @@
-// The relayer's NEAR RPC (D-173, 014.plan B3; D-329/D-330, 017-1): Meta Pool's keyed RPC first,
-// FastNEAR as fallback — for READS only. A signed transaction is never sent to a second upstream,
-// and never sent twice.
+// The relayer's NEAR RPC (D-173, 014.plan B3; D-329/D-330, 017-1; D-557): Meta Pool's keyed RPC
+// first, FastNEAR as fallback. A read moves on any error. A signed transaction goes to one upstream
+// and, only if that answer proves nothing, the SAME bytes go once to the next (D-557).
 //
 // Two halves, and they are deliberately not the same mechanism:
 //
@@ -8,8 +8,15 @@
 //   are raced against a timeout and move to the next upstream on any error — they are idempotent,
 //   and an error that is really an answer (or a sick node's JSON-RPC error) just gets asked again
 //   of the fallback. It REFUSES to send: a send through it throws before anything leaves.
-// - `sendOnce` posts the signed bytes exactly once, to whichever upstream served the reads, with a
-//   hard cut-off. It never throws; it says what the answer proves.
+// - `sendSigned` posts the signed bytes to whichever upstream served the reads, with a hard cut-off
+//   shared by every post. It never throws; it says what the answer proves.
+//
+// Why the second post is safe (D-557): the same bytes are the same hash and the same nonce, so the
+// chain cannot run them twice. Measured 2026-11-06 on FastNEAR with an already executed relayer tx
+// (`DyZ7MqXT…`, 7 h old): HTTP 200 in 197 ms with the original outcome, key nonce unchanged. That
+// sample does not cover a node lagging seconds behind the first post, which could refuse the tx for
+// a nonce it already spent. So after a re-post only an outcome counts: a refusal is not proof that
+// the tx never ran, it stays `unknown`, and `unknown` is never signed again (relay-sender.ts).
 //
 // Why not near-api-js's own send (measured against near-api-js 7.2.0):
 // - `JsonRpcProvider` re-posts the same signed bytes up to 12 times on HTTP 408/500/503 or a fetch
@@ -20,9 +27,9 @@
 // - `fetchJsonRpc` calls `fetch` with no signal: a node that accepts the tx and hangs holds the
 //   request until the function times out (D-330).
 //
-// Why not near-api-js's FailoverRpcProvider: its `withBackoff` catches EVERY error and re-sends the
-// same signed transaction to the next node. If the primary executed it and only the response was
-// lost, the fallback gets it again.
+// Why not near-api-js's FailoverRpcProvider: its `withBackoff` catches EVERY error, a refusal at
+// validation included, re-sends the same signed transaction to the next node, and after the last
+// one throws a generic RetriesExceeded. The caller cannot tell what any of those answers proved.
 //
 // A JS Proxy rather than a Provider implementation: Account only calls a handful of methods
 // (viewAccessKey, viewBlock, …), and wrapping by name keeps this file independent of the
@@ -54,7 +61,9 @@ export const RELAY_READ_TIMEOUT_MS = 3_000;
 export const RELAY_LAST_READ_TIMEOUT_MS = 10_000;
 
 /**
- * How long the one send may take before the relay stops waiting and answers "unknown outcome".
+ * How long the send may take, re-post included, before the relay stops waiting and answers
+ * "unknown outcome". One budget for both posts: a first post that used it all gets no second, and
+ * the relay's arithmetic against `maxDuration` does not change.
  * `send_tx` waits for EXECUTED_OPTIMISTIC, i.e. through the fan-out receipts (execute_intents →
  * the vault's on_auth, or the commit → mt_batch_transfer): a handful of blocks, seconds when the
  * chain is healthy. 30 s leaves room for a congested shard and still answers well inside the
@@ -73,21 +82,21 @@ const isSendCall = (prop: string, args: unknown[]): boolean =>
 export type RelayUpstream = {
   role: NearRpcUpstream["role"];
   host: string;
-  /** Full URL and headers (the key): `sendOnce` posts to them. Never logged — `host` is. */
+  /** Full URL and headers (the key): `sendSigned` posts to them. Never logged — `host` is. */
   url: string;
   headers: Record<string, string>;
   provider: Provider;
 };
 
 /**
- * What the one send proves. The relay's whole honesty rests on these three staying apart:
+ * What the send proves. The relay's whole honesty rests on these three staying apart:
  *   - `outcome`: the chain executed the tx; the outcome says how (a revert is still an outcome);
- *   - `invalid-nonce`: the node refused the tx at validation because another tx from the same
- *     key took the nonce first. It was never executed and, with its nonce spent, never will be;
- *   - `rejected`: the node refused the tx at validation for any other reason (the key's allowance
- *     or the account's balance ran out, an expired block hash, a congested shard, …). A refused
- *     tx is never forwarded, so it never runs — the same proof as InvalidNonce, but a re-sign
- *     would not fix it (operator decision, 017-1 s193);
+ *   - `invalid-nonce`: the node refused the FIRST post at validation because another tx from the
+ *     same key took the nonce first. It was never executed and, with its nonce spent, never will be;
+ *   - `rejected`: the node refused the FIRST post at validation for any other reason (the key's
+ *     allowance or the account's balance ran out, an expired block hash, a congested shard, …). A
+ *     refused tx is never forwarded, so it never runs — the same proof as InvalidNonce, but a
+ *     re-sign would not fix it (operator decision, 017-1 s193);
  *   - `unknown`: anything else — a cut-off, a 5xx, an unreadable body, any other JSON-RPC
  *     error. The tx may have landed. Nothing here may be read as "it failed".
  */
@@ -107,8 +116,8 @@ export type RelayViewResult = { kind: "value"; value: unknown } | { kind: "panic
 export type RelayRpc = {
   /** Reads only. Any send through it throws before a byte leaves (see the header). */
   provider: Provider;
-  /** Posts the signed transaction (base64 borsh) once. Never throws. */
-  sendOnce: (signedTxBase64: string) => Promise<RelaySendResult>;
+  /** Posts the signed transaction (base64 borsh), re-posting once if the answer proves nothing. Never throws. */
+  sendSigned: (signedTxBase64: string) => Promise<RelaySendResult>;
   /**
    * A contract view at `optimistic` finality — the state the send would meet, so funds credited
    * a block ago are not refused. Fails over like the reads; throws only when no upstream
@@ -188,36 +197,50 @@ export function createRelayRpc(
       return (...args: unknown[]) => {
         if (!isSendCall(prop, args)) return read(prop, args);
         // Rejected, not forwarded: a send through near-api-js brings its retries back (header).
-        return Promise.reject(new Error(`relay provider does not send (${prop}); use sendOnce`));
+        return Promise.reject(new Error(`relay provider does not send (${prop}); use sendSigned`));
       };
     },
   });
 
-  const sendOnce = async (signedTxBase64: string): Promise<RelaySendResult> => {
-    const { url, headers } = upstreams[active];
+  const sendSigned = async (signedTxBase64: string): Promise<RelaySendResult> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), sendTimeoutMs);
-    try {
-      const response = await fetchImpl(url, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "relay-send",
-          method: "send_tx",
-          params: { signed_tx_base64: signedTxBase64, wait_until: "EXECUTED_OPTIMISTIC" },
-        }),
-        signal: controller.signal,
-      });
-      let body: unknown;
+    const post = async ({ url, headers }: RelayUpstream): Promise<RelaySendResult> => {
       try {
-        body = await response.json();
-      } catch {
-        return unknown(controller, sendTimeoutMs, `HTTP ${response.status} with an unreadable body`);
+        const response = await fetchImpl(url, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "relay-send",
+            method: "send_tx",
+            params: { signed_tx_base64: signedTxBase64, wait_until: "EXECUTED_OPTIMISTIC" },
+          }),
+          signal: controller.signal,
+        });
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          return unknown(controller, sendTimeoutMs, `HTTP ${response.status} with an unreadable body`);
+        }
+        return classifySendResponse(response.status, body);
+      } catch (e) {
+        return unknown(controller, sendTimeoutMs, e instanceof Error ? e.message : String(e));
       }
-      return classifySendResponse(response.status, body);
-    } catch (e) {
-      return unknown(controller, sendTimeoutMs, e instanceof Error ? e.message : String(e));
+    };
+
+    try {
+      const from = upstreams[active];
+      const next = upstreams[active + 1];
+      const first = await post(from);
+      if (first.kind !== "unknown" || !next || controller.signal.aborted) return first;
+
+      log(`[relay-rpc] ${from.role} ${from.host} left the send unknown: ${first.error} — re-posting to ${next.role}`);
+      const second = await post(next);
+      // Only an outcome proves anything here (header): this may not be the first copy to arrive.
+      if (second.kind === "outcome") return second;
+      return { kind: "unknown", error: `${first.error}; ${next.role}: ${second.error}` };
     } finally {
       clearTimeout(timer);
     }
@@ -270,7 +293,7 @@ export function createRelayRpc(
       classifyViewResponse
     );
 
-  return { provider, sendOnce, view };
+  return { provider, sendSigned, view };
 }
 
 /**

@@ -59,6 +59,7 @@ export function CreatePortfolioFlow({
   onCreated,
   signedOut = false,
   startNew = false,
+  startPresetId,
 }: {
   onClose: () => void;
   /** After a New Portfolio Draft was saved in the editor. */
@@ -71,6 +72,8 @@ export function CreatePortfolioFlow({
   signedOut?: boolean;
   /** D-397: build another portfolio, even with a draft saved. Only read on open. */
   startNew?: boolean;
+  /** D-561: skip the chooser and open the editor on this preset. Only read on open. */
+  startPresetId?: PresetId;
 }) {
   const { lang } = useLanguage();
   const t = shellTranslations[lang];
@@ -99,6 +102,7 @@ export function CreatePortfolioFlow({
   // null while a saved draft waits on the balance to pick its way. Decided once and kept:
   // funds arriving while the draft is being edited do not swap the editor away.
   const [step, setStep] = useState<Step | null>(() => {
+    if (startPresetId) return { kind: "draft", presetId: startPresetId };
     if (!draft || startNew) return { kind: "select" };
     if (afterDeposit) return depositSeen ? { kind: "confirm", draft } : null;
     if (canFund === null) return null;

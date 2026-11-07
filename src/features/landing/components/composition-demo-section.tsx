@@ -1,15 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
+import type { Route } from "next";
 import { motion } from "framer-motion";
+import { PRESET_ENTRY_PARAM } from "@/content/portfolio-presets";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
 import { buildDemoPresets } from "../lib/demo-presets";
+import { AppCta } from "./app-cta";
 import { PortfolioBuildDemo } from "./portfolio-build-demo";
 
-export function CompositionDemoSection() {
+export function CompositionDemoSection({ comingSoon }: { comingSoon: boolean }) {
   const { lang } = useLanguage();
   const t = landingTranslations[lang].compositionDemo;
+  const tSoon = landingTranslations[lang].comingSoon;
   const presets = useMemo(() => buildDemoPresets(lang), [lang]);
 
   return (
@@ -28,7 +32,23 @@ export function CompositionDemoSection() {
         </div>
 
         <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-8 sm:p-12">
-          <PortfolioBuildDemo presets={presets} lang={lang} />
+          <PortfolioBuildDemo
+            presets={presets}
+            lang={lang}
+            // D-561: the demo's way out, with the mix on screen already in the editor. "Open app"
+            // still enters on Funding (D-453).
+            renderAction={(preset) => (
+              <AppCta
+                href={`/dashboard?${PRESET_ENTRY_PARAM}=${preset.id}` as Route<string>}
+                label={t.startWithMix}
+                comingSoon={comingSoon}
+                soonBadge={tSoon.badge}
+                soonSrLabel={tSoon.srLabel}
+                animated
+                className="inline-flex items-center rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              />
+            )}
+          />
         </div>
       </motion.div>
     </section>

@@ -144,14 +144,14 @@ describe("createRelayRpc — the reads provider refuses to send (D-329)", () => 
   });
 });
 
-describe("createRelayRpc — sendOnce posts once, to one node", () => {
+describe("createRelayRpc — sendSigned", () => {
   it("posts send_tx once to the primary, with its key, when the primary served the reads", async () => {
     const fetchImpl = vi.fn<FetchImpl>(async () => rpcResponse({ jsonrpc: "2.0", id: "relay-send", result: OUTCOME }));
     const primary = fakeUpstream("primary");
     const rpc = createRelayRpc([primary, fakeUpstream("fallback")], { fetchImpl, ...quiet });
 
     await rpc.provider.viewBlock({ finality: "final" });
-    await expect(rpc.sendOnce("AAEC")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
@@ -169,7 +169,7 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
     const rpc = createRelayRpc([primary, fakeUpstream("fallback")], { fetchImpl, ...quiet });
 
     await rpc.provider.viewBlock({ finality: "final" });
-    await rpc.sendOnce("AAEC");
+    await rpc.sendSigned("AAEC");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toBe("https://fallback.example/rpc");
   });
@@ -187,7 +187,7 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
       rpc.provider.viewAccessKey({ accountId: "relayer.near", publicKey: "ed25519:x" }),
       rpc.provider.viewBlock({ finality: "final" }),
     ]);
-    await rpc.sendOnce("AAEC");
+    await rpc.sendSigned("AAEC");
     expect(fetchImpl.mock.calls[0][0]).toBe("https://fallback.example/rpc");
   });
 
@@ -195,11 +195,11 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
     ["a 503", () => new Response("unavailable", { status: 503 }), /HTTP 503/],
     ["a 500", () => new Response("oops", { status: 500 }), /HTTP 500/],
     ["nearcore's own 408 TIMEOUT_ERROR", () => rpcResponse({ error: { name: "HANDLER_ERROR", cause: { name: "TIMEOUT_ERROR" } } }, 408), /TIMEOUT_ERROR/],
-  ])("answers unknown on %s — once, never re-posted", async (_label, answer, message) => {
+  ])("answers unknown on %s, with no upstream left to ask", async (_label, answer, message) => {
     const fetchImpl = vi.fn<FetchImpl>(async () => answer());
-    const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, ...quiet });
+    const rpc = createRelayRpc([fakeUpstream("primary")], { fetchImpl, ...quiet });
 
-    const result = await rpc.sendOnce("AAEC");
+    const result = await rpc.sendSigned("AAEC");
     expect(result.kind).toBe("unknown");
     expect(result.kind === "unknown" && result.error).toMatch(message);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -207,9 +207,9 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
 
   it("answers unknown when the connection drops after posting", async () => {
     const fetchImpl = vi.fn<FetchImpl>(async () => { throw new TypeError("fetch failed"); });
-    const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, ...quiet });
+    const rpc = createRelayRpc([fakeUpstream("primary")], { fetchImpl, ...quiet });
 
-    await expect(rpc.sendOnce("AAEC")).resolves.toEqual({ kind: "unknown", error: "fetch failed" });
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "unknown", error: "fetch failed" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -222,7 +222,7 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
     );
     const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, sendTimeoutMs: 20, ...quiet });
 
-    await expect(rpc.sendOnce("AAEC")).resolves.toEqual({ kind: "unknown", error: "no answer within 20ms" });
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "unknown", error: "no answer within 20ms" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -237,14 +237,136 @@ describe("createRelayRpc — sendOnce posts once, to one node", () => {
     });
     const rpc = createRelayRpc([fakeUpstream("primary")], { fetchImpl, sendTimeoutMs: 20, ...quiet });
 
-    await expect(rpc.sendOnce("AAEC")).resolves.toEqual({ kind: "unknown", error: "no answer within 20ms" });
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "unknown", error: "no answer within 20ms" });
   });
 
   it("answers invalid-nonce on the node's InvalidNonce refusal", async () => {
     const fetchImpl = vi.fn<FetchImpl>(async () => rpcResponse({ error: INVALID_NONCE }));
     const rpc = createRelayRpc([fakeUpstream("primary")], { fetchImpl, ...quiet });
 
-    await expect(rpc.sendOnce("AAEC")).resolves.toMatchObject({ kind: "invalid-nonce" });
+    await expect(rpc.sendSigned("AAEC")).resolves.toMatchObject({ kind: "invalid-nonce" });
+  });
+});
+
+describe("createRelayRpc — re-post after an answer that proves nothing (D-557)", () => {
+  const BAD_GATEWAY = () => new Response("<html>502</html>", { status: 502 });
+  const EXPIRED = { ...INVALID_NONCE, data: { TxExecutionError: { InvalidTxError: "Expired" } } };
+
+  /** The primary answers `first`, the fallback answers `second`. */
+  function twoNodes(first: () => Response | Promise<Response>, second: () => Response | Promise<Response>) {
+    const fetchImpl = vi.fn<FetchImpl>(async (url) => (url.startsWith("https://primary") ? first() : second()));
+    return { fetchImpl, rpc: createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, ...quiet }) };
+  }
+
+  it("the 872fa4c4 case: a 502 from the primary, and the fallback runs the same bytes", async () => {
+    const { rpc, fetchImpl } = twoNodes(BAD_GATEWAY, () => rpcResponse({ result: OUTCOME }));
+
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(["https://primary.example/rpc", "https://fallback.example/rpc"]);
+    const [firstBody, secondBody] = fetchImpl.mock.calls.map(([, init]) => init.body);
+    expect(secondBody).toBe(firstBody);
+  });
+
+  it("does not hand the primary's key to the fallback", async () => {
+    const { rpc, fetchImpl } = twoNodes(BAD_GATEWAY, () => rpcResponse({ result: OUTCOME }));
+
+    await rpc.sendSigned("AAEC");
+
+    expect(fetchImpl.mock.calls[1][1].headers).not.toHaveProperty("X-API-Key");
+  });
+
+  it("logs hosts and roles, never the key or the bytes", async () => {
+    const lines: string[] = [];
+    const fetchImpl = vi.fn<FetchImpl>(async (url) => (url.startsWith("https://primary") ? BAD_GATEWAY() : rpcResponse({ result: OUTCOME })));
+    const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, log: (l) => lines.push(l) });
+
+    await rpc.sendSigned("AAEC");
+
+    expect(lines).toEqual([expect.stringMatching(/primary primary\.example left the send unknown: HTTP 502.*re-posting to fallback/)]);
+    expect(lines.join()).not.toMatch(/secret|AAEC/);
+  });
+
+  it.each([
+    ["InvalidNonce", () => rpcResponse({ error: INVALID_NONCE }), /InvalidNonce/],
+    ["another refusal", () => rpcResponse({ error: EXPIRED }), /Expired/],
+    ["another unknown", () => new Response("oops", { status: 500 }), /HTTP 500/],
+  ])("a re-post answered with %s stays unknown: the first copy may have landed", async (_label, second, message) => {
+    const { rpc, fetchImpl } = twoNodes(BAD_GATEWAY, second);
+
+    const result = await rpc.sendSigned("AAEC");
+
+    expect(result.kind).toBe("unknown");
+    expect(result.kind === "unknown" && result.error).toMatch(/HTTP 502/);
+    expect(result.kind === "unknown" && result.error).toMatch(message);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-posts after nearcore's own 408 too: routed or not, the bytes can only run once", async () => {
+    const timeout = { name: "HANDLER_ERROR", cause: { name: "TIMEOUT_ERROR" } };
+    const { rpc, fetchImpl } = twoNodes(
+      () => rpcResponse({ error: timeout }, 408),
+      () => rpcResponse({ result: OUTCOME })
+    );
+
+    await expect(rpc.sendSigned("AAEC")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["an outcome, a revert included", () => rpcResponse({ result: { ...OUTCOME, status: { Failure: {} } } }), "outcome"],
+    ["InvalidNonce", () => rpcResponse({ error: INVALID_NONCE }), "invalid-nonce"],
+    ["another refusal", () => rpcResponse({ error: EXPIRED }), "rejected"],
+  ])("a first post answered with %s is conclusive: no re-post", async (_label, first, kind) => {
+    const { rpc, fetchImpl } = twoNodes(first, () => rpcResponse({ result: OUTCOME }));
+
+    await expect(rpc.sendSigned("AAEC")).resolves.toMatchObject({ kind });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("has nowhere to go when the reads already moved the send to the last upstream", async () => {
+    const fetchImpl = vi.fn<FetchImpl>(async () => BAD_GATEWAY());
+    const primary = fakeUpstream("primary", { viewBlock: vi.fn(async () => { throw new Error("down"); }) });
+    const rpc = createRelayRpc([primary, fakeUpstream("fallback")], { fetchImpl, ...quiet });
+
+    await rpc.provider.viewBlock({ finality: "final" });
+    await expect(rpc.sendSigned("AAEC")).resolves.toMatchObject({ kind: "unknown" });
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(["https://fallback.example/rpc"]);
+  });
+
+  const hangUntilAborted = (signal?: AbortSignal | null) =>
+    new Promise<Response>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    });
+
+  it("both posts share one budget: what the first used, the second does not get", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn<FetchImpl>((url, init) =>
+        url.startsWith("https://primary")
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(BAD_GATEWAY()), 150))
+          : hangUntilAborted(init.signal)
+      );
+      const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { fetchImpl, sendTimeoutMs: 200, ...quiet });
+      const settled = vi.fn();
+      const result = rpc.sendSigned("AAEC").then((r) => {
+        settled();
+        return r;
+      });
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(settled).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(result).resolves.toEqual({
+        kind: "unknown",
+        error: "HTTP 502 with an unreadable body; fallback: no answer within 200ms",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -370,7 +492,7 @@ describe("createRelayRpc — view (017-2)", () => {
     const rpc = createRelayRpc([fakeUpstream("primary"), fakeUpstream("fallback")], { ...quiet, fetchImpl });
 
     await expect(rpc.view("intents.near", "has_public_key", {})).resolves.toEqual({ kind: "value", value: true });
-    await expect(rpc.sendOnce("dHg=")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
+    await expect(rpc.sendSigned("dHg=")).resolves.toEqual({ kind: "outcome", outcome: OUTCOME });
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
       "https://primary.example/rpc",
       "https://fallback.example/rpc",

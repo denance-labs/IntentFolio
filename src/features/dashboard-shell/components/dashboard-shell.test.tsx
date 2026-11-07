@@ -225,6 +225,7 @@ vi.mock("./create-portfolio-flow", () => ({
 }));
 
 import { DashboardShell } from "./dashboard-shell";
+import { appPortfolioCap } from "@/features/vault/lib/change-set-preflight";
 
 const t = shellTranslations.en;
 
@@ -1017,6 +1018,93 @@ describe("DashboardShell — connecting with a draft built signed out (D-359)", 
 // 022-C (D-453) — entering the app ("Open app": the index, `basePath` itself) lands on My
 // Account; a reload, anywhere below the index, lands where the user was. The index is dropped
 // from the address bar at once, so it counts once.
+describe("DashboardShell — entering with a preset from the landing (D-561)", () => {
+  const at = (path: string) => window.history.replaceState(null, "", path);
+  const FUNDED: FundableGeneralBalance = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+
+  it("signed out: opens the editor on it, and the URL no longer asks for it", () => {
+    state.login = { status: "idle", intentsAccountId: "" };
+    at("/dashboard/overview?entry=1&preset=aggressive");
+    renderShell();
+    expect(state.flowProps).toMatchObject({ signedOut: true, startPresetId: "aggressive" });
+    expect(window.location.pathname + window.location.search).toBe("/dashboard/overview");
+  });
+
+  it("waits for the session and for the account's portfolios and funds", () => {
+    state.login = { status: "restoring", intentsAccountId: ACCOUNT };
+    at("/dashboard/overview?preset=balanced");
+    const { rerender } = renderShell();
+    expect(state.flowProps).toBeNull();
+
+    state.login = { status: "connected", intentsAccountId: ACCOUNT };
+    state.portfoliosLoading = true;
+    rerender();
+    expect(state.flowProps).toBeNull();
+
+    state.portfoliosLoading = false;
+    state.fundable = { status: "loading" };
+    rerender();
+    expect(state.flowProps).toBeNull();
+
+    state.fundable = FUNDED;
+    rerender();
+    expect(state.flowProps).toMatchObject({ signedOut: false, startNew: true, startPresetId: "balanced" });
+  });
+
+  it("with a saved draft and funds it opens as a new mix beside the draft", () => {
+    state.draft = DRAFT;
+    state.fundable = FUNDED;
+    at("/dashboard/overview?preset=balanced");
+    renderShell();
+    expect(state.flowProps).toMatchObject({ startNew: true, startPresetId: "balanced" });
+  });
+
+  // The two cases where "+" waits too: saving this mix would replace the draft.
+  it("with a saved draft and no funds it stays out, wallet or not, and the draft is untouched", () => {
+    state.draft = DRAFT;
+    at("/dashboard/overview?preset=balanced");
+    renderShell();
+    expect(state.flowProps).toBeNull();
+    cleanup();
+
+    state.login = { status: "idle", intentsAccountId: "" };
+    state.fundable = FUNDED;
+    at("/dashboard/overview?preset=balanced");
+    renderShell();
+    expect(state.flowProps).toBeNull();
+    expect(state.saveDraft).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("");
+  });
+
+  it("at the portfolio cap it stays out", () => {
+    state.portfolios = Array.from({ length: appPortfolioCap() }, (_, i) => ({
+      id: `p${i}`,
+      name: `P${i}`,
+      deposits: {},
+    }));
+    at("/dashboard/overview?preset=balanced");
+    renderShell();
+    expect(state.flowProps).toBeNull();
+  });
+
+  it("a preset it does not know opens nothing, and is dropped from the URL", () => {
+    at("/dashboard/overview?preset=nope");
+    renderShell();
+    expect(state.flowProps).toBeNull();
+    expect(window.location.search).toBe("");
+  });
+
+  it("a reload does not open it again", () => {
+    at("/dashboard/overview?preset=balanced");
+    renderShell();
+    expect(state.flowProps).toMatchObject({ startPresetId: "balanced" });
+    cleanup();
+    state.flowProps = null;
+    renderShell();
+    expect(state.flowProps).toBeNull();
+  });
+});
+
 describe("DashboardShell — entering the app (022-C)", () => {
   const at = (path: string) => window.history.replaceState(null, "", path);
   const restore = () => {

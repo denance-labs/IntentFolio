@@ -48,7 +48,7 @@ user who signs in from another chain does not need NEAR to pay for gas.
 1. Open https://intentfolio.app → the landing page (EN / ES toggle in the header).
 2. Click **Open app** → the dashboard. Click **Build my first portfolio** → pick a preset mix or
    start from scratch, without connecting a wallet.
-3. Connect a wallet (NEAR, EVM, Solana, TON, Stellar or Tron) → **My Account**, with your Funding
+3. Connect a wallet (NEAR, EVM, Solana, TON, Stellar or Tron) → **Funding**, with your Funding
    Account and portfolios. Creating a real portfolio needs real funds on mainnet.
 
 ### Local (clean clone)

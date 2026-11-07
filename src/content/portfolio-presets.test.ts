@@ -8,7 +8,7 @@ import {
   firstError,
 } from "@/features/intents-account/mock-contract/rules";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
-import { getPreset, portfolioPresets, type PresetId } from "./portfolio-presets";
+import { getPreset, portfolioPresets, type PresetId, parsePresetId } from "./portfolio-presets";
 
 // Locked percentages + bands (D-031). The token assignment is product content and may
 // change; these assertions guard the locked numbers and structural validity only.
@@ -114,5 +114,14 @@ describe("portfolio presets", () => {
   it("getPreset resolves by id and returns undefined otherwise", () => {
     expect(getPreset("balanced")?.id).toBe("balanced");
     expect(getPreset("nope" as PresetId)).toBeUndefined();
+  });
+});
+
+describe("parsePresetId (D-561)", () => {
+  it("accepts only the ids of these templates", () => {
+    expect(parsePresetId("balanced")).toBe("balanced");
+    expect(parsePresetId("nope")).toBeNull();
+    expect(parsePresetId("")).toBeNull();
+    expect(parsePresetId(null)).toBeNull();
   });
 });

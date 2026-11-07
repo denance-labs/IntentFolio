@@ -31,7 +31,7 @@ export function LandingPage({ comingSoon = false }: { comingSoon?: boolean }) {
         <main id="main-content">
           <HeroSection comingSoon={comingSoon} />
           <HowItWorksSection />
-          <CompositionDemoSection />
+          <CompositionDemoSection comingSoon={comingSoon} />
           <MultiChainSection />
           <RebalancingSection />
           <PerformanceSection />

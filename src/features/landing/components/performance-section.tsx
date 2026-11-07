@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
+import { ExampleSpreadChart } from "./example-spread-chart";
 
 const sectionVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -24,7 +24,7 @@ export function PerformanceSection() {
   const t = landingTranslations[lang].performance;
 
   return (
-    <section aria-label="Results" className="py-24">
+    <section aria-label={t.title} className="py-24">
       <motion.div
         className="max-w-6xl mx-auto px-6"
         variants={sectionVariants}
@@ -44,16 +44,7 @@ export function PerformanceSection() {
 
           {/* Right: chart card */}
           <motion.div variants={itemVariants} className="lg:col-span-7">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
-              <Image
-                src="/landing/cumulative-spread.png"
-                alt="Chart of the cumulative spread a portfolio captured from its swaps over time"
-                width={1184}
-                height={496}
-                className="w-full h-auto"
-              />
-            </div>
-            <p className="text-xs text-slate-400 mt-2">{t.caption}</p>
+            <ExampleSpreadChart copy={t.chart} />
           </motion.div>
         </div>
       </motion.div>

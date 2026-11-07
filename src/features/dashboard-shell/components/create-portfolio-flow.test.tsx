@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { FundableGeneralBalance } from "../hooks/use-fundable-general-balance";
 import type { NewPortfolioDraft } from "../lib/new-portfolio-draft";
+import type { PresetId } from "@/content/portfolio-presets";
 import { shellTranslations } from "../lib/translations";
 
 // 019-5 (D-393 Q4): every card opens the editor, with funds or without. D-397: what its footer
@@ -89,10 +90,12 @@ function renderFlow({
   afterDeposit,
   signedOut,
   startNew,
+  startPresetId,
 }: {
   afterDeposit?: { tokenId: string; qty: number };
   signedOut?: boolean;
   startNew?: boolean;
+  startPresetId?: PresetId;
 } = {}) {
   const onClose = vi.fn();
   const onDraftSaved = vi.fn();
@@ -105,6 +108,7 @@ function renderFlow({
       onCreated={onCreated}
       signedOut={signedOut}
       startNew={startNew}
+      startPresetId={startPresetId}
     />
   );
   const view = render(flow());
@@ -302,6 +306,24 @@ describe("CreatePortfolioFlow — with a saved New Portfolio Draft", () => {
 });
 
 // D-397: "+" with funds builds another portfolio. The draft stays, and the editor is told about it.
+describe("CreatePortfolioFlow — entering with a preset from the landing (D-561)", () => {
+  it("opens the editor on it, and Back still reaches the chooser", () => {
+    renderFlow({ signedOut: true, startPresetId: "aggressive" });
+    expect(screen.getByText("draft:aggressive")).toBeTruthy();
+    expect(screen.queryByText(t.presetSelectTitle)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "back" }));
+    expect(screen.getByText(t.presetSelectTitle)).toBeTruthy();
+  });
+
+  it("with a draft saved it is a new mix, told the name of the draft it must not replace", () => {
+    state.draft = SAVED;
+    state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 5 };
+    renderFlow({ startNew: true, startPresetId: "aggressive" });
+    expect(screen.getByText("draft:aggressive")).toBeTruthy();
+    expect(screen.getByText("saved:My mix")).toBeTruthy();
+  });
+});
+
 describe("CreatePortfolioFlow — a new portfolio with a draft saved (startNew)", () => {
   beforeEach(() => {
     state.draft = SAVED;

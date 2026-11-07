@@ -7,8 +7,8 @@
 // and since 017-2 (D-365) so is the permission to spend the relayer's gas: no access token.
 //
 // All the logic lives in unit-tested modules: the pause, destination guard, spend cap and log in
-// relay-service.ts; whether the envelope is worth the gas in relay-gate.ts; the sign-once-send-
-// once sender in relay-sender.ts; the allowance warning in relay-allowance.ts. This file is only
+// relay-service.ts; whether the envelope is worth the gas in relay-gate.ts; the sender in
+// relay-sender.ts; the allowance warning in relay-allowance.ts. This file is only
 // the transport and the wiring.
 
 import { NextResponse } from "next/server";
@@ -89,8 +89,9 @@ export async function POST(request: Request) {
       { status: 503 }
     );
   }
-  // Meta Pool's keyed RPC first, FastNEAR for reads if it fails; the signed transaction goes
-  // out once, to one node (relay-rpc-provider.ts, D-173, D-329). Built per request.
+  // Meta Pool's keyed RPC first, FastNEAR if it fails. A read moves on any error; the signed
+  // bytes move once, only when the answer proves nothing (relay-rpc-provider.ts, D-173, D-329,
+  // D-557). Built per request.
   const rpc = createRelayRpc(relayUpstreamsFromConfig(readNearRpcConfig()));
 
   const { status, body: responseBody } = await handleRelayRequest({

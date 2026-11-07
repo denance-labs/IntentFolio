@@ -13,7 +13,7 @@
 // when the component scrolls into view. In `autoPlayLoop` mode (recording) it loops on
 // a fixed cadence with the controls hidden.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useInView } from "framer-motion";
 import { RotateCcw } from "lucide-react";
 import { donutSlicePath } from "../lib/donut-geometry";
@@ -48,6 +48,8 @@ type Props = {
   /** "showcase" enlarges donut/rows for full-screen video capture. */
   variant?: "default" | "showcase";
   className?: string;
+  /** What leads out of the demo, for the preset on screen. Absent on the recording route. */
+  renderAction?: (preset: DemoPreset) => ReactNode;
 };
 
 // Per-variant sizing. SVG center-label text lives in viewBox units so it scales with
@@ -124,6 +126,7 @@ export function PortfolioBuildDemo({
   orientation = "auto",
   variant = "default",
   className = "",
+  renderAction,
 }: Props) {
   const copy = COPY[lang];
   const sz = SIZING[variant];
@@ -370,6 +373,8 @@ export function PortfolioBuildDemo({
           ))}
         </div>
       )}
+
+      {renderAction && <div className="mt-8 flex justify-center">{renderAction(preset)}</div>}
     </div>
   );
 }

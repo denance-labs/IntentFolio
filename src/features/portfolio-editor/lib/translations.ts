@@ -268,7 +268,7 @@ export const translations = {
     realAddPortfolioGoneTitle: "We couldn't add your funds",
     realAddPortfolioGone:
       "That portfolio no longer exists, so we couldn't add these funds to it. They're safe and going back to your funding account; it may take about a week. There's no need to sign again.",
-    realAddSeeMyAccount: "You can follow it in My account.",
+    realAddSeeMyAccount: "You can follow it in Funding.",
     editModeBanner: "Edit mode — save to confirm your changes.",
     // D-326: an Add tokens to THIS portfolio that was sent and not yet seen credited.
     pendingTopUpStrip: "Funds you added to this portfolio aren't confirmed yet. You don't need to sign again.",
@@ -513,7 +513,7 @@ export const translations = {
     realAddPortfolioGoneTitle: "No pudimos sumar tus fondos",
     realAddPortfolioGone:
       "Ese portfolio ya no existe, así que no pudimos sumarle estos fondos. Están a salvo y vuelven a tu cuenta de fondos; puede tardar alrededor de una semana. No hace falta que firmes de nuevo.",
-    realAddSeeMyAccount: "Puedes seguirlo en Mi cuenta.",
+    realAddSeeMyAccount: "Puedes seguirlo en Fondos.",
     editModeBanner: "Modo edición — guarda para confirmar los cambios.",
     pendingTopUpStrip: "Tienes una recarga sin confirmar para este portfolio; no hace falta volver a firmar.",
     unconfirmedWithdrawalStrip:

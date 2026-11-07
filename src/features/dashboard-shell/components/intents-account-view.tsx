@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -64,41 +64,63 @@ type BalanceRow = {
   price: number;
 };
 
-function TokenRow({ row, onSell, sellLabel }: { row: BalanceRow; onSell?: (tokenId: string) => void; sellLabel?: string }) {
+// D-561: the line under the symbol only when it says something the symbol does not. "USDC (on NEAR)"
+// under "USDC(NEAR)" and "Aurora" under "AURORA" repeat it; "Ethereum (on NEAR)" under "ETH" is what
+// tells the two ETH apart, and a stock's name is the company.
+function tokenSubtitle(symbol: string, name: string): string | null {
+  const symbolNamesNetwork = symbol.includes("(") && name.includes("(on ");
+  return symbolNamesNetwork || name.toLowerCase() === symbol.toLowerCase() ? null : name;
+}
+
+// D-561: the same row on a desktop and on a phone. On the left, what the token is and what one is
+// worth; on the right, what the account holds. A table with bare figures read as three numbers with
+// no telling which was which, and the amount needs its unit for the same reason: every wallet looked
+// at (MetaMask, Phantom, Zerion) writes "0.14 BTC". The network is said once, in the symbol.
+function TokenRow({ row, onSell, t }: { row: BalanceRow; onSell?: (tokenId: string) => void; t: typeof shellTranslations.en }) {
   const symbol = row.token?.symbol ?? "?";
-  const name = row.token?.name ?? row.tokenId;
+  const subtitle = tokenSubtitle(symbol, row.token?.name ?? row.tokenId);
+  const ticker = row.token ? symbol.split("(")[0].trim() : null;
   const price = row.price;
 
   return (
-    <div className="flex items-center justify-between py-3">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
         {/* Branded token logo on a neutral chip — the icon carries the identity, so the
             chip itself stays colour-free and never implies a mapping that would clash with
             the editor donut. Falls back to a monogram only for tokens without an icon. */}
-        <TokenAvatar symbol={symbol} size={32} className="rounded-lg bg-slate-800" />
+        <TokenAvatar symbol={symbol} size={32} className="shrink-0 rounded-lg bg-slate-800" />
 
-        <div>
-          <p className="text-sm font-medium text-slate-100">{symbol}</p>
-          <p className="max-w-[140px] truncate text-xs text-slate-400 sm:max-w-none">{name}</p>
-          {/* D-524: the price of one token, as the edit table shows it under the name; on every
-              row, stablecoins too. Hidden without a price rather than reading "$0.00". */}
-          {price > 0 ? <p className="text-[11px] tabular-nums text-slate-400">{formatUsd(price)}</p> : null}
+        <div className="min-w-0">
+          <p className="flex items-baseline gap-1.5">
+            <span className="shrink-0 text-sm font-medium text-slate-100">{symbol}</span>
+            {subtitle ? <span className="truncate text-xs text-slate-400">{subtitle}</span> : null}
+          </p>
+          {/* D-524: the price of one token, on every row, stablecoins too. Left out without a
+              price rather than reading "$0.00". */}
+          {price > 0 ? (
+            <p className="text-xs tabular-nums text-slate-400">
+              {t.myAccountTokenPrice} {formatUsd(price)}
+            </p>
+          ) : null}
         </div>
       </div>
-      <div className="text-right">
-        <p className="text-sm font-medium text-slate-100">{formatUsd(row.usd)}</p>
-        <p className="text-xs text-slate-400">
-          {formatTokenAmount(row.qty, price)} {symbol}
-        </p>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex flex-col items-end">
+          <p className="text-sm font-medium tabular-nums text-slate-100">{formatUsd(row.usd)}</p>
+          <p className="text-xs tabular-nums text-slate-400">
+            {formatTokenAmount(row.qty, price)}
+            {ticker ? ` ${ticker}` : null}
+          </p>
+        </div>
         {/* A stock has no withdrawal route: selling it here is the way out (plan 039). */}
         {onSell && isStockToken(row.tokenId) ? (
           <button
             type="button"
             onClick={() => onSell(row.tokenId)}
-            aria-label={`${sellLabel} ${symbol}`}
-            className="mt-1 rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            aria-label={`${t.stockSellAction} ${symbol}`}
+            className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           >
-            {sellLabel}
+            {t.stockSellAction}
           </button>
         ) : null}
       </div>
@@ -153,6 +175,8 @@ function CreatePortfolioBanner({
 // "read failed" state here, on purpose: the shell renders its own loading and error screens
 // in place of this view (`dashboard-shell.tsx`), so by the time this mounts the portfolio
 // read has succeeded and the total is complete.
+const SUMMARY_LINE_ITEM = "relative flex gap-1.5 pl-5 before:absolute before:left-2 before:content-['·']";
+
 function BalanceUnreadNotice({
   read,
   t,
@@ -193,6 +217,7 @@ function AccountTotals({
   showSignedOutNote,
   totalSpreadUsd,
   t,
+  children,
 }: {
   /** null: the funding account is not read yet (D-541) — its figure and the total are unknown. */
   generalUsd: number | null;
@@ -205,41 +230,63 @@ function AccountTotals({
   showSignedOutNote: boolean;
   totalSpreadUsd: number;
   t: typeof shellTranslations.en;
+  /** The summary's buttons, beside the figure they act on. */
+  children: ReactNode;
 }) {
   return (
-    // A subtle card, like Performance's metric cards: on the bare page the totals blended
-    // into the buttons and the feed around them (operator, s224).
-    <div className="rounded-2xl border border-slate-800 bg-surface px-4 py-3">
-      {/* The two parts sit on their own lines. On one line with a "·" separator they wrapped
-          next to the action buttons on desktop, leaving the dot at the start of line two. */}
-      <dl className="text-sm text-slate-400">
-        <div>
-          <dt className="text-xs">{t.myAccountTotalValue}</dt>
-          <dd className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
-            {generalUsd === null ? "—" : formatUsd(totalUsd)}
+    // D-561: the same card and type as Overview's "in place" block (portfolio-showcase.tsx). The
+    // lead figure is the funding account, the one in the tab: under the name "Funding", a total
+    // that includes the portfolios would not be funding.
+    <div
+      data-testid="account-summary"
+      className="ov-rise rounded-3xl border border-white/[0.07] px-6 pb-5 pt-6 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_18px_70px_rgb(0_0_0/0.28)] sm:px-7"
+      style={{ background: "linear-gradient(180deg, rgb(var(--slate-900) / 0.72), rgb(var(--slate-900) / 0.45))" }}
+    >
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-5">
+        <dl className="min-w-0">
+          <dt className="text-xs uppercase tracking-[0.08em] text-slate-400">{t.myAccountGeneralBalance}</dt>
+          <dd
+            className={`mt-2.5 break-words text-5xl font-semibold leading-none tracking-tight ${
+              generalUsd === null ? "text-slate-500" : "text-white"
+            }`}
+          >
+            {generalUsd === null ? "—" : formatUsd(generalUsd)}
           </dd>
+        </dl>
+        {/* A button row of its own on a phone, filling the card; on a desktop, beside the figure.
+            A long amount sends it to its own line instead of squeezing the labels. */}
+        <div className="flex w-full flex-wrap gap-3 sm:w-auto [&>button]:flex-auto [&>button]:justify-center [&>button]:whitespace-nowrap sm:[&>button]:flex-none">
+          {children}
         </div>
-        <div className="mt-1 flex gap-1.5">
-          <dt>{t.myAccountGeneralBalance}</dt>
-          <dd className="tabular-nums text-slate-200">{generalUsd === null ? "—" : formatUsd(generalUsd)}</dd>
-        </div>
-        <div className="flex gap-1.5">
-          <dt>
-            {t.myAccountInPortfolios} <span className="tabular-nums">({portfolioCount})</span>
-          </dt>
-          <dd className="tabular-nums text-slate-200">{formatUsd(portfoliosUsd)}</dd>
-        </div>
-      </dl>
+      </div>
+      {/* The "·" belongs to the item after it and is clipped at the start of a line: when the
+          line wraps, no separator is left opening the second one. */}
+      <div className="mt-4 overflow-hidden">
+        <dl className="-ml-5 flex flex-wrap text-sm text-slate-400">
+          <div className={SUMMARY_LINE_ITEM}>
+            <dt>{t.myAccountTotalValue}</dt>
+            <dd className="tabular-nums text-slate-200">{generalUsd === null ? "—" : formatUsd(totalUsd)}</dd>
+          </div>
+          <div className={SUMMARY_LINE_ITEM}>
+            <dt>
+              {portfolioCount === 1
+                ? t.myAccountInPortfoliosOne
+                : t.myAccountInPortfoliosMany.replace("{n}", String(portfolioCount))}
+            </dt>
+            <dd className="tabular-nums text-slate-200">{formatUsd(portfoliosUsd)}</dd>
+          </div>
+        </dl>
+      </div>
       {showInTransitNote && (
-        <p className="mt-1.5 text-xs text-slate-400">{t.myAccountInTransitNote}</p>
+        <p className="mt-2 text-xs text-slate-400">{t.myAccountInTransitNote}</p>
       )}
       {/* In line with the figures it explains, never a banner or an overlay (D-453): it must
           not cover or push the buttons. A shade lighter than the note above so it reads first. */}
       {showSignedOutNote && (
-        <p className="mt-1.5 text-xs text-slate-300">{t.myAccountSignedOutNote}</p>
+        <p className="mt-2 text-xs text-slate-300">{t.myAccountSignedOutNote}</p>
       )}
       {totalSpreadUsd > 0 && (
-        <p className="mt-1.5 text-sm font-medium text-cyan-300">
+        <p className="mt-3 text-sm font-medium text-cyan-300">
           {t.myAccountTotalSpreadLabel}:{" "}
           <span className="tabular-nums">{formatUsd(totalSpreadUsd)}</span>
           {/* Own line: inline, the card's width left one word of the note alone on line two. */}
@@ -287,11 +334,28 @@ const DONE_TONES: Record<DoneTone, string> = {
   muted:   "text-slate-400",
 };
 
-function DoneLabel({ label, tone, Icon = Check }: { label: string; tone: DoneTone; Icon?: LucideIcon }) {
+const AFTER_ICON_ONLY = "hidden sm:inline";
+
+function DoneLabel({
+  label,
+  tone,
+  Icon = Check,
+  iconOnlyOnPhone = false,
+}: {
+  label: string;
+  tone: DoneTone;
+  Icon?: LucideIcon;
+  /**
+   * D-561: only the check on a phone, the word still read aloud, for a row with one way to end. Its
+   * width goes to the rest of the line. Sent, Delivered and Returned tell outcomes apart: in words.
+   * The "·" after it goes too (`AFTER_ICON_ONLY`).
+   */
+  iconOnlyOnPhone?: boolean;
+}) {
   return (
     <span className={`inline-flex shrink-0 items-center gap-1 font-medium ${DONE_TONES[tone]}`}>
       <Icon aria-hidden="true" className="h-3 w-3" />
-      {label}
+      {iconOnlyOnPhone ? <span className="sr-only sm:not-sr-only">{label}</span> : label}
     </span>
   );
 }
@@ -312,10 +376,10 @@ function formatActivityDate(ts: number, lang: Language): string {
 
 const NEAR_EXPLORER = chainRegistry["near:mainnet"];
 
-// 027 A-4: the account's sections read alike when they shared the small uppercase eyebrow and
-// the same filled card. Each now has its own treatment — the summary the one filled block,
-// General balance an outlined, narrower card, Recent activity an open list — under a real title.
+// D-561: the summary is the one filled block; the two lists under it share Overview's second-level
+// card (showcase-kpis.tsx), each under a real title.
 const SECTION_HEADING = "text-sm font-semibold text-slate-200";
+const SECTION_CARD = "ov-rise divide-y divide-slate-800 rounded-[20px] border border-white/[0.07] bg-surface/60 px-4 sm:px-5";
 
 // C1: a pending unallocation in flight (funds reserved in the portfolio, arriving to the
 // General Balance). PENDING shows the calm "releasing" chip; FAILED is rare (the async leg
@@ -399,9 +463,13 @@ function DepositRow({ deposit, t }: { deposit: DepositStatusEntry; t: typeof she
       <div className="flex min-w-0 items-center gap-3">
         <ActivityIcon kind="deposit" />
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="truncate text-sm font-medium text-slate-100">
+          {/* D-561: in the card the chip leaves little room on a phone (A-4a). Never cut: the amount
+              drops to its own line whole, its unit with it. */}
+          <p className="text-sm font-medium text-slate-100">
             <span className="mr-1.5 text-slate-400">{t.historyEventDeposit}</span>
-            {formatCrypto(qty)} {symbol}
+            <span className="inline-block max-w-full break-words">
+              {formatCrypto(qty)} {symbol}
+            </span>
           </p>
           <p className="text-xs text-slate-400">
             {chain?.displayName ?? deposit.chain}
@@ -533,10 +601,13 @@ function WithdrawalRow({
       <div className="flex min-w-0 items-center gap-3">
         <ActivityIcon kind="withdrawal" />
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="truncate text-sm font-medium text-slate-100">
+          {/* D-561: the amount drops to its own line whole, as on a deposit. */}
+          <p className="text-sm font-medium text-slate-100">
             {/* s217: said only "↑", next to deposits that said "↓ Deposit"; s224: the arrow is the tile. */}
             <span className="mr-1.5 text-slate-400">{t.historyEventWithdrawal}</span>
-            {formatCrypto(withdrawal.qty)} {symbol}
+            <span className="inline-block max-w-full break-words">
+              {formatCrypto(withdrawal.qty)} {symbol}
+            </span>
           </p>
           {finished ? (
             <p className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
@@ -691,8 +762,8 @@ function CompletedPortfolioRow({
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="break-words text-sm font-medium text-slate-100">{label}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
-          <DoneLabel label={t.activityDoneConfirmed} tone="muted" />
-          <span aria-hidden="true">·</span>
+          <DoneLabel label={t.activityDoneConfirmed} tone="muted" iconOnlyOnPhone />
+          <span aria-hidden="true" className={AFTER_ICON_ONLY}>·</span>
           <span className="shrink-0">{when}</span>
           {row.amounts.length > 0 && (
             <>
@@ -749,11 +820,11 @@ function CompletedMovementRow({
         <p className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
           {/* A direct withdrawal is only "Sent": the chain confirms it left, not that it arrived. */}
           {deposit ? (
-            <DoneLabel label={t.depositStatusCredited} tone="success" />
+            <DoneLabel label={t.depositStatusCredited} tone="success" iconOnlyOnPhone />
           ) : (
             <DoneLabel label={t.activityDoneSent} tone="neutral" />
           )}
-          <span aria-hidden="true">·</span>
+          <span aria-hidden="true" className={deposit ? AFTER_ICON_ONLY : undefined}>·</span>
           <span className="shrink-0">{when}</span>
           <span aria-hidden="true">·</span>
           <a
@@ -831,8 +902,7 @@ function RecentActivityFeed({
       <h2 id="recent-activity-heading" className={`mb-3 ${SECTION_HEADING}`}>
         {t.recentActivityHeading}
       </h2>
-      {/* An open list, no card (A-4): it also gives each row the card's 32 px back on a phone. */}
-      <div className="divide-y divide-slate-800 border-y border-slate-800">
+      <div className={SECTION_CARD}>
         {/* In progress first, each with its status chip; then what is finished, with its date
             where the chip would be — the two stay told apart (D-364 1). */}
         {items.map((item) =>
@@ -924,7 +994,7 @@ function RecentActivityFeed({
           type="button"
           onClick={showMore}
           disabled={ready?.more?.fetching}
-          className="mt-2 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
+          className="mt-3 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
         >
           {t.activityShowMore}
         </button>
@@ -941,7 +1011,7 @@ function BalanceSection({
   otherRows = [],
   otherLabel,
   onSell,
-  sellLabel,
+  t,
 }: {
   headingId: string;
   label: string;
@@ -955,19 +1025,17 @@ function BalanceSection({
   otherRows?: BalanceRow[];
   otherLabel?: string;
   onSell?: (tokenId: string) => void;
-  sellLabel?: string;
+  t: typeof shellTranslations.en;
 }) {
   return (
-    // Narrower than the column (operator, A-4), left-aligned: full width left a ~400 px gap
-    // between a token and its value. On a phone there is no room to spare, so it fills it.
-    <section aria-labelledby={headingId} className="w-full sm:max-w-md">
+    <section aria-labelledby={headingId} className="w-full">
       <h2 id={headingId} className={`${hint ? "mb-0.5" : "mb-3"} ${SECTION_HEADING}`}>
         {label}
       </h2>
       {hint && <p className="mb-3 text-xs text-slate-400">{hint}</p>}
-      <div className="divide-y divide-slate-800 rounded-2xl border border-slate-800 px-4">
+      <div className={SECTION_CARD}>
         {rows.map((row) => (
-          <TokenRow key={row.tokenId} row={row} onSell={onSell} sellLabel={sellLabel} />
+          <TokenRow key={row.tokenId} row={row} onSell={onSell} t={t} />
         ))}
         {otherRows.length > 0 && (
           <>
@@ -978,7 +1046,7 @@ function BalanceSection({
               {otherLabel}
             </h3>
             {otherRows.map((row) => (
-              <TokenRow key={row.tokenId} row={row} />
+              <TokenRow key={row.tokenId} row={row} t={t} />
             ))}
           </>
         )}
@@ -1170,58 +1238,53 @@ export function IntentsAccountView({
   // moment the first deposit lands. Withdraw only moves the General Balance, so with none
   // it is disabled rather than opening a form with nothing to send.
   const accountSummary = (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <AccountTotals
-        generalUsd={balanceUnread ? null : totals.generalUsd}
-        portfoliosUsd={totals.portfoliosUsd}
-        portfolioCount={portfolios.length}
-        totalUsd={totals.totalUsd}
-        showInTransitNote={showInTransitNote}
-        showSignedOutNote={signedOut}
-        totalSpreadUsd={totalSpreadUsd}
-        t={t}
-      />
-      {/* shrink-0: next to the totals column the buttons lost the width race and broke
-          "Add tokens" onto two lines. */}
-      <div className="flex shrink-0 gap-3">
-        {/* D-406: with a draft card on screen its button is the one primary (D-353's rule),
-            so the summary's deposit steps down to outlined, like Withdraw beside it. Signed
-            out, connecting takes its place, outlined: the empty state's "Build" leads. */}
-        {signedOut ? (
-          <button
-            type="button"
-            onClick={onConnect}
-            className="flex items-center gap-2 rounded-xl border border-slate-600 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-          >
-            <Wallet size={16} aria-hidden="true" />
-            {t.walletConnect}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onAddFunds}
-            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-              hasDraftCard
-                ? "border border-slate-600 text-slate-100 hover:bg-slate-800"
-                : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
-            }`}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7 7 7-7"/><path d="M5 21h14"/></svg>
-            {t.myAccountAddFunds}
-          </button>
-        )}
+    <AccountTotals
+      generalUsd={balanceUnread ? null : totals.generalUsd}
+      portfoliosUsd={totals.portfoliosUsd}
+      portfolioCount={portfolios.length}
+      totalUsd={totals.totalUsd}
+      showInTransitNote={showInTransitNote}
+      showSignedOutNote={signedOut}
+      totalSpreadUsd={totalSpreadUsd}
+      t={t}
+    >
+      {/* D-406: with a draft card on screen its button is the one primary (D-353's rule),
+          so the summary's deposit steps down to outlined, like Withdraw beside it. Signed
+          out, connecting takes its place, outlined: the empty state's "Build" leads. */}
+      {signedOut ? (
         <button
           type="button"
-          onClick={onWithdraw}
-          disabled={signedOut || !hasGeneralBalance}
-          title={signedOut ? t.myAccountWithdrawSignedOutHint : undefined}
-          className="flex items-center gap-2 rounded-xl border border-slate-600 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          onClick={onConnect}
+          className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7-7-7 7"/><path d="M5 3h14"/></svg>
-          {t.myAccountWithdraw}
+          <Wallet size={16} aria-hidden="true" />
+          {t.walletConnect}
         </button>
-      </div>
-    </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onAddFunds}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm sm:px-5 font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            hasDraftCard
+              ? "border border-slate-600 text-slate-100 hover:bg-slate-800"
+              : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+          }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7 7 7-7"/><path d="M5 21h14"/></svg>
+          {t.myAccountAddFunds}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onWithdraw}
+        disabled={signedOut || !hasGeneralBalance}
+        title={signedOut ? t.myAccountWithdrawSignedOutHint : undefined}
+        className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7-7-7 7"/><path d="M5 3h14"/></svg>
+        {t.myAccountWithdraw}
+      </button>
+    </AccountTotals>
   );
 
   // The draft card takes the invitation's place: with a draft saved, every way into creation
@@ -1302,13 +1365,13 @@ export function IntentsAccountView({
 
       <BalanceSection
         headingId="general-balance-heading"
-        label={t.myAccountGeneralBalance}
+        label={t.myAccountTokensHeading}
         hint={t.myAccountGeneralBalanceHint}
         rows={curatedRows}
         otherRows={otherRows}
         otherLabel={t.myAccountOtherBalances}
         onSell={onSellStock}
-        sellLabel={t.stockSellAction}
+        t={t}
       />
 
       {activityFeed}

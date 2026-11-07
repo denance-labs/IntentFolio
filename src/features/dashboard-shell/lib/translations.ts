@@ -268,19 +268,20 @@ export const shellTranslations = {
     compositionEmptyTitle: "No funds yet",
     compositionEmptyBody: "Add funds from your funding account to start managing this portfolio.",
     skipToMain: "Skip to main content",
-    myAccountTitle: "My account",
-    myAccountTab: "My account",
-    // 029 B-16: heard between the tab's name and its figure, which is the funding account only.
-    myAccountTabValueLabel: ", funding account",
+    myAccountTitle: "Funding",
+    myAccountTab: "Funding",
     myAccountEmptyBody: "Deposit tokens to start building your portfolio.",
     myAccountAddFunds: "Deposit",
     myAccountWithdraw: "Withdraw",
     myAccountGeneralBalance: "Funding account",
     // Triage 016 X4: the name stays, the UI explains it where it is shown.
     myAccountGeneralBalanceHint: "What you deposited and haven't added to any portfolio yet.",
+    myAccountTokensHeading: "Tokens",
+    myAccountTokenPrice: "Price",
     myAccountOtherBalances: "Other tokens",
-    myAccountTotalValue: "Total value",
-    myAccountInPortfolios: "In portfolios",
+    myAccountTotalValue: "Total",
+    myAccountInPortfoliosOne: "In 1 portfolio",
+    myAccountInPortfoliosMany: "In {n} portfolios",
     myAccountInTransitNote: "Transfers in progress may not be reflected in these totals yet.",
     myAccountEmptyBodyWithPortfolios: "Your funding account is empty. Deposit to create another portfolio or add to the ones you have.",
     // D-541: until the funding account is read, its figure is unknown — never $0 and "empty".
@@ -307,7 +308,7 @@ export const shellTranslations = {
     // "~": what came back is confirmed against `refundedAmount` in 020-4; this is what left.
     withdrawalRefundedToast: "Back in your funding account · ~{qty} {symbol}",
     // D-466: two or more withdrawals closed while one's toast was still on screen.
-    withdrawalsResolvedToast: "{count} withdrawals updated · see each one in My account",
+    withdrawalsResolvedToast: "{count} withdrawals updated · see each one in Funding",
     recentActivityHeading: "Recent activity",
     // 017-7 (D-364): the finished rows. No amount on a portfolio row — its value at that moment
     // would need historical prices (D-004); the portfolio's own History has the detail.
@@ -530,7 +531,7 @@ export const shellTranslations = {
     realStageVaultFailedTitle: "We couldn't finish creating your portfolio",
     realStageVaultFailed:
       "Your funds are safe. We'll sort it out for you: your portfolio gets completed or the funds go back to your funding account. There's no need to sign again.",
-    realStageSeeMyAccount: "You can follow it in My account.",
+    realStageSeeMyAccount: "You can follow it in Funding.",
     realAllocateClose: "Close",
     // D-304(b): the chain holds less than the screen showed. Nothing was signed, so a retry
     // is safe — unlike the two outcomes above.
@@ -550,7 +551,7 @@ export const shellTranslations = {
     // a stuck record (D-320) would hold it forever; the signer-side balance read (D-301) still
     // stops funds that already left.
     pendingAllocateFundingNotice:
-      "Part of this balance may already be on its way: an earlier transfer to a portfolio isn't confirmed yet. You can follow it in My account.",
+      "Part of this balance may already be on its way: an earlier transfer to a portfolio isn't confirmed yet. You can follow it in Funding.",
     // D-321: the same notice for funds added to a portfolio that already exists. A single
     // top-up gets its own title; two or more entries that include one get a neutral one.
     pendingAllocatesTitleAddOne: "Funds are still on their way to a portfolio",
@@ -875,17 +876,19 @@ export const shellTranslations = {
     compositionEmptyTitle: "Todavía sin fondos",
     compositionEmptyBody: "Asigna lo que tienes en tu cuenta de fondos para empezar a gestionar este portfolio.",
     skipToMain: "Ir al contenido principal",
-    myAccountTitle: "Mi cuenta",
-    myAccountTab: "Mi cuenta",
-    myAccountTabValueLabel: ", cuenta de fondos",
+    myAccountTitle: "Fondos",
+    myAccountTab: "Fondos",
     myAccountEmptyBody: "Deposita tokens para empezar a armar tu portfolio.",
     myAccountAddFunds: "Depositar",
     myAccountWithdraw: "Retirar",
     myAccountGeneralBalance: "Cuenta de fondos",
     myAccountGeneralBalanceHint: "Lo que depositaste y todavía no asignaste a ningún portfolio.",
+    myAccountTokensHeading: "Tokens",
+    myAccountTokenPrice: "Precio",
     myAccountOtherBalances: "Otros tokens",
-    myAccountTotalValue: "Valor total",
-    myAccountInPortfolios: "En portfolios",
+    myAccountTotalValue: "Total",
+    myAccountInPortfoliosOne: "En 1 portfolio",
+    myAccountInPortfoliosMany: "En {n} portfolios",
     myAccountInTransitNote: "Los movimientos en curso pueden no estar reflejados todavía en estos totales.",
     myAccountEmptyBodyWithPortfolios: "Tu cuenta de fondos está en cero. Deposita para crear otro portfolio o asignar a los que tienes.",
     myAccountBalanceUnreadable: "No pudimos leer tu cuenta de fondos.",
@@ -901,7 +904,7 @@ export const shellTranslations = {
     withdrawalUnconfirmedToast: "Retiro enviado · {qty} {symbol} a {chain} — falta confirmar la entrega",
     withdrawalConvertingToast: "Convirtiendo y enviando · {qty} {symbol} a {chain}",
     withdrawalRefundedToast: "Volvió a tu cuenta de fondos · ~{qty} {symbol}",
-    withdrawalsResolvedToast: "{count} retiros actualizados · mira cada uno en Mi cuenta",
+    withdrawalsResolvedToast: "{count} retiros actualizados · mira cada uno en Fondos",
     recentActivityHeading: "Actividad reciente",
     activityPortfolioCreated: "Creaste «{name}»",
     activityPortfolioAdded: "Sumaste fondos a «{name}»",
@@ -1081,7 +1084,7 @@ export const shellTranslations = {
     realStageVaultFailedTitle: "No pudimos terminar de crear tu portfolio",
     realStageVaultFailed:
       "Tus fondos están a salvo. Lo resolvemos nosotros: tu portfolio se completa o los fondos vuelven a tu cuenta de fondos. No hace falta firmar de nuevo.",
-    realStageSeeMyAccount: "Puedes seguirlo en Mi cuenta.",
+    realStageSeeMyAccount: "Puedes seguirlo en Fondos.",
     realAllocateClose: "Cerrar",
     amountExceedsBalanceTitle: "Tu saldo cambió",
     amountExceedsBalanceBody:
@@ -1095,7 +1098,7 @@ export const shellTranslations = {
     pendingAllocateCompleting: "Lo estamos completando",
     pendingAllocateConfirming: "Todavía confirmando",
     pendingAllocateFundingNotice:
-      "Parte de este saldo puede estar en camino: un envío anterior a un portfolio todavía no se confirmó. Puedes seguirlo en Mi cuenta.",
+      "Parte de este saldo puede estar en camino: un envío anterior a un portfolio todavía no se confirmó. Puedes seguirlo en Fondos.",
     pendingAllocatesTitleAddOne: "Todavía están llegando fondos a un portfolio",
     pendingAllocatesTitleMixedMany: "{count} movimientos hacia tus portfolios todavía están en curso",
     pendingAllocatesBodyAddOne:
