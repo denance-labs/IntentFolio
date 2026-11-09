@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { translations } from "../lib/translations";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
 import { AddTargetsModal } from "./add-targets-modal";
 
 // D-529: "Add tokens" only adds targets to the draft (at 0%); funds come in through "Add funds".
@@ -42,6 +43,12 @@ function rowOf(symbol: string, name?: string): HTMLElement {
 
 const symbols = () =>
   screen.getAllByRole("listitem").map((li) => li.querySelector("span.font-semibold")?.textContent);
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 describe.each(["en", "es"] as const)("AddTargetsModal — %s", (lang) => {
   const t = translations[lang];
@@ -167,4 +174,42 @@ it("finds the stocks by the Spanish word", () => {
   fireEvent.change(screen.getByRole("textbox", { name: translations.es.searchToken }), { target: { value: "acciones" } });
   expect(symbols()).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
   cleanup();
+});
+
+// D-569: where stocks can't be bought, they are listed last and never offered. A stock the
+// portfolio already has is left as it is: only adding one is blocked.
+describe.each(["en", "es"] as const)("AddTargetsModal — where stocks can't be bought (%s)", (lang) => {
+  const t = translations[lang];
+  const NVDA = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+  afterEach(cleanup);
+
+  it("lists the stocks last, says why once, and offers none of them", () => {
+    setCountry("US");
+    renderModal({ lang });
+    const lists = screen.getAllByRole("list");
+    expect(lists[lists.length - 1]).toBe(screen.getByRole("list", { name: t.stockSectionTitle }));
+    expect(symbols().slice(-6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(screen.getAllByText(t.stockRegionBlockedNote)).toHaveLength(1);
+    expect(screen.queryByText(t.stockSectionNote)).toBeNull();
+    for (const symbol of ["AAPL", "NVDA", "QQQ"]) {
+      expect(within(rowOf(symbol)).queryByRole("button")).toBeNull();
+      expect(rowOf(symbol).textContent).toContain(t.stockRegionBlockedRow);
+    }
+    expect(within(rowOf("NEAR", "NEAR Protocol")).getByRole("button", { name: new RegExp(t.addTokensAddAction) })).toBeTruthy();
+  });
+
+  it("leaves a stock the portfolio already has as it is", () => {
+    setCountry("CA");
+    renderModal({ lang, compositionTokenIds: [NVDA] });
+    expect(rowOf("NVDA").textContent).toContain(t.addTokensInPortfolio);
+    expect(rowOf("NVDA").textContent).not.toContain(t.stockRegionBlockedRow);
+  });
+
+  it("offers them as always from anywhere else (control)", () => {
+    setCountry("AR");
+    renderModal({ lang });
+    expect(symbols().slice(0, 6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(within(rowOf("NVDA")).getByRole("button")).toBeTruthy();
+    expect(screen.queryByText(t.stockRegionBlockedNote)).toBeNull();
+  });
 });

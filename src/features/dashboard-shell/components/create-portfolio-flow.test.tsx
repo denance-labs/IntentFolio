@@ -5,6 +5,7 @@ import type { FundableGeneralBalance } from "../hooks/use-fundable-general-balan
 import type { NewPortfolioDraft } from "../lib/new-portfolio-draft";
 import type { PresetId } from "@/content/portfolio-presets";
 import { shellTranslations } from "../lib/translations";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
 
 // 019-5 (D-393 Q4): every card opens the editor, with funds or without. D-397: what its footer
 // offers follows the props handed here (the editor's own tests cover the footer). The balance
@@ -82,6 +83,12 @@ vi.mock("./new-portfolio-draft-editor", () => ({
 }));
 
 import { AFTER_DEPOSIT_WAIT_MS, CreatePortfolioFlow } from "./create-portfolio-flow";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 const t = shellTranslations.en;
 const card = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`) });
@@ -321,6 +328,26 @@ describe("CreatePortfolioFlow — entering with a preset from the landing (D-561
     renderFlow({ startNew: true, startPresetId: "aggressive" });
     expect(screen.getByText("draft:aggressive")).toBeTruthy();
     expect(screen.getByText("saved:My mix")).toBeTruthy();
+  });
+
+  // D-569: where stocks can't be bought, a preset with stocks opens the chooser, which says why.
+  it("where stocks can't be bought, a preset with stocks opens the chooser instead", () => {
+    setCountry("US");
+    renderFlow({ signedOut: true, startPresetId: "techTitans" });
+    expect(screen.getByText(t.presetSelectTitle)).toBeTruthy();
+    expect(screen.queryByText("draft:techTitans")).toBeNull();
+  });
+
+  it("where stocks can't be bought, a preset without stocks still opens the editor", () => {
+    setCountry("US");
+    renderFlow({ signedOut: true, startPresetId: "aggressive" });
+    expect(screen.getByText("draft:aggressive")).toBeTruthy();
+  });
+
+  it("from anywhere else a preset with stocks opens the editor (control)", () => {
+    setCountry("AR");
+    renderFlow({ signedOut: true, startPresetId: "techTitans" });
+    expect(screen.getByText("draft:techTitans")).toBeTruthy();
   });
 });
 

@@ -3,6 +3,7 @@
 import { useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import {
@@ -11,6 +12,7 @@ import {
   StockTokenSections,
 } from "@/features/portfolio-editor/components/stock-token-sections";
 import { colorForSymbol } from "@/features/portfolio-editor/lib/format";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import type { TokenId } from "@/features/intents-account/mock-contract/types";
 import { APP_MAX_TOKENS_PER_PORTFOLIO } from "@/features/vault/lib/change-set-preflight";
@@ -61,6 +63,7 @@ export function DraftTokenPickerContent({
   // offers, so a token is not marked and then missing there. Nothing while it is not read.
   const fundable = useFundableGeneralBalance();
   const inFundingAccount = new Set<string>(fundable.status === "known" ? fundable.tokenIds : []);
+  const regionBlocked = useStocksRegionBlocked();
 
   const q = search.trim().toLowerCase();
   const visible = q
@@ -98,10 +101,13 @@ export function DraftTokenPickerContent({
           idOf={(tk) => tk.id}
           t={te}
           className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
+          regionBlocked={regionBlocked}
           renderRow={(tk) => {
             const inDraft = draftHasToken(rows, tk.id);
             const unavailable = !inDraft && atMax;
             const outOfCatalog = !isPortfolioOfferable(tk.id);
+            // D-569: a stock already in the draft keeps its button, so it can still be taken out.
+            const blockedHere = regionBlocked && isStockToken(tk.id) && !inDraft;
             return (
               <li
                 key={tk.id}
@@ -109,7 +115,7 @@ export function DraftTokenPickerContent({
                 // rest, not only its button. The border is always there, so the row keeps its height.
                 className={`flex items-center gap-3 rounded-xl border px-2.5 py-2 transition-colors ${
                   inDraft ? "border-cyan-300/50 bg-cyan-300/[0.08]" : "border-transparent"
-                } ${outOfCatalog ? "opacity-50" : ""}`}
+                } ${outOfCatalog || blockedHere ? "opacity-50" : ""}`}
               >
                 <TokenAvatar
                   symbol={tk.symbol}
@@ -129,6 +135,8 @@ export function DraftTokenPickerContent({
                 </span>
                 {outOfCatalog ? (
                   <span className="shrink-0 text-[11px] text-amber-400">{te.addTokensNotAvailableYet}</span>
+                ) : blockedHere ? (
+                  <span className="shrink-0 text-[11px] text-amber-400">{te.stockRegionBlockedRow}</span>
                 ) : (
                   <button
                     type="button"

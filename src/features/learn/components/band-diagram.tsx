@@ -1,7 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 type BandDiagramProps = {
   targetLabel: string;
   bandLabel: string;
@@ -17,6 +15,9 @@ type BandDiagramProps = {
 // around without leaving the band. Each "+" is a swap aiming for spread in the user's favor —
 // on the way and once there (CONTEXT.md, External-Driven Rebalance). Decorative, not data-driven.
 //
+// D-568: drawn in the landing's world. The target is copper (the color the hero's bars and the How it
+// works track give a target), the marker and band are bone, and the "+" keeps the gain green.
+//
 // viewBox 0 0 320 220. Track spans X 36→284 (center 160). Band is ±34 around center.
 const X1 = 36;
 const X2 = 284;
@@ -24,7 +25,10 @@ const CX = 160;
 const BAND_HALF = 34;
 const ROW1_Y = 70;
 const ROW2_Y = 156;
-const CYAN = "#06b6d4";
+const BONE = "#e9e2d0";
+const BONE_DIM = "#a8a294";
+const COPPER = "#c98b4f";
+const TRACK = "#3a3733";
 const SPREAD = "#34d399";
 
 // Row 1: earlier positions (oldest first), then where the marker is now — still short of the band.
@@ -44,15 +48,15 @@ function Track({ y }: { y: number }) {
         width={BAND_HALF * 2}
         height={28}
         rx={6}
-        fill="rgba(6,182,212,0.12)"
+        fill="rgba(233,226,208,0.07)"
       />
       {/* Band edges */}
-      <line x1={CX - BAND_HALF} y1={y - 14} x2={CX - BAND_HALF} y2={y + 14} stroke={CYAN} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.6} />
-      <line x1={CX + BAND_HALF} y1={y - 14} x2={CX + BAND_HALF} y2={y + 14} stroke={CYAN} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.6} />
+      <line x1={CX - BAND_HALF} y1={y - 14} x2={CX - BAND_HALF} y2={y + 14} stroke={BONE} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.35} />
+      <line x1={CX + BAND_HALF} y1={y - 14} x2={CX + BAND_HALF} y2={y + 14} stroke={BONE} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.35} />
       {/* Base track line */}
-      <line x1={X1} y1={y} x2={X2} y2={y} stroke="#334155" strokeWidth={2} strokeLinecap="round" />
+      <line x1={X1} y1={y} x2={X2} y2={y} stroke={TRACK} strokeWidth={2} strokeLinecap="round" />
       {/* Target tick */}
-      <line x1={CX} y1={y - 16} x2={CX} y2={y + 16} stroke={CYAN} strokeWidth={2} strokeLinecap="round" />
+      <line x1={CX} y1={y - 16} x2={CX} y2={y + 16} stroke={COPPER} strokeWidth={2} strokeLinecap="round" />
     </>
   );
 }
@@ -62,10 +66,10 @@ function Steps({ y, past, now }: { y: number; past: number[]; now: number }) {
   return (
     <>
       {past.map((x, i) => (
-        <circle key={x} cx={x} cy={y} r={5} fill={CYAN} fillOpacity={0.3 + (0.4 * i) / past.length} />
+        <circle key={x} cx={x} cy={y} r={5} fill={BONE} fillOpacity={0.3 + (0.4 * i) / past.length} />
       ))}
-      <circle cx={now} cy={y} r={8} fill={CYAN} />
-      <circle cx={now} cy={y} r={8} fill="none" stroke={CYAN} strokeWidth={6} strokeOpacity={0.25} />
+      <circle cx={now} cy={y} r={8} fill={BONE} />
+      <circle cx={now} cy={y} r={8} fill="none" stroke={BONE} strokeWidth={6} strokeOpacity={0.18} />
     </>
   );
 }
@@ -91,27 +95,21 @@ export function BandDiagram({
   spreadLabel,
 }: BandDiagramProps) {
   return (
-    <motion.div
-      className="my-6 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-    >
+    <div className="my-6 overflow-hidden rounded-2xl border border-bone/[0.1] bg-bone/[0.025] p-4">
       <svg viewBox="0 0 320 220" aria-hidden="true" className="mx-auto w-full max-w-md">
         <defs>
           <marker id="band-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 Z" fill={CYAN} />
+            <path d="M0,0 L6,3 L0,6 Z" fill={BONE_DIM} />
           </marker>
         </defs>
 
         {/* Target label, above everything */}
-        <text x={CX} y={18} fontSize={10} fill="#67e8f9" textAnchor="middle" fontWeight="600">
+        <text x={CX} y={18} fontSize={10} fill={COPPER} textAnchor="middle" fontWeight="600">
           {targetLabel}
         </text>
 
         {/* ── Row 1: building toward the target ── */}
-        <text x={X1} y={ROW1_Y - 30} fontSize={9} fill="#94a3b8" textAnchor="start">
+        <text x={X1} y={ROW1_Y - 30} fontSize={9} fill={BONE_DIM} textAnchor="start">
           {buildingLabel}
         </text>
         <Track y={ROW1_Y} />
@@ -123,30 +121,30 @@ export function BandDiagram({
           y1={ROW1_Y + 22}
           x2={CX - 4}
           y2={ROW1_Y + 22}
-          stroke={CYAN}
+          stroke={BONE_DIM}
           strokeWidth={1.5}
           strokeDasharray="4 3"
           markerEnd="url(#band-arrow)"
         />
 
         {/* ── Row 2: on target, moving inside the band ── */}
-        <text x={X1} y={ROW2_Y - 30} fontSize={9} fill="#94a3b8" textAnchor="start">
+        <text x={X1} y={ROW2_Y - 30} fontSize={9} fill={BONE_DIM} textAnchor="start">
           {onTargetLabel}
         </text>
         <Track y={ROW2_Y} />
         <Steps y={ROW2_Y} past={INSIDE_STEPS} now={INSIDE_NOW} />
         <SpreadMarks y={ROW2_Y} xs={[...INSIDE_STEPS, INSIDE_NOW]} />
         {/* Band label, under the band on the bottom row */}
-        <text x={CX} y={ROW2_Y + 30} fontSize={9} fill="#64748b" textAnchor="middle">
+        <text x={CX} y={ROW2_Y + 30} fontSize={9} fill={BONE_DIM} textAnchor="middle">
           {bandLabel}
         </text>
 
         {/* Legend for the "+" marks */}
-        <text x={CX} y={ROW2_Y + 54} fontSize={9} fill="#94a3b8" textAnchor="middle">
+        <text x={CX} y={ROW2_Y + 54} fontSize={9} fill={BONE_DIM} textAnchor="middle">
           <tspan fill={SPREAD} fontWeight="700">+ </tspan>
           {spreadLabel}
         </text>
       </svg>
-    </motion.div>
+    </div>
   );
 }

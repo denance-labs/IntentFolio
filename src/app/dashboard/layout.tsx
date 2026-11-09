@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { DashboardShell } from "@/features/dashboard-shell";
+import { noJavaScriptNotice } from "@/content/no-javascript";
 
 export const metadata: Metadata = {
   title: {
@@ -14,5 +16,22 @@ export const metadata: Metadata = {
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return (
+    <>
+      <noscript>
+        <div role="alert" className="mx-auto max-w-xl px-6 py-10 text-center">
+          {(["en", "es"] as const).map((lang) => (
+            <section key={lang} lang={lang} className="mb-6">
+              <h1 className="text-lg font-semibold text-white">{noJavaScriptNotice[lang].title}</h1>
+              <p className="mt-2 text-sm text-slate-300">{noJavaScriptNotice[lang].body}</p>
+            </section>
+          ))}
+          <Link href="/" className="text-sm text-cyan-300 underline">
+            {noJavaScriptNotice.en.back} / {noJavaScriptNotice.es.back}
+          </Link>
+        </div>
+      </noscript>
+      <DashboardShell>{children}</DashboardShell>
+    </>
+  );
 }

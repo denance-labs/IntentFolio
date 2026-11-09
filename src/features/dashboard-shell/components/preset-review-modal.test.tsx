@@ -92,6 +92,13 @@ import { tokenRegistry } from "@/features/market/lib/token-registry";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
 import { presetDraftRows } from "../lib/new-portfolio-draft-editing";
 import { PresetReviewModal, type ReviewSource } from "./preset-review-modal";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 const maxLabel = () => shellTranslations[state.lang as "en" | "es"].depositAmountMax;
 
@@ -1117,5 +1124,43 @@ describe("PresetReviewModal — a new mix from the editor (D-397)", () => {
       renderModal(sourceFor(DRAFT.rows));
       expect(screen.getByRole("spinbutton", { name: /mpDAO/ })).toBeTruthy();
     });
+  });
+});
+
+// D-569: the one door every new portfolio goes through. A mix with a stock that reached it another
+// way (a draft saved before the block, the landing's preset) is not signed where stocks can't be bought.
+describe("PresetReviewModal — where stocks can't be bought (D-569)", () => {
+  const t = shellTranslations.en;
+  const NVDA = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+  const withStock: NewPortfolioDraft["rows"] = DRAFT.rows.map((row) => (row.tokenId === USDC ? { ...row, tokenId: NVDA } : row));
+  const sourceFor = (rows: NewPortfolioDraft["rows"]): ReviewSource => ({
+    kind: "new",
+    input: { name: DRAFT.name, presetId: null, rows },
+  });
+  const createButton = () => screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement;
+  beforeEach(resetFunds);
+  afterEach(cleanup);
+
+  it("holds back a mix with a stock, and says why", async () => {
+    setCountry("US");
+    renderModal(sourceFor(withStock));
+    expect(screen.getByText(editorTranslations.en.stockRegionBlockedCreate)).toBeTruthy();
+    expect(createButton().disabled).toBe(true);
+    await clickPrimary(t.presetReviewCreate);
+    expect(state.create).not.toHaveBeenCalled();
+  });
+
+  it("lets the same mix through from anywhere else (control)", () => {
+    setCountry("AR");
+    renderModal(sourceFor(withStock));
+    expect(screen.queryByText(editorTranslations.en.stockRegionBlockedCreate)).toBeNull();
+    expect(createButton().disabled).toBe(false);
+  });
+
+  it("does not hold back a mix without stocks", () => {
+    setCountry("US");
+    renderModal(sourceFor(DRAFT.rows));
+    expect(screen.queryByText(editorTranslations.en.stockRegionBlockedCreate)).toBeNull();
+    expect(createButton().disabled).toBe(false);
   });
 });

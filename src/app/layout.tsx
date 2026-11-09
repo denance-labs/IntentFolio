@@ -37,6 +37,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Without JS, framer-motion's `initial` state (inline opacity:0) is never replaced by
+            the whileInView animation, so most of the landing stays invisible. Reveal it, and hide
+            the controls that only work with JS (language toggle, demo replay and presets). */}
+        <noscript>
+          <style>{`[style*="opacity:0"],[style*="opacity: 0"]{opacity:1!important;transform:none!important}[data-needs-js]{display:none!important}[data-nojs-only]{display:block!important}`}</style>
+        </noscript>
+      </head>
       <body>
         <Providers>
           <NearWalletProvider>

@@ -19,7 +19,6 @@ export const learnTranslations = {
         "How IntentFolio works, in plain language: targets, automatic rebalancing, presets, tips and answers to common questions.",
     },
     hero: {
-      eyebrow: "Guide",
       title: "How IntentFolio works",
       sub: "A plain-language walkthrough of targets, automatic rebalancing and what to expect — no jargon.",
     },
@@ -116,7 +115,17 @@ export const learnTranslations = {
       title: "Presets, explained",
       intro:
         "Presets are starting points, not recommendations — a quick way to begin that you can tweak however you like. They are not financial advice.",
+      // D-569: the countries the app blocks stock buys in (stock-region.ts).
+      stocksUnavailable: "Stocks aren't available in the United States or Canada.",
       items: [
+        {
+          title: "Tech Titans",
+          body: "US tech stocks, tokenized: NVIDIA, Apple and Amazon, plus a Nasdaq-100 ETF. No crypto in the mix.",
+        },
+        {
+          title: "NEAR + Stocks",
+          body: "NEAR alongside tokenized stocks: NVIDIA, Apple and a Nasdaq-100 ETF. Crypto and stocks in one portfolio.",
+        },
         {
           title: "Conservative",
           body: "Leans heavily on stablecoins, with a small share of Bitcoin and Ethereum. Built to move less when markets swing.",
@@ -130,16 +139,8 @@ export const learnTranslations = {
           body: "Concentrated in major assets like Bitcoin, Ethereum and Solana, with little held in stablecoins. More movement, both ways.",
         },
         {
-          title: "Stables",
-          body: "Made up entirely of stablecoins. The quietest starting point, focused on staying put.",
-        },
-        {
           title: "Satoshi",
           body: "Bitcoin-forward, with a smaller share of Ethereum and NEAR alongside. For a clear tilt toward BTC.",
-        },
-        {
-          title: "Pioneers",
-          body: "Just Bitcoin, the first cryptocurrency, and Ethereum, the first with smart contracts. Two assets, no stablecoins.",
         },
       ] as ListItem[],
     },
@@ -220,7 +221,6 @@ export const learnTranslations = {
         "Cómo funciona IntentFolio, en lenguaje simple: objetivos, rebalanceo automático, presets, tips y respuestas a las dudas más comunes.",
     },
     hero: {
-      eyebrow: "Guía",
       title: "Cómo funciona IntentFolio",
       sub: "Una explicación en lenguaje simple sobre objetivos, rebalanceo automático y qué esperar — sin tecnicismos.",
     },
@@ -317,7 +317,16 @@ export const learnTranslations = {
       title: "Los presets, explicados",
       intro:
         "Los presets son puntos de partida, no recomendaciones — una forma rápida de empezar que puedes ajustar como quieras. No son asesoramiento financiero.",
+      stocksUnavailable: "Las acciones no están disponibles en Estados Unidos ni Canadá.",
       items: [
+        {
+          title: "Tech Titans",
+          body: "Acciones tecnológicas de EE. UU., tokenizadas: NVIDIA, Apple y Amazon, más un ETF del Nasdaq-100. Sin cripto en la mezcla.",
+        },
+        {
+          title: "NEAR + Acciones",
+          body: "NEAR junto a acciones tokenizadas: NVIDIA, Apple y un ETF del Nasdaq-100. Cripto y acciones en un mismo portfolio.",
+        },
         {
           title: "Conservador",
           body: "Se apoya fuerte en stablecoins, con una porción pequeña de Bitcoin y Ethereum. Pensado para moverse menos cuando el mercado se sacude.",
@@ -331,16 +340,8 @@ export const learnTranslations = {
           body: "Concentrado en activos principales como Bitcoin, Ethereum y Solana, con poco en stablecoins. Más movimiento, para los dos lados.",
         },
         {
-          title: "Estables",
-          body: "Compuesto enteramente por stablecoins. El punto de partida más tranquilo, enfocado en mantenerse quieto.",
-        },
-        {
           title: "Satoshi",
           body: "Con foco en Bitcoin, acompañado por una porción menor de Ethereum y NEAR. Para una inclinación clara hacia BTC.",
-        },
-        {
-          title: "Pioneros",
-          body: "Solo Bitcoin, la primera criptomoneda, y Ethereum, la primera con contratos inteligentes. Dos activos, sin stablecoins.",
         },
       ] as ListItem[],
     },

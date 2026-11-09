@@ -6,6 +6,7 @@ import { STOCK_HEADING_CLASS, StockChip, StockIcon, StockSlot } from "@/features
 import { isStockToken, stockKind } from "@/features/market/lib/stock-tokens";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import {
   portfolioPresets,
   STARTING_POINT_PRESET_ID,
@@ -25,7 +26,7 @@ export const PRESET_NAME_KEY: Record<PresetId, keyof ShellTranslations> = {
   stables: "presetStablesName",
   satoshi: "presetSatoshiName",
   pioneers: "presetPioneersName",
-  bigTech: "presetBigTechName",
+  techTitans: "presetTechTitansName",
   nearStocks: "presetNearStocksName",
 };
 const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
@@ -35,7 +36,7 @@ const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
   stables: "presetStablesDesc",
   satoshi: "presetSatoshiDesc",
   pioneers: "presetPioneersDesc",
-  bigTech: "presetBigTechDesc",
+  techTitans: "presetTechTitansDesc",
   nearStocks: "presetNearStocksDesc",
 };
 // Neutral descriptor chip for presets whose name alone says little about the mix (T6).
@@ -66,9 +67,16 @@ const OTHER_PRESETS = portfolioPresets.filter((preset) => !holdsStock(preset));
 // Opens on the first one: focusing a card further down would scroll the stocks away at 390 px.
 const INITIAL_FOCUS_PRESET_ID = STOCK_PRESETS[0]?.id ?? STARTING_POINT_PRESET_ID;
 
+/** D-569: whether this preset holds a stock, so it can't be started where stocks can't be bought. */
+export function presetHoldsStock(presetId: PresetId): boolean {
+  return STOCK_PRESETS.some((preset) => preset.id === presetId);
+}
+
 // The border color is left to each card: two of them on one element resolve by stylesheet order.
+// The hover is apart so a card that can't be chosen (D-569) doesn't light up.
 const CARD_CLASS =
-  "flex flex-col gap-2 rounded-2xl border bg-slate-900 p-4 text-left transition hover:border-cyan-400/60 hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "flex flex-col gap-2 rounded-2xl border bg-slate-900 p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+const CARD_HOVER_CLASS = "hover:border-cyan-400/60 hover:bg-slate-800/60";
 const CHIP_CLASS = "rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none";
 
 export function PresetSelectionModal({
@@ -86,10 +94,15 @@ export function PresetSelectionModal({
   // Initial focus goes to a card, not the tolerance "?" above the grid: focusing that button
   // opens its tooltip over a card every time.
   const startCardRef = useRef<HTMLButtonElement>(null);
+  // D-569: where stocks can't be bought, their presets go last, shown but not selectable, and the
+  // chooser opens on the good starting point instead (a disabled card can't take focus).
+  const regionBlocked = useStocksRegionBlocked();
+  const initialFocusPresetId = regionBlocked ? STARTING_POINT_PRESET_ID : INITIAL_FOCUS_PRESET_ID;
 
   const presetCard = (preset: PortfolioPreset) => {
     const tagKey = TAG_KEY[preset.id];
     const isStockPreset = holdsStock(preset);
+    const blockedHere = regionBlocked && isStockPreset;
     // Stable: the stocks first, each group in the preset's own order.
     const slots = [...preset.slots].sort(
       (a, b) => Number(isStockToken(b.tokenId)) - Number(isStockToken(a.tokenId))
@@ -97,10 +110,13 @@ export function PresetSelectionModal({
     return (
       <button
         key={preset.id}
-        ref={preset.id === INITIAL_FOCUS_PRESET_ID ? startCardRef : undefined}
+        ref={preset.id === initialFocusPresetId ? startCardRef : undefined}
         type="button"
+        disabled={blockedHere}
         onClick={() => onSelectPreset(preset.id)}
-        className={`${CARD_CLASS} ${isStockPreset ? "border-fuchsia-300/60" : "border-slate-700"}`}
+        className={`${CARD_CLASS} ${blockedHere ? "cursor-not-allowed opacity-50" : CARD_HOVER_CLASS} ${
+          isStockPreset ? "border-fuchsia-300/60" : "border-slate-700"
+        }`}
       >
         <span className="flex items-start justify-between gap-2">
           <span className="flex flex-wrap items-center gap-1.5">
@@ -142,6 +158,22 @@ export function PresetSelectionModal({
     );
   };
 
+  const stockSection =
+    STOCK_PRESETS.length > 0 ? (
+      <section aria-labelledby="preset-stocks-title" className="mt-4">
+        <h3 id="preset-stocks-title" className={STOCK_HEADING_CLASS}>
+          <StockIcon className="h-3.5 w-3.5 shrink-0" />
+          {t.presetStocksTitle}
+        </h3>
+        {regionBlocked ? (
+          <p className="mt-0.5 text-[11px] leading-snug text-amber-200">{te.stockRegionBlockedNote}</p>
+        ) : (
+          <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{te.stockSectionNote}</p>
+        )}
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">{STOCK_PRESETS.map(presetCard)}</div>
+      </section>
+    ) : null;
+
   return (
     <Modal
       titleId="preset-select-title"
@@ -160,16 +192,7 @@ export function PresetSelectionModal({
         <InfoTooltip label={t.presetToleranceQuestion}>{t.presetToleranceTooltip}</InfoTooltip>
       </p>
 
-      {STOCK_PRESETS.length > 0 ? (
-        <section aria-labelledby="preset-stocks-title" className="mt-4">
-          <h3 id="preset-stocks-title" className={STOCK_HEADING_CLASS}>
-            <StockIcon className="h-3.5 w-3.5 shrink-0" />
-            {t.presetStocksTitle}
-          </h3>
-          <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{te.stockSectionNote}</p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">{STOCK_PRESETS.map(presetCard)}</div>
-        </section>
-      ) : null}
+      {regionBlocked ? null : stockSection}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {OTHER_PRESETS.map(presetCard)}
@@ -177,12 +200,14 @@ export function PresetSelectionModal({
         <button
           type="button"
           onClick={onSelectScratch}
-          className={`${CARD_CLASS} border-dashed border-slate-700`}
+          className={`${CARD_CLASS} ${CARD_HOVER_CLASS} border-dashed border-slate-700`}
         >
           <span className="text-sm font-semibold text-slate-100">{t.presetScratchName}</span>
           <span className="text-xs leading-snug text-slate-400">{t.presetScratchDesc}</span>
         </button>
       </div>
+
+      {regionBlocked ? stockSection : null}
 
       <p className="mt-4 text-xs leading-snug text-slate-400">{t.presetSelectNotAdvice}</p>
 

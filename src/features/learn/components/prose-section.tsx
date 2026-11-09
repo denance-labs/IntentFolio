@@ -2,7 +2,7 @@
 
 import { type ReactNode } from "react";
 import { Info } from "lucide-react";
-import { motion } from "framer-motion";
+import { LEARN_H2, LEARN_PROSE } from "../lib/styles";
 
 type ProseSectionProps = {
   id: string;
@@ -17,29 +17,22 @@ type ProseSectionProps = {
 // hidden behind it when jumped to from the table of contents.
 export function ProseSection({ id, title, paragraphs, note, diagram }: ProseSectionProps) {
   return (
-    <motion.section
-      id={id}
-      className="scroll-mt-24"
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-    >
-      <h2 className="text-2xl font-bold text-white">{title}</h2>
+    <section id={id} className="scroll-mt-24">
+      <h2 className={LEARN_H2}>{title}</h2>
       <div className="mt-4 space-y-4">
         {paragraphs.map((paragraph, i) => (
-          <p key={i} className="text-base leading-relaxed text-slate-300">
+          <p key={i} className={LEARN_PROSE}>
             {paragraph}
           </p>
         ))}
       </div>
       {diagram ?? null}
       {note ? (
-        <div className="mt-5 flex gap-3 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-4">
-          <Info size={18} className="mt-0.5 shrink-0 text-cyan-400" aria-hidden="true" />
-          <p className="text-sm leading-relaxed text-slate-300">{note}</p>
+        <div className="mt-5 flex gap-3 rounded-xl border border-bone/[0.1] bg-bone/[0.025] p-4">
+          <Info size={18} className="mt-0.5 shrink-0 text-bone-dim" aria-hidden="true" />
+          <p className="text-sm leading-relaxed text-bone/[0.82]">{note}</p>
         </div>
       ) : null}
-    </motion.section>
+    </section>
   );
 }

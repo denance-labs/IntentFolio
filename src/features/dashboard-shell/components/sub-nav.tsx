@@ -33,7 +33,12 @@ export function SubNav({ basePath = "/dashboard", draft = false }: { basePath?: 
   const t = shellTranslations[lang];
 
   return (
-    <nav aria-label={t.subNavLabel} className="border-b border-slate-800 bg-slate-950">
+    // D-562: sticky under the header and the portfolio strip, so switching sections on a long
+    // view needs no scroll back up. Below the strip's z-30, so its tab menus open over it.
+    <nav
+      aria-label={t.subNavLabel}
+      className="sticky top-[calc(var(--dashboard-header-h,0px)+var(--portfolio-strip-h,0px))] z-20 border-b border-slate-800 bg-slate-950"
+    >
       <ul className="mx-auto flex max-w-7xl gap-1 overflow-x-auto whitespace-nowrap pl-4 pr-0 sm:pl-6 sm:pr-0">
         {SUBPATHS.map((item) => {
           const href = `${basePath}/${item.subpath}` as Route;

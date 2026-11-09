@@ -235,6 +235,10 @@ export const translations = {
     stockChipStock: "Stock",
     stockChipEtf: "ETF",
     stockSearchTerms: "stocks",
+    // D-569: where stocks can't be bought (stock-region.ts). Selling stays open.
+    stockRegionBlockedNote: "Not available in your country",
+    stockRegionBlockedRow: "Not available",
+    stockRegionBlockedCreate: "Stocks aren't available in your country. Remove them from the mix to create this portfolio.",
     // D-491: a token with no buy route — its funds can come in, it can't be a target.
     addTokensFundsOnly: "Funds only, converted to your other tokens",
     // D-321: on a real portfolio this modal signs the funds in right away (013.plan P5).
@@ -492,6 +496,9 @@ export const translations = {
     stockChipStock: "Acción",
     stockChipEtf: "ETF",
     stockSearchTerms: "acciones acción accion stocks",
+    stockRegionBlockedNote: "No disponibles en tu país",
+    stockRegionBlockedRow: "No disponible",
+    stockRegionBlockedCreate: "Las acciones no están disponibles en tu país. Quítalas de la mezcla para crear este portfolio.",
     addTokensFundsOnly: "Sólo como fondos, se convierte a tus otros tokens",
     addTokensSignAndAdd: "Firmar y asignar",
     addTokensRetry: "Reintentar",

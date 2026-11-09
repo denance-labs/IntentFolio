@@ -11,7 +11,9 @@ import { readHeldOnVerifier } from "@/features/bridge/lib/run-real-withdraw";
 import type { OneClickStatus } from "@/features/bridge/lib/oneclick-status";
 import { ConnectWalletModal } from "@/features/dashboard-shell/components/connect-wallet-modal";
 import { ensureCanOperate, useLoginWallet } from "@/features/login-wallet";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
+import { useStocksRegionBlocked } from "../hooks/use-stocks-region-blocked";
 import { runStockSwap, type StockSwapResult, type StockSwapStage } from "../lib/run-stock-swap";
 import {
   MAX_TRADE_USD,
@@ -66,6 +68,9 @@ export function StockTestPanel() {
   const inSymbol = side === "buy" ? funding.label : stock.ticker;
   const outSymbol = side === "buy" ? stock.ticker : funding.label;
   const busy = stage !== null;
+  // D-569: where stocks can't be bought, only selling them is offered. Other tokens trade as always.
+  const regionBlocked = useStocksRegionBlocked();
+  const buyBlocked = regionBlocked && side === "buy" && isStockToken(stock.id);
   // A quote in flight belongs to the inputs it was asked with, so they cannot change under it.
   const locked = busy || quoting;
 
@@ -99,6 +104,7 @@ export function StockTestPanel() {
   };
 
   const handleQuote = async () => {
+    if (buyBlocked) return;
     const amountRaw = parseAmountToRaw(amount, inDecimals);
     if (!amountRaw) {
       setError("Escribe un monto válido");
@@ -123,7 +129,7 @@ export function StockTestPanel() {
   };
 
   const handleSign = async () => {
-    if (!quote || !liveSigner || !intentsAccountId || running.current) return;
+    if (!quote || !liveSigner || !intentsAccountId || running.current || buyBlocked) return;
     running.current = true;
     // Before the key check: that prompt can stay open, and the inputs must not change under it.
     setStage("preparing");
@@ -290,9 +296,12 @@ export function StockTestPanel() {
           </span>
         </label>
 
+        {buyBlocked ? (
+          <p className="text-sm text-amber-300">Las acciones no están disponibles en tu país: sólo se pueden vender.</p>
+        ) : null}
         <button
           type="button"
-          disabled={locked || !intentsAccountId}
+          disabled={locked || !intentsAccountId || buyBlocked}
           onClick={() => void handleQuote()}
           className={`${BUTTON} border border-cyan-500/50 text-cyan-200`}
         >

@@ -99,6 +99,8 @@ export function WalletStatusIndicator({
     return (
       <button
         type="button"
+        // Server HTML sits on this state forever without JS; the dashboard layout hides it then (D-566b).
+        data-needs-js
         onClick={() => void signOut()}
         className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-slate-600 hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
         aria-busy="true"

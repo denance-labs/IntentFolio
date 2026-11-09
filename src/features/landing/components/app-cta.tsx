@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { motion } from "framer-motion";
 
 type Props = {
   href: Route<string>;
@@ -11,11 +10,7 @@ type Props = {
   comingSoon: boolean;
   soonBadge: string;
   soonSrLabel: string;
-  /** Hero and closing CTA use the tap/hover spring; the nav link stays plain. */
-  animated?: boolean;
 };
-
-const springTap = { type: "spring" as const, stiffness: 400, damping: 20 };
 
 /**
  * The one "Open app" control, shared by nav/hero/closing sections so the coming-soon
@@ -28,7 +23,6 @@ export function AppCta({
   comingSoon,
   soonBadge,
   soonSrLabel,
-  animated = false,
 }: Props) {
   if (comingSoon) {
     return (
@@ -48,20 +42,6 @@ export function AppCta({
           {soonBadge}
         </span>
       </span>
-    );
-  }
-
-  if (animated) {
-    return (
-      <motion.a
-        href={href}
-        whileHover={{ scale: 1.03 }}
-        whileTap={{ scale: 0.97 }}
-        transition={springTap}
-        className={className}
-      >
-        {label}
-      </motion.a>
     );
   }
 

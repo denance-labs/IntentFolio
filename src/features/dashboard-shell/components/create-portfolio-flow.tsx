@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { PresetId } from "@/content/portfolio-presets";
 import { Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
 import { useAvailableGeneralBalance } from "../hooks/use-available-general-balance";
@@ -12,7 +13,7 @@ import type { NewPortfolioDraft } from "../lib/new-portfolio-draft";
 import { shellTranslations } from "../lib/translations";
 import { NewPortfolioDraftEditor } from "./new-portfolio-draft-editor";
 import { PresetReviewModal } from "./preset-review-modal";
-import { PresetSelectionModal } from "./preset-selection-modal";
+import { presetHoldsStock, PresetSelectionModal } from "./preset-selection-modal";
 
 // How long a confirmation opened right after a wallet deposit (B1) waits for the General
 // Balance to show it. The deposit panel re-reads at 0/3/10 s; past the last one plus an RPC
@@ -81,6 +82,7 @@ export function CreatePortfolioFlow({
   const available = useAvailableGeneralBalance();
   const fundable = useFundableGeneralBalance();
   const { draft } = useNewPortfolioDraft();
+  const regionBlocked = useStocksRegionBlocked();
   const existingNames = signedOut ? [] : portfolios.map((p) => p.name);
   const canFund = signedOut ? false : fundable.status === "known" ? fundable.fundable : null;
 
@@ -102,7 +104,8 @@ export function CreatePortfolioFlow({
   // null while a saved draft waits on the balance to pick its way. Decided once and kept:
   // funds arriving while the draft is being edited do not swap the editor away.
   const [step, setStep] = useState<Step | null>(() => {
-    if (startPresetId) return { kind: "draft", presetId: startPresetId };
+    // D-569: a preset with stocks, where they can't be bought, opens the chooser, which says why.
+    if (startPresetId && !(regionBlocked && presetHoldsStock(startPresetId))) return { kind: "draft", presetId: startPresetId };
     if (!draft || startNew) return { kind: "select" };
     if (afterDeposit) return depositSeen ? { kind: "confirm", draft } : null;
     if (canFund === null) return null;

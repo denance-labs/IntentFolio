@@ -30,7 +30,8 @@ describe("PerformanceSection — the example spread chart (D-561)", () => {
   it("says it is an example, on which amount, and in Spanish when the page is", () => {
     state.lang = "es";
     render(<PerformanceSection />);
-    expect(screen.getAllByText("Ejemplo")).toHaveLength(2);
+    // Once: on the chart itself (the heading above it no longer carries an "Example" label, D-568).
+    expect(screen.getAllByText("Ejemplo")).toHaveLength(1);
     expect(screen.getByText("Spread acumulado")).toBeTruthy();
     expect(screen.getByText("Sobre un portfolio de $10,000")).toBeTruthy();
     expect(screen.getByText("Movimiento 15")).toBeTruthy();

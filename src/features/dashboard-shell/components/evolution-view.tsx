@@ -445,8 +445,8 @@ export function EvolutionView() {
                         style={lit ? { backgroundColor: `${color.hex}26` } : undefined}
                       >
                         <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color.hex }} aria-hidden="true" />
-                        <span className="min-w-0 flex-1 truncate">{labelByToken.get(tokenId)}</span>
-                        <span className="tabular-nums">{formatPct(point.shares[tokenId] ?? 0)}</span>
+                        <span className="min-w-0 max-w-44 flex-1 truncate" title={labelByToken.get(tokenId)}>{labelByToken.get(tokenId)}</span>
+                        <span className="w-12 text-right tabular-nums">{formatPct(point.shares[tokenId] ?? 0)}</span>
                         <span className="w-16 text-right tabular-nums">{formatUsd(point.usd[tokenId] ?? 0)}</span>
                       </li>
                     );

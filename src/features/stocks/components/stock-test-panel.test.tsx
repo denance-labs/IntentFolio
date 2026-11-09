@@ -30,6 +30,14 @@ vi.mock("../lib/stock-swap", async (importOriginal) => ({
 
 import { STOCK_TEST_ASSETS, STOCK_TEST_FUNDING_ASSETS } from "../lib/stock-swap";
 import { StockTestPanel } from "./stock-test-panel";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 const QUOTE: StockSwapQuote = {
   side: "buy",
@@ -165,5 +173,39 @@ describe("StockTestPanel", () => {
     fireEvent.click(await quoted());
     await screen.findByText("Entregado.");
     await waitFor(() => expect(mocks.readHeld.mock.calls.length).toBeGreaterThanOrEqual(4));
+  });
+});
+
+// D-569: where stocks can't be bought, the panel only sells them. Other tokens trade as always.
+describe("StockTestPanel — where stocks can't be bought", () => {
+  beforeEach(() => setCountry("US"));
+
+  it("does not quote buying a stock, and says selling is what is left", () => {
+    render(<StockTestPanel />);
+    fireEvent.change(screen.getByLabelText("Monto en USDT (NEAR)"), { target: { value: "10" } });
+    expect((screen.getByRole("button", { name: "Cotizar" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/sólo se pueden vender/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cotizar" }));
+    expect(mocks.quote).not.toHaveBeenCalled();
+  });
+
+  it("still quotes selling it", async () => {
+    render(<StockTestPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Vender" }));
+    fireEvent.change(screen.getByLabelText(`Monto en ${STOCK_TEST_ASSETS[0].ticker}`), { target: { value: "0.01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cotizar" }));
+    await waitFor(() => expect(mocks.quote).toHaveBeenCalledTimes(1));
+    expect(mocks.quote.mock.calls[0][0]).toMatchObject({ side: "sell" });
+  });
+
+  it("still quotes buying a token that is not a stock", async () => {
+    render(<StockTestPanel />);
+    const other = STOCK_TEST_ASSETS.find((asset) => !isStockToken(asset.id))!;
+    fireEvent.change(screen.getByLabelText("Token"), { target: { value: other.id } });
+    fireEvent.change(screen.getByLabelText("Monto en USDT (NEAR)"), { target: { value: "10" } });
+    expect(screen.queryByText(/sólo se pueden vender/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cotizar" }));
+    await waitFor(() => expect(mocks.quote).toHaveBeenCalledTimes(1));
+    expect(mocks.quote.mock.calls[0][0]).toMatchObject({ side: "buy" });
   });
 });

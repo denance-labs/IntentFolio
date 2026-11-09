@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
 import { shellTranslations } from "../lib/translations";
 
 const state = vi.hoisted(() => ({ lang: "en" as "en" | "es" }));
@@ -11,6 +12,12 @@ vi.mock("../context/language-context", () => ({
 }));
 
 import { PresetSelectionModal } from "./preset-selection-modal";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 function cardFor(name: string): HTMLElement {
   // Escaped: "NEAR + Stocks" holds a "+".
@@ -47,7 +54,7 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
   // over the grid every time. D-558: the first stock card, which also keeps the stocks in view
   // at 390 px.
   it("opens with focus on the first stock card, so the tolerance tooltip stays closed", () => {
-    expect(document.activeElement).toBe(cardFor(t.presetBigTechName));
+    expect(document.activeElement).toBe(cardFor(t.presetTechTitansName));
   });
 
   // D-558: the presets holding stocks lead, marked, with their note once.
@@ -55,7 +62,7 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     const block = screen.getByRole("region", { name: t.presetStocksTitle });
     const cards = within(block).getAllByRole("button");
     expect(cards.map((card) => card.textContent)).toEqual([
-      expect.stringContaining(t.presetBigTechName),
+      expect.stringContaining(t.presetTechTitansName),
       expect.stringContaining(t.presetNearStocksName),
     ]);
     expect(block.textContent).toContain(editorTranslations[lang].stockSectionNote);
@@ -74,7 +81,7 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     expect(card.textContent).not.toContain(t.presetStocksChip);
     expect(card.className).toContain("border-slate-700");
     expect(card.className).not.toContain("fuchsia");
-    expect(cardFor(t.presetBigTechName).textContent).not.toContain(t.presetStartingPointBadge);
+    expect(cardFor(t.presetTechTitansName).textContent).not.toContain(t.presetStartingPointBadge);
   });
 
   it("lists the stocks first inside a card and names each one for screen readers", () => {
@@ -116,5 +123,43 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     expect(trigger.closest("button")).toBe(trigger);
     expect(trigger.parentElement?.closest("button")).toBeNull();
     expect(screen.getByRole("tooltip").textContent).toBe(t.presetToleranceTooltip);
+  });
+});
+
+// D-569: where stocks can't be bought, their presets are shown last, say why, and can't be chosen.
+describe.each(["en", "es"] as const)("PresetSelectionModal — where stocks can't be bought (%s)", (lang) => {
+  const t = shellTranslations[lang];
+  const te = editorTranslations[lang];
+  const onSelectPreset = vi.fn();
+
+  beforeEach(() => {
+    state.lang = lang;
+    setCountry("US");
+    onSelectPreset.mockReset();
+    render(<PresetSelectionModal onClose={vi.fn()} onSelectPreset={onSelectPreset} onSelectScratch={vi.fn()} />);
+  });
+  afterEach(cleanup);
+
+  it("shows the stock presets and why, and none of them can be chosen", () => {
+    const block = screen.getByRole("region", { name: t.presetStocksTitle });
+    expect(within(block).getByText(te.stockRegionBlockedNote)).toBeTruthy();
+    expect(within(block).queryByText(te.stockSectionNote)).toBeNull();
+    const cards = within(block).getAllByRole("button") as HTMLButtonElement[];
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card.disabled).toBe(true);
+    fireEvent.click(cardFor(t.presetTechTitansName));
+    expect(onSelectPreset).not.toHaveBeenCalled();
+  });
+
+  it("lists them after the rest, and opens on the good starting point", () => {
+    const block = screen.getByRole("region", { name: t.presetStocksTitle });
+    const scratch = screen.getByRole("button", { name: new RegExp(`^${t.presetScratchName}`) });
+    expect(scratch.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.activeElement).toBe(cardFor(t.presetBalancedName));
+  });
+
+  it("keeps every other preset selectable", () => {
+    fireEvent.click(cardFor(t.presetBalancedName));
+    expect(onSelectPreset).toHaveBeenCalledWith("balanced");
   });
 });

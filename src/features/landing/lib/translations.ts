@@ -1,5 +1,16 @@
 export const landingTranslations = {
   en: {
+    a11y: {
+      mainNav: "Main navigation",
+      home: "IntentFolio home",
+      language: "Language",
+      hero: "Hero",
+      howItWorks: "How it works",
+      cta: "Call to action",
+      heroAlt: "IntentFolio overview: a portfolio's current mix next to its BTC, ETH and NEAR targets, with its value and how much of it is already in place",
+      heroMobileAlt: "IntentFolio overview on mobile",
+      activityAlt: "IntentFolio activity view: swaps that bring the portfolio closer to its targets, each with the spread it captured",
+    },
     nav: {
       getStarted: "Open app",
       learn: "Guide",
@@ -20,7 +31,7 @@ export const landingTranslations = {
       worksWith: "Sign in with",
       steps: [
         { number: "01", title: "Choose your allocation", body: "Pick a preset or set your own token targets and tolerance bands. No wallet needed to try it." },
-        { number: "02", title: "Connect and fund", body: "Sign in with any supported wallet — NEAR, Ethereum, Solana and more — and make your deposit. No account setup, no forms." },
+        { number: "02", title: "Connect and fund", body: "Sign in with any supported wallet — NEAR, Ethereum, Solana and more — and make your deposit. No account setup, no forms, and you can withdraw anytime." },
         {
           number: "03",
           title: "It moves toward your targets",
@@ -30,14 +41,12 @@ export const landingTranslations = {
       ],
     },
     compositionDemo: {
-      eyebrow: "Composition",
-      title: "Watch a portfolio come together",
-      body: "Pick a starting point and your targets snap into place. Try a few presets — this is the allocation your portfolio keeps itself aligned to.",
       startWithMix: "Start with this mix",
+      // D-569: the countries the app blocks stock buys in (stock-region.ts), said before anyone picks one.
+      stocksUnavailable: "Stocks aren't available in the United States or Canada.",
     },
     multiChain: {
-      eyebrow: "Multi-chain by default",
-      title: "One portfolio, every chain",
+      title: "One portfolio, many chains",
       body: "Hold assets from across the crypto world — Bitcoin, Ethereum, Solana, NEAR and more — all in a single view. Your portfolio spans networks so you never have to think about where anything lives.",
       assetsLabel: "Assets you can hold",
       // D-512: closes the icon row; true while some holdable assets stay out of it.
@@ -51,7 +60,6 @@ export const landingTranslations = {
       closing: "Every move, on the way and once there, aims to capture a spread in your favor.",
     },
     performance: {
-      eyebrow: "Example",
       title: "Earn on the way to your targets",
       body: "From the first move toward your targets, each one aims to capture a spread in your favor, and it keeps going once you're there. This is what those spreads can add up to over time.",
       chart: {
@@ -69,7 +77,6 @@ export const landingTranslations = {
       chips: ["Liquid staking", "Leading on NEAR", "Withdraw anytime"],
     },
     learnTeaser: {
-      eyebrow: "New to this?",
       title: "Want the full picture?",
       body: "Our guide walks through targets, rebalancing and what to expect — in plain language.",
       cta: "Read the guide",
@@ -79,7 +86,7 @@ export const landingTranslations = {
       getStarted: "Open app",
     },
     footer: {
-      powered: "Powered by",
+      powered: "Incubated by",
       metaPool: "Meta Pool",
       disclaimer: "Not financial advice.",
       contactLabel: "Contact",
@@ -99,6 +106,17 @@ export const landingTranslations = {
     },
   },
   es: {
+    a11y: {
+      mainNav: "Navegación principal",
+      home: "Inicio de IntentFolio",
+      language: "Idioma",
+      hero: "Portada",
+      howItWorks: "Cómo funciona",
+      cta: "Llamado a la acción",
+      heroAlt: "Vista general de IntentFolio: la mezcla actual de un portfolio junto a sus objetivos de BTC, ETH y NEAR, con su valor y cuánto ya está en su lugar",
+      heroMobileAlt: "Vista general de IntentFolio en el celular",
+      activityAlt: "Vista de actividad de IntentFolio: los intercambios que acercan el portfolio a sus objetivos, cada uno con el spread que captó",
+    },
     nav: {
       getStarted: "Abrir la app",
       learn: "Guía",
@@ -116,7 +134,7 @@ export const landingTranslations = {
       worksWith: "Ingresas con",
       steps: [
         { number: "01", title: "Eliges el reparto", body: "Usas un preset o defines tus objetivos de tokens con bandas de tolerancia a tu medida. Para probarlo no hace falta conectar nada." },
-        { number: "02", title: "Conectas y depositas", body: "Ingresas con cualquier wallet soportada — NEAR, Ethereum, Solana y más — y haces tu depósito. Sin registro, sin formularios." },
+        { number: "02", title: "Conectas y depositas", body: "Ingresas con cualquier wallet soportada — NEAR, Ethereum, Solana y más — y haces tu depósito. Sin registro, sin formularios, y retiras cuando quieras." },
         {
           number: "03",
           title: "Avanza hacia tus objetivos",
@@ -126,14 +144,11 @@ export const landingTranslations = {
       ],
     },
     compositionDemo: {
-      eyebrow: "Composición",
-      title: "Mira cómo se arma un portfolio",
-      body: "Elige un punto de partida y tus objetivos se acomodan solos. Prueba algunos presets — esta es la composición que tu portfolio mantiene alineada.",
       startWithMix: "Empieza con esta mezcla",
+      stocksUnavailable: "Las acciones no están disponibles en Estados Unidos ni Canadá.",
     },
     multiChain: {
-      eyebrow: "Multi-red por defecto",
-      title: "Un portfolio, todas las redes",
+      title: "Un portfolio, varias redes",
       body: "Ten activos de todo el mundo cripto — Bitcoin, Ethereum, Solana, NEAR y más — en una sola vista. Tu portfolio abarca varias redes para que nunca tengas que pensar dónde vive cada cosa.",
       assetsLabel: "Activos que puedes tener",
       assetsMore: "y más",
@@ -146,7 +161,6 @@ export const landingTranslations = {
       closing: "Cada movimiento, en el camino y una vez que llegó, busca capturar un spread a tu favor.",
     },
     performance: {
-      eyebrow: "Ejemplo",
       title: "Ganas en el camino a tus objetivos",
       body: "Desde el primer movimiento hacia tus objetivos, cada uno busca capturar un spread a tu favor, y sigue cuando ya llegaste. Esto es lo que esos spreads pueden sumar con el tiempo.",
       chart: {
@@ -164,7 +178,6 @@ export const landingTranslations = {
       chips: ["Liquid staking", "Líder en NEAR", "Retiras cuando quieras"],
     },
     learnTeaser: {
-      eyebrow: "¿Estás empezando?",
       title: "¿Quieres el panorama completo?",
       body: "Nuestra guía explica objetivos, rebalanceo y qué esperar — en lenguaje simple.",
       cta: "Leer la guía",
@@ -174,7 +187,7 @@ export const landingTranslations = {
       getStarted: "Abrir la app",
     },
     footer: {
-      powered: "Powered by",
+      powered: "Incubado por",
       metaPool: "Meta Pool",
       disclaimer: "No es asesoramiento financiero.",
       contactLabel: "Contacto",

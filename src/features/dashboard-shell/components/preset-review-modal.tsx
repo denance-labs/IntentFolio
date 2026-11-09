@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { amountChipClass, Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { isPortfolioOfferable, isReceivable } from "@/features/bridge/lib/token-availability";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { getTokenById, tokenRegistry } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
@@ -31,6 +32,7 @@ import { formatDecimalForInput, percentChipAmount } from "@/features/portfolio-e
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { useRelayPaused } from "@/features/vault/hooks/use-relay-paused";
 import { RelayPausedNotice } from "@/features/vault/components/relay-paused-notice";
 import { useVaultPrecheck } from "@/features/vault/hooks/use-vault-precheck";
@@ -210,6 +212,11 @@ export function PresetReviewModal({
   const storageProblem = storageQuoteProblem(storageQuote, t);
   // A draft saved before the app's 10-token cap (D-528) can hold more: trimmed in the editor first.
   const overTokenCap = growsPastAppTokenCap(0, compositionTokenIds.length);
+  // D-569: the one door every new portfolio goes through, so a mix with stocks that reached here
+  // another way (a draft saved before the block, the landing's preset) is not signed where stocks
+  // can't be bought. The pickers and the chooser already keep new ones out.
+  const regionBlocked = useStocksRegionBlocked();
+  const stocksBlocked = regionBlocked && targets.some((row) => isStockToken(row.tokenId));
   // What the portfolio starts with: the chosen amounts, less the cost in the token it is charged in.
   const netAllocations = useMemo(
     () =>
@@ -285,6 +292,7 @@ export function PresetReviewModal({
     !relayBlocked &&
     !vaultBlock &&
     !overTokenCap &&
+    !stocksBlocked &&
     storageQuote?.ok === true;
 
   function nameError(): string | null {
@@ -554,6 +562,9 @@ export function PresetReviewModal({
             <p className="mt-2 text-[11px] leading-snug text-amber-200">
               {editorTranslations[lang].appTooManyTokens.replace("{max}", String(APP_MAX_TOKENS_PER_PORTFOLIO))}
             </p>
+          ) : null}
+          {stocksBlocked ? (
+            <p className="mt-2 text-[11px] leading-snug text-amber-200">{editorTranslations[lang].stockRegionBlockedCreate}</p>
           ) : null}
         </section>
 

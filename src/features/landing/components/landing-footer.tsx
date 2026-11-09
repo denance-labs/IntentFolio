@@ -47,7 +47,7 @@ function LinkedInIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
       <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
-      <g fill="#020617">
+      <g fill="#151413">
         <rect x="5.6" y="9.6" width="3" height="8.8" />
         <circle cx="7.1" cy="6.6" r="1.75" />
         <path d="M10.7 9.6h2.9v1.3c.5-.9 1.6-1.5 3-1.5 2.3 0 3.4 1.4 3.4 4v5h-3v-4.5c0-1.2-.4-1.9-1.5-1.9s-1.8.8-1.8 2v4.4h-3z" />
@@ -59,31 +59,32 @@ function LinkedInIcon() {
 /** A channel without a working link yet: shown, disabled, with a "Soon" pill. */
 function SoonEntry({ icon, label, srLabel, soon }: { icon: React.ReactNode; label: string; srLabel: string; soon: string }) {
   return (
-    <span role="img" aria-label={srLabel} className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-slate-400">
+    <span role="img" aria-label={srLabel} className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-bone-dim">
       {icon}
       {label}
-      <span className="rounded-full border border-slate-700 px-1.5 py-px text-[10px] uppercase tracking-wide">{soon}</span>
+      <span className="rounded-full border border-bone/20 px-1.5 py-px text-xs uppercase tracking-wide">{soon}</span>
     </span>
   );
 }
 
+// 44 px touch height under `sm`; the list's row gap drops there to keep the same rhythm.
 const linkClass =
-  "inline-flex items-center gap-1.5 rounded text-sm text-slate-300 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400";
+  "inline-flex min-h-11 items-center gap-1.5 sm:min-h-0 rounded text-sm text-bone-dim transition hover:text-bone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone/70";
 
 export function LandingFooter() {
   const { lang } = useLanguage();
   const t = landingTranslations[lang].footer;
 
   return (
-    <footer className="border-t border-slate-800 bg-slate-950 py-8">
+    <footer className="border-t border-bone/10 py-8">
       <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row sm:justify-between gap-5 items-center">
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-bone-dim">
           {t.powered}{" "}
           <a
             href="https://metapool.app"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-0.5"
+            className="inline-flex min-h-11 items-center gap-0.5 text-bone underline decoration-bone/30 underline-offset-4 transition hover:decoration-bone sm:min-h-0"
           >
             {t.metaPool}
             <ExternalLink size={12} aria-hidden="true" className="inline" />
@@ -91,7 +92,7 @@ export function LandingFooter() {
         </p>
         <div className="flex flex-col items-center sm:items-end gap-2">
           <nav aria-label={t.contactLabel}>
-            <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-0 sm:gap-y-2">
               <li>
                 {communityLinks.discord ? (
                   <a
@@ -172,7 +173,7 @@ export function LandingFooter() {
               </li>
             </ul>
           </nav>
-          <p className="text-xs text-slate-400">{t.disclaimer}</p>
+          <p className="text-xs text-bone-dim">{t.disclaimer}</p>
         </div>
       </div>
     </footer>

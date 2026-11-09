@@ -2,9 +2,11 @@
 
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { Check, Plus } from "lucide-react";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
 import { TokenIcon } from "@/features/market/lib/token-icons";
 import { isPortfolioOfferable } from "@/features/bridge/lib/token-availability";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { APP_MAX_TOKENS_PER_PORTFOLIO } from "@/features/vault/lib/change-set-preflight";
 import { Modal } from "./portfolio-primitives";
 import { matchesStockSearch, StockRowChip, StockTokenSections } from "./stock-token-sections";
@@ -41,6 +43,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const regionBlocked = useStocksRegionBlocked();
 
   const entries = useMemo<Entry[]>(() => {
     const composition = new Set(compositionTokenIds);
@@ -140,8 +143,11 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
           idOf={(e) => e.id}
           t={t}
           className="mt-2 max-h-[min(28rem,55vh)] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
+          regionBlocked={regionBlocked}
           renderRow={(e) => {
             const isSelected = selected.has(e.id);
+            // D-569: a stock the portfolio already has is left as it is; only adding one is blocked.
+            const blockedHere = regionBlocked && isStockToken(e.id) && !e.inPortfolio && !isSelected;
             return (
               <li
                 key={e.id}
@@ -149,7 +155,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                 // always there, so marking it never changes the row's height.
                 className={`flex items-center gap-3 rounded-xl border px-2.5 py-2 transition-colors ${
                   isSelected ? "border-cyan-300/50 bg-cyan-300/[0.08]" : "border-transparent"
-                } ${!e.offerable && !e.inPortfolio ? "opacity-50" : ""}`}
+                } ${(!e.offerable || blockedHere) && !e.inPortfolio ? "opacity-50" : ""}`}
               >
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
@@ -172,6 +178,8 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                   </span>
                 ) : !e.offerable ? (
                   <span className="shrink-0 text-[11px] text-amber-400">{t.addTokensNotAvailableYet}</span>
+                ) : blockedHere ? (
+                  <span className="shrink-0 text-[11px] text-amber-400">{t.stockRegionBlockedRow}</span>
                 ) : (
                   <button
                     type="button"

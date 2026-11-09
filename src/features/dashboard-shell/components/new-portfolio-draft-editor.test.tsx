@@ -6,8 +6,15 @@ import { assertValidComposition, pctToBps } from "@/features/vault/lib/change-se
 import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
 import type { PresetId } from "@/content/portfolio-presets";
 import { readNewPortfolioDraft, type NewPortfolioDraft } from "../lib/new-portfolio-draft";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
 import { shellTranslations } from "../lib/translations";
 import { SIMULATION_DEFAULT_USD } from "../lib/new-portfolio-draft-simulation";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 // 016 block 2.2. The editor's contract: a preset loads exactly, "from scratch" starts empty,
 // nothing invalid is ever saved, and what is saved is a composition the vault accepts —
@@ -492,6 +499,58 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftEditor (%s)", (lang) => {
       "TSLA",
     ]);
     expect(screen.getAllByText(te.stockSectionNote)).toHaveLength(1);
+  });
+
+  // D-569: where stocks can't be bought, the picker lists them last and offers none of them.
+  it("where stocks can't be bought, lists the stocks last and offers none", () => {
+    setCountry("US");
+    renderEditor({ presetId: "balanced" });
+    fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
+    const lists = screen.getAllByRole("list");
+    expect(lists[lists.length - 1]).toBe(screen.getByRole("list", { name: te.stockSectionTitle }));
+    expect(screen.getAllByText(te.stockRegionBlockedNote)).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: new RegExp(`^${te.addTokensAddAction} NVDA`) })).toBeNull();
+    expect(screen.getByRole("button", { name: `${te.addTokensAddAction} USDC(BASE) — USDC (on Base)` })).toBeTruthy();
+  });
+
+  it("where stocks can't be bought, a stock already in the mix can still be taken out, not put back", () => {
+    setCountry("US");
+    renderEditor({ presetId: "nearStocks" });
+    fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
+    const nvda = screen.getByRole("button", { name: `${te.addTokensAddAction} NVDA — NVIDIA (Ondo)` });
+    expect(nvda.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(nvda);
+    expect(screen.queryByRole("button", { name: `${te.addTokensAddAction} NVDA — NVIDIA (Ondo)` })).toBeNull();
+  });
+
+  // D-569: a mix that already holds stocks says so from the first screen, and goes nowhere until
+  // they are taken out: neither saved, nor on to the funds.
+  it("where stocks can't be bought, a mix with stocks says so at the top and can't be saved or created", () => {
+    setCountry("US");
+    const { onSaved } = renderEditor({ presetId: "techTitans", signedOut: true });
+    const notes = screen.getAllByText(te.stockRegionBlockedCreate);
+    expect(notes[0].getAttribute("role")).toBe("status");
+    expect(notes[0].compareDocumentPosition(screen.getByLabelText(t.portfolioNameLabel)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const create = screen.getByRole("button", { name: t.draftCreate });
+    expect(create.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(create);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("where stocks can't be bought, a mix with funds does not go on to them while it holds stocks", () => {
+    setCountry("CA");
+    renderEditor({ presetId: "nearStocks", funded: true });
+    fireEvent.click(screen.getByRole("button", { name: t.draftCreate }));
+    expect(screen.getByRole("button", { name: t.draftCreate })).toBeTruthy();
+    expect(screen.getAllByText(te.stockRegionBlockedCreate).length).toBeGreaterThan(0);
+  });
+
+  it("a mix with stocks saves as always from anywhere else (control)", () => {
+    setCountry("AR");
+    const { onSaved } = renderEditor({ presetId: "techTitans", signedOut: true });
+    expect(screen.queryByText(te.stockRegionBlockedCreate)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: t.draftCreate }));
+    expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
   it("shows ZEC, in the catalog but not withdrawable yet (D-389), as not available", () => {

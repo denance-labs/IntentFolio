@@ -1,53 +1,27 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
+import { WORLD_H2 } from "../lib/world";
 import { ExampleSpreadChart } from "./example-spread-chart";
-
-const sectionVariants = {
-  hidden: { opacity: 0, y: 20 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: "easeOut" as const, staggerChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
-};
 
 export function PerformanceSection() {
   const { lang } = useLanguage();
   const t = landingTranslations[lang].performance;
 
   return (
-    <section aria-label={t.title} className="py-24">
-      <motion.div
-        className="max-w-6xl mx-auto px-6"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, margin: "-80px" }}
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          {/* Left: context */}
-          <motion.div variants={itemVariants} className="lg:col-span-5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-cyan-400">
-              {t.eyebrow}
-            </span>
-            <h2 className="text-3xl font-bold text-white mt-2">{t.title}</h2>
-            <p className="text-slate-300 text-base mt-4">{t.body}</p>
-          </motion.div>
-
-          {/* Right: chart card */}
-          <motion.div variants={itemVariants} className="lg:col-span-7">
-            <ExampleSpreadChart copy={t.chart} />
-          </motion.div>
+    <section aria-label={t.title} className="py-12 sm:py-24">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-6 lg:grid-cols-12">
+        <div className="lg:col-span-5">
+          <h2 className={WORLD_H2}>{t.title}</h2>
+          <p className="mt-4 text-[1rem] text-bone-dim sm:text-lg">{t.body}</p>
         </div>
-      </motion.div>
+
+        {/* The chart carries its own "Example" mark and caption (D-561). */}
+        <div className="lg:col-span-7">
+          <ExampleSpreadChart copy={t.chart} />
+        </div>
+      </div>
     </section>
   );
 }

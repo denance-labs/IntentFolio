@@ -196,7 +196,7 @@ export function ShowcaseDonut({
                   strokeWidth={1.2}
                   strokeLinecap="round"
                   className="ov-cap pointer-events-none"
-                  style={{ transform: `rotate(${deg}deg)` }}
+                  style={{ transform: `rotate(${deg}deg)`, opacity: painted ? 1 : 0 }}
                 />
               );
               return (
@@ -242,24 +242,25 @@ export function ShowcaseDonut({
                       }
                     }}
                   />
-                  {painted ? (
-                    <g aria-hidden="true">
-                      <circle
-                        cx={CENTER}
-                        cy={CENTER}
-                        r={RADIUS}
-                        pathLength={circumference}
-                        fill="none"
-                        stroke={`url(#${uid}-sheen)`}
-                        className="ov-slice pointer-events-none"
-                        style={{ strokeWidth: width, ...dashes }}
-                      />
-                      {edge(inner)}
-                      {edge(outer)}
-                      {cap(startDeg)}
-                      {cap(endDeg)}
-                    </g>
-                  ) : null}
+                  {/* Mounted even with no dash (D-568): a slice growing from zero then grows its sheen and
+                      edges and turns its caps from where it starts, instead of showing them at their final
+                      place from the first frame. With no dash they draw nothing, and the caps are hidden. */}
+                  <g aria-hidden="true">
+                    <circle
+                      cx={CENTER}
+                      cy={CENTER}
+                      r={RADIUS}
+                      pathLength={circumference}
+                      fill="none"
+                      stroke={`url(#${uid}-sheen)`}
+                      className="ov-slice pointer-events-none"
+                      style={{ strokeWidth: width, ...dashes }}
+                    />
+                    {edge(inner)}
+                    {edge(outer)}
+                    {cap(startDeg)}
+                    {cap(endDeg)}
+                  </g>
                 </g>
               );
             })}

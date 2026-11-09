@@ -3,6 +3,7 @@ import {
   EXAMPLE_SPREAD_AXIS_TICKS_USD as TICKS,
 } from "@/content/example-spread";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
+import { WORLD_PANEL } from "../lib/world";
 
 type Copy = {
   title: string;
@@ -15,7 +16,8 @@ type Copy = {
   caption: string;
 };
 
-const LINE = "#10b981";
+// The gain green of the app's history amounts: this line is spread earned, not a target.
+const LINE = "#34d399";
 const AXIS_MAX = TICKS[TICKS.length - 1];
 const xPct = (index: number) => (index / (SERIES.length - 1)) * 100;
 const yPct = (usd: number) => (1 - usd / AXIS_MAX) * 100;
@@ -36,13 +38,13 @@ export function ExampleSpreadChart({ copy }: { copy: Copy }) {
     .replace("{count}", String(SERIES.length));
 
   return (
-    <figure className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
+    <figure className={`${WORLD_PANEL} p-4 sm:p-5`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-100">{copy.title}</p>
-          <p className="mt-0.5 text-xs text-slate-400">{copy.base}</p>
+          <p className="text-sm font-semibold text-bone">{copy.title}</p>
+          <p className="mt-0.5 text-xs text-bone-dim">{copy.base}</p>
         </div>
-        <span className="shrink-0 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-medium text-cyan-300">
+        <span className="shrink-0 rounded-full border border-bone/20 px-2.5 py-0.5 text-xs font-medium text-bone-dim">
           {copy.mark}
         </span>
       </div>
@@ -52,7 +54,7 @@ export function ExampleSpreadChart({ copy }: { copy: Copy }) {
           {TICKS.map((tick) => (
             <span
               key={tick}
-              className="absolute left-0 -translate-y-1/2 text-xs tabular-nums text-slate-400"
+              className="absolute left-0 -translate-y-1/2 text-xs tabular-nums text-bone-dim"
               style={{ top: `${yPct(tick)}%` }}
             >
               ${tick}
@@ -80,7 +82,7 @@ export function ExampleSpreadChart({ copy }: { copy: Copy }) {
                 y1={yPct(tick)}
                 y2={yPct(tick)}
                 vectorEffect="non-scaling-stroke"
-                className={tick === 0 ? "stroke-slate-700" : "stroke-slate-800"}
+                className={tick === 0 ? "stroke-bone/20" : "stroke-bone/[0.08]"}
                 strokeWidth="1"
               />
             ))}
@@ -99,14 +101,14 @@ export function ExampleSpreadChart({ copy }: { copy: Copy }) {
           {SERIES.map((usd, i) => (
             <span
               key={i}
-              className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 ring-2 ring-slate-900"
+              className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 ring-2 ring-graphite-raised"
               style={{ left: `${xPct(i)}%`, top: `${yPct(usd)}%` }}
             />
           ))}
 
           {/* Above the last dot: the line arrives from the lower left, so nothing crosses it there. */}
           <span
-            className="absolute right-0 text-sm font-semibold tabular-nums text-slate-100"
+            className="absolute right-0 text-sm font-semibold tabular-nums text-bone"
             style={{ bottom: `calc(${100 - yPct(SERIES[LAST])}% + 0.5rem)` }}
           >
             {formatUsd(SERIES[LAST])}
@@ -114,13 +116,13 @@ export function ExampleSpreadChart({ copy }: { copy: Copy }) {
         </div>
 
         <div aria-hidden="true" />
-        <div aria-hidden="true" className="mt-2 flex justify-between text-xs text-slate-400">
+        <div aria-hidden="true" className="mt-2 flex justify-between text-xs text-bone-dim">
           <span>{copy.move.replace("{n}", "1")}</span>
           <span>{copy.move.replace("{n}", String(SERIES.length))}</span>
         </div>
       </div>
 
-      <figcaption className="mt-4 text-xs text-slate-400">{copy.caption}</figcaption>
+      <figcaption className="mt-4 text-xs text-bone-dim">{copy.caption}</figcaption>
     </figure>
   );
 }

@@ -393,8 +393,8 @@ export const shellTranslations = {
     // D-558: the presets holding stocks.
     presetStocksTitle: "Portfolios with stocks",
     presetStocksChip: "Stocks",
-    presetBigTechName: "Big Tech",
-    presetBigTechDesc: "Big US tech names and a Nasdaq-100 ETF, tokenized.",
+    presetTechTitansName: "Tech Titans",
+    presetTechTitansDesc: "Big US tech names and a Nasdaq-100 ETF, tokenized.",
     presetNearStocksName: "NEAR + Stocks",
     presetNearStocksDesc: "Mostly stocks, with NEAR alongside.",
     // Preset review / create (5.6)
@@ -981,8 +981,8 @@ export const shellTranslations = {
     presetPioneersDesc: "Bitcoin, la primera criptomoneda, y Ethereum, la primera con contratos inteligentes. Solo los dos.",
     presetStocksTitle: "Portfolios con acciones",
     presetStocksChip: "Acciones",
-    presetBigTechName: "Big Tech",
-    presetBigTechDesc: "Grandes tecnológicas de EE. UU. y un ETF del Nasdaq-100, tokenizados.",
+    presetTechTitansName: "Tech Titans",
+    presetTechTitansDesc: "Grandes tecnológicas de EE. UU. y un ETF del Nasdaq-100, tokenizados.",
     presetNearStocksName: "NEAR + Acciones",
     presetNearStocksDesc: "Mayormente acciones, con NEAR al lado.",
     // Preset review / create (5.6)

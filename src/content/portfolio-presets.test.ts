@@ -19,14 +19,14 @@ const LOCKED: Record<PresetId, { band: number; pcts: number[] }> = {
   stables:      { band: 5,  pcts: [20, 20, 20, 20, 20] },
   satoshi:      { band: 10, pcts: [70, 20, 10] },
   pioneers:     { band: 10, pcts: [60, 40] },
-  bigTech:      { band: 10, pcts: [30, 25, 25, 20] },
+  techTitans:   { band: 10, pcts: [30, 25, 25, 20] },
   nearStocks:   { band: 10, pcts: [40, 20, 20, 20] },
 };
 
 describe("portfolio presets", () => {
   it("exposes all presets", () => {
     expect(portfolioPresets.map((p) => p.id).sort()).toEqual(
-      ["aggressive", "balanced", "bigTech", "conservative", "nearStocks", "pioneers", "satoshi", "stables"]
+      ["aggressive", "balanced", "conservative", "nearStocks", "pioneers", "satoshi", "stables", "techTitans"]
     );
   });
 
@@ -92,7 +92,7 @@ describe("portfolio presets", () => {
   // lifts these presets to the top by itself, so they stay last here.
   it("keeps the presets holding a stock last, and only uses stocks with a route at every size", () => {
     const withStock = portfolioPresets.filter((p) => p.slots.some((s) => isStockToken(s.tokenId)));
-    expect(withStock.map((p) => p.id)).toEqual(["bigTech", "nearStocks"]);
+    expect(withStock.map((p) => p.id)).toEqual(["techTitans", "nearStocks"]);
     expect(portfolioPresets.slice(-2)).toEqual(withStock);
     const symbols = withStock.flatMap((p) => p.slots.map((s) => getTokenById(s.tokenId)?.symbol));
     expect(symbols).not.toContain("TSLA");
@@ -100,7 +100,7 @@ describe("portfolio presets", () => {
   });
 
   // Who funds with a token outside the mix is the common case for these two (D-319).
-  it.each(["bigTech", "nearStocks"] as const)("%s passes the gate funded with a token outside its mix", (id) => {
+  it.each(["techTitans", "nearStocks"] as const)("%s passes the gate funded with a token outside its mix", (id) => {
     const preset = getPreset(id)!;
     const composition = preset.slots.map((s) => ({
       tokenId: s.tokenId,
@@ -121,6 +121,8 @@ describe("parsePresetId (D-561)", () => {
   it("accepts only the ids of these templates", () => {
     expect(parsePresetId("balanced")).toBe("balanced");
     expect(parsePresetId("nope")).toBeNull();
+    expect(parsePresetId("bigTech")).toBe("techTitans");
+    expect(parsePresetId("toString")).toBeNull();
     expect(parsePresetId("")).toBeNull();
     expect(parsePresetId(null)).toBeNull();
   });

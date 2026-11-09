@@ -4,6 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
 import { getTokenById } from "@/features/market/lib/token-registry";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { CompositionBars, CompositionDonuts } from "@/features/portfolio-editor/components/portfolio-charts";
 import { RemoveEmptyModal, SaveBlockedModal } from "@/features/portfolio-editor/components/portfolio-editor-latest";
 import { Modal, SumChip } from "@/features/portfolio-editor/components/portfolio-primitives";
@@ -103,6 +105,9 @@ export function NewPortfolioDraftView(props: ViewProps) {
   const [editRows, setEditRows] = useState<NewPortfolioDraftRow[] | null>(null);
   const isEditing = editRows !== null;
   const shownRows = editRows ?? draft.rows;
+  // D-569: a saved mix with stocks, where they can't be bought, says so up here, before any deposit.
+  const regionBlocked = useStocksRegionBlocked();
+  const stocksBlocked = regionBlocked && shownRows.some((r) => isStockToken(r.tokenId));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [removing, setRemoving] = useState<TokenId | null>(null);
   const [blockers, setBlockers] = useState<string[] | null>(null);
@@ -237,6 +242,11 @@ export function NewPortfolioDraftView(props: ViewProps) {
             {title.replace("{name}", draft.name)}
           </h2>
           {body ? <p className="mt-0.5 text-sm text-slate-400">{body}</p> : null}
+          {stocksBlocked ? (
+            <p role="status" className="mt-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-xs leading-snug text-amber-200">
+              {te.stockRegionBlockedCreate}
+            </p>
+          ) : null}
           {/* D-486: the body line's place while the balance loads (s283 QA). */}
           {props.variant === "loading" ? (
             <div data-testid="draft-loading-line" className="mt-0.5 flex h-5 items-center">

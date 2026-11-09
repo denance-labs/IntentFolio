@@ -1,12 +1,12 @@
 import { ImageResponse } from "next/og";
 
 // In-repo generated Open Graph card for the public landing (D-001 / 7.6).
-// Dark theme + EN-primary headline + allocation bar + "Powered by Meta Pool".
+// Dark theme + EN-primary headline + allocation bar + "Incubated by Meta Pool".
 // ImageResponse renders a Satori-backed subset of CSS: flexbox only (no grid),
 // inline styles, explicit dimensions. Kept font-free (system default) so the
 // build never depends on a remote font fetch.
 
-export const alt = "IntentFolio — Build your portfolio with no fees, and earn spread along the way. Powered by Meta Pool.";
+export const alt = "IntentFolio — Build your portfolio with no fees, and earn spread along the way. Incubated by Meta Pool.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -120,7 +120,7 @@ export default function OpengraphImage() {
               <span style={{ color: "#64748B", fontSize: 30 }}>.app</span>
             </div>
             <div style={{ display: "flex", color: "#94A3B8", fontSize: 30 }}>
-              Powered by Meta Pool
+              Incubated by Meta Pool
             </div>
           </div>
         </div>

@@ -196,6 +196,23 @@ export function PortfolioTabs({
     if (target !== null) el.scrollTo({ left: Math.max(0, target), behavior: scrollBehavior() });
   }, [miCuentaActive, activePortfolioId, draftActive, portfolios.length, stripWidth]);
 
+  // The section menu sticks right under this strip (D-562), so it needs the strip's real height:
+  // two rows under `sm`, one above, and it changes with the font. Same pattern as the header's.
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty("--portfolio-strip-h", `${el.offsetHeight}px`);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--portfolio-strip-h");
+    };
+  }, []);
+
   return (
     <>
       {/* Sticky under the header (operator, s224): switching portfolios should not need a
@@ -203,7 +220,7 @@ export function PortfolioTabs({
           opaque, so the page scrolling beneath does not show through. No backdrop-blur: a
           filter makes this the containing block of the tab menu's `position: fixed`, and the
           menu would open offset. */}
-      <div className="sticky top-[var(--dashboard-header-h,0px)] z-30 border-b border-slate-800 bg-slate-950">
+      <div ref={stripRef} className="sticky top-[var(--dashboard-header-h,0px)] z-30 border-b border-slate-800 bg-slate-950">
         <div className="mx-auto flex max-w-7xl items-center gap-2 overflow-visible px-4 py-2 sm:px-6">
           {/* Desktop: My Account fixed | portfolios that scroll | "+" fixed (D-318) */}
           <div

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Lock, LockOpen, Plus, X } from "lucide-react";
 import { InfoTooltip, Modal, SumChip } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { StockRowChip } from "@/features/portfolio-editor/components/stock-token-sections";
+import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { getTokenById } from "@/features/market/lib/token-registry";
+import { useStocksRegionBlocked } from "@/features/stocks/hooks/use-stocks-region-blocked";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { RULE_MESSAGE_KEYS, type RuleCode } from "@/features/portfolio-editor/lib/validation";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
@@ -180,7 +182,11 @@ export function NewPortfolioDraftEditor({
         : balanceUnreadable
           ? t.myAccountBalanceUnreadable
           : t.draftCheckingBalance;
-  const primaryEnabled = canSave && createBlockedReason === null;
+  // D-569: where stocks can't be bought, a mix holding one (a saved draft, the landing's preset) says
+  // so from the first screen, and neither saves nor goes on to the funds until they are taken out.
+  const regionBlocked = useStocksRegionBlocked();
+  const stocksBlocked = regionBlocked && rows.some((r) => isStockToken(r.tokenId));
+  const primaryEnabled = canSave && createBlockedReason === null && !stocksBlocked;
   const dirty =
     name.trim() !== initial.name.trim() || JSON.stringify(rows) !== JSON.stringify(initial.rows);
 
@@ -294,7 +300,12 @@ export function NewPortfolioDraftEditor({
   const reasonMessage = (v: Exclude<NewPortfolioDraftValidation, { ok: true }>) =>
     draftValidationMessage(v, rows, t, te);
 
-  const blockerText = blocker && !blocker.ok ? draftBlockerText(blocker, rows, t, te) : createBlockedReason;
+  const blockerText =
+    blocker && !blocker.ok
+      ? draftBlockerText(blocker, rows, t, te)
+      : stocksBlocked
+        ? te.stockRegionBlockedCreate
+        : createBlockedReason;
 
   // The disabled-looking button stays focusable and, pressed, takes the user to the problem.
   function focusProblem(v: Exclude<NewPortfolioDraftValidation, { ok: true }>) {
@@ -314,6 +325,7 @@ export function NewPortfolioDraftEditor({
       focusProblem(validation);
       return;
     }
+    if (stocksBlocked) return;
     const result = save(input, existingNames);
     if (result.ok) onSaved();
     else setSaveFailure(result);
@@ -321,7 +333,7 @@ export function NewPortfolioDraftEditor({
 
   function handleCreate() {
     if (!validation.ok) focusProblem(validation);
-    else if (createBlockedReason === null) setView("funds");
+    else if (createBlockedReason === null && !stocksBlocked) setView("funds");
   }
 
   const nameInvalid = name !== "" && !validation.ok && validation.reason === "invalid-name";
@@ -370,6 +382,11 @@ export function NewPortfolioDraftEditor({
         ) : null}
       </div>
       <p className="mt-1 text-sm text-slate-400">{funded === true ? t.draftEditorSubtitleFunded : t.draftEditorSubtitle}</p>
+      {stocksBlocked ? (
+        <p role="status" className="mt-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-xs leading-snug text-amber-200">
+          {te.stockRegionBlockedCreate}
+        </p>
+      ) : null}
 
       {/* Name */}
       <label htmlFor="draft-editor-name" className="mt-4 mb-1.5 block text-sm font-medium text-slate-300">

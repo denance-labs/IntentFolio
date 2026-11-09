@@ -1,5 +1,8 @@
 "use client";
 
+import { WORLD_LABEL } from "@/features/landing/lib/world";
+import { LEARN_LINK } from "../lib/styles";
+
 type LearnIndexProps = {
   label: string;
   items: ReadonlyArray<{ id: string; label: string }>;
@@ -12,16 +15,11 @@ export function LearnIndex({ label, items }: LearnIndexProps) {
   return (
     <nav aria-label={label} className="hidden lg:block">
       <div className="sticky top-20">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          {label}
-        </p>
-        <ul className="mt-3 space-y-2">
+        <p className={WORLD_LABEL}>{label}</p>
+        <ul className="mt-4 space-y-2.5 border-l border-bone/[0.1] pl-4">
           {items.map((item) => (
             <li key={item.id}>
-              <a
-                href={`#${item.id}`}
-                className="block rounded text-sm text-slate-400 transition hover:text-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-              >
+              <a href={`#${item.id}`} className={`${LEARN_LINK} block text-sm`}>
                 {item.label}
               </a>
             </li>

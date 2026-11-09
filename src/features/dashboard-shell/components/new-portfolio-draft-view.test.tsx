@@ -26,6 +26,13 @@ vi.mock("@/features/market/hooks/use-token-prices", () => {
 });
 
 import { NewPortfolioDraftView } from "./new-portfolio-draft-view";
+import { COUNTRY_COOKIE } from "@/features/stocks/lib/stock-region";
+
+// D-569: the cookie the middleware writes from Vercel's country header.
+const setCountry = (code: string | null) => {
+  document.cookie = code ? `${COUNTRY_COOKIE}=${code}; path=/` : `${COUNTRY_COOKIE}=; path=/; max-age=0`;
+};
+afterEach(() => setCountry(null));
 
 const BTC = "nep141:nbtc.bridge.near";
 const NEAR = "near";
@@ -427,5 +434,41 @@ describe("NewPortfolioDraftView — the draft that connecting would replace", ()
     seed({ "*anonymous": stored("Anon", 100), "alice.near": stored("Her mix", 50) });
     render(view("waiting"));
     expect(screen.queryByText(/This browser already has/)).toBeNull();
+  });
+});
+
+// D-569: a saved mix with stocks says, before any deposit, that it can't be created from here.
+describe("NewPortfolioDraftView — where stocks can't be bought (D-569)", () => {
+  const NVDA = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
+  const WITH_STOCK: NewPortfolioDraft = {
+    ...DRAFT,
+    rows: [
+      { tokenId: NVDA, targetPct: 60, tolerancePct: 10, locked: false },
+      { tokenId: NEAR, targetPct: 40, tolerancePct: 5, locked: false },
+    ],
+  };
+  const te = editorTranslations.en;
+  beforeEach(() => {
+    state.lang = "en";
+  });
+  afterEach(cleanup);
+
+  it("says so under the title, signed out or waiting for funds", () => {
+    setCountry("US");
+    renderView("signed-out", WITH_STOCK);
+    expect(screen.getByText(te.stockRegionBlockedCreate)).toBeTruthy();
+    cleanup();
+    renderView("waiting", WITH_STOCK);
+    expect(screen.getByText(te.stockRegionBlockedCreate)).toBeTruthy();
+  });
+
+  it("says nothing for a mix without stocks, or from anywhere else (control)", () => {
+    setCountry("US");
+    renderView("waiting", DRAFT);
+    expect(screen.queryByText(te.stockRegionBlockedCreate)).toBeNull();
+    cleanup();
+    setCountry("AR");
+    renderView("waiting", WITH_STOCK);
+    expect(screen.queryByText(te.stockRegionBlockedCreate)).toBeNull();
   });
 });

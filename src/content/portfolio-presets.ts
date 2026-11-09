@@ -62,7 +62,7 @@ export type PresetId =
   | "stables"
   | "satoshi"
   | "pioneers"
-  | "bigTech"
+  | "techTitans"
   | "nearStocks";
 
 export type PresetSlot = { tokenId: TokenId; targetPct: number };
@@ -150,7 +150,7 @@ export const portfolioPresets: PortfolioPreset[] = [
   // D-558: last in this list on purpose. /learn and the landing derive each token's color from
   // this order, and the chooser moves any preset holding a stock to the top on its own.
   {
-    id: "bigTech",
+    id: "techTitans",
     risk: "veryHigh",
     tolerancePct: 10,
     slots: [
@@ -186,6 +186,11 @@ export function getPreset(id: PresetId): PortfolioPreset | undefined {
 // one of these templates, so a link cannot bring a composition of its own.
 export const PRESET_ENTRY_PARAM = "preset";
 
+// "bigTech" was this preset's id before it was renamed to "techTitans"; links already shared
+// carry it, so it keeps opening the same preset.
+const LEGACY_PRESET_IDS: Record<string, PresetId> = { bigTech: "techTitans" };
+
 export function parsePresetId(value: string | null): PresetId | null {
-  return portfolioPresets.find((p) => p.id === value)?.id ?? null;
+  const id = value !== null && Object.hasOwn(LEGACY_PRESET_IDS, value) ? LEGACY_PRESET_IDS[value] : value;
+  return portfolioPresets.find((p) => p.id === id)?.id ?? null;
 }

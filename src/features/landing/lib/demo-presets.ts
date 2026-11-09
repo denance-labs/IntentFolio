@@ -31,10 +31,18 @@ export type DemoPreset = {
   /** Localized display name shown in the preset switcher and donut center. */
   title: string;
   allocations: DemoAllocation[];
+  /** Where the portfolio stands before it moves toward `allocations`: one asset at 100%. */
+  start: DemoAllocation;
 };
 
-// Order shown in the landing switcher / used as recording defaults. "stables" excluded.
+// D-564: every demo starts fully in USDC on NEAR (the usual first funding) and moves toward its mix.
+const START_TOKEN_ID = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+
+// Order used by the /demo recording route. "stables" excluded.
 const DEMO_PRESET_ORDER: PresetId[] = ["satoshi", "balanced", "aggressive", "conservative"];
+
+// D-568: the landing hero's switcher leads with the stock presets, and opens on the first one.
+export const HERO_PRESET_ORDER: PresetId[] = ["techTitans", "nearStocks", ...DEMO_PRESET_ORDER];
 
 const PRESET_TITLES: Record<PresetId, { en: string; es: string }> = {
   conservative: { en: "Conservative", es: "Conservador" },
@@ -43,20 +51,29 @@ const PRESET_TITLES: Record<PresetId, { en: string; es: string }> = {
   stables: { en: "Stablecoins", es: "Estables" },
   satoshi: { en: "Satoshi", es: "Satoshi" },
   pioneers: { en: "Pioneers", es: "Pioneros" },
-  bigTech: { en: "Big Tech", es: "Big Tech" },
+  techTitans: { en: "Tech Titans", es: "Tech Titans" },
   nearStocks: { en: "NEAR + Stocks", es: "NEAR + Acciones" },
 };
 
-export function buildDemoPresets(lang: "en" | "es"): DemoPreset[] {
+const slotIds = (ids: PresetId[]) =>
+  ids.flatMap((id) => portfolioPresets.find((p) => p.id === id)?.slots.map((s) => s.tokenId) ?? []);
+
+export function buildDemoPresets(lang: "en" | "es", order: PresetId[] = DEMO_PRESET_ORDER): DemoPreset[] {
   // One color per token across every demo preset, in first-seen order, so a
   // token (e.g. BTC, USDC) keeps the same slice/row color when switching presets.
-  const colorById = buildTokenColorMap(
-    DEMO_PRESET_ORDER.flatMap(
-      (id) => portfolioPresets.find((p) => p.id === id)?.slots.map((s) => s.tokenId) ?? []
-    )
-  );
+  // D-568: the stock presets' tokens come last, so adding them leaves BTC, ETH, NEAR and USDC
+  // with the colors they already had.
+  const colorById = buildTokenColorMap([...slotIds(DEMO_PRESET_ORDER), START_TOKEN_ID, ...slotIds(HERO_PRESET_ORDER)]);
+  const startToken = getTokenById(START_TOKEN_ID);
+  const start: DemoAllocation = {
+    id: START_TOKEN_ID,
+    label: startToken?.assetName ?? startToken?.symbol ?? "USDC",
+    name: startToken?.name ?? "",
+    pct: 100,
+    color: colorById.get(START_TOKEN_ID)?.hex ?? "#38bdf8",
+  };
 
-  return DEMO_PRESET_ORDER.map((id) => {
+  return order.map((id) => {
     const preset = portfolioPresets.find((p) => p.id === id);
     if (!preset) return null;
 
@@ -72,6 +89,6 @@ export function buildDemoPresets(lang: "en" | "es"): DemoPreset[] {
       };
     });
 
-    return { id, title: PRESET_TITLES[id][lang], allocations } satisfies DemoPreset;
+    return { id, title: PRESET_TITLES[id][lang], allocations, start } satisfies DemoPreset;
   }).filter((p): p is DemoPreset => p !== null);
 }

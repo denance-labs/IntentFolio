@@ -14,31 +14,35 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
   const tSoon = landingTranslations[lang].comingSoon;
 
   return (
+    // D-568: frosted over the graphite ground, so what scrolls under it shows through.
     <nav
-      className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/60"
-      aria-label="Main navigation"
+      className="sticky top-0 z-50 border-b border-bone/[0.08] bg-graphite/60 backdrop-blur-md"
+      aria-label={landingTranslations[lang].a11y.mainNav}
     >
       {/* D-401: under `sm` the row had a fixed minimum of 391 px (ES) — gutter, gaps, the
-          wordmark and the CTA's padding all shrink there so it fits 360. */}
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
+          wordmark and the CTA's padding all shrink there so it fits 360.
+          D-563: under 360 it still ran 17 px (EN) and 35 px (ES) past a 320 px screen, so there
+          the gutter, gaps and CTA padding shrink again and the wordmark drops ".app". */}
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 max-[359px]:px-3 sm:px-6">
         {/* Wordmark */}
         <Link
           href="/"
-          aria-label="IntentFolio home"
-          className="flex items-baseline gap-0 rounded-lg transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          aria-label={landingTranslations[lang].a11y.home}
+          className="flex items-baseline gap-0 rounded-md transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-bone/70"
         >
-          <span className="text-lg font-bold text-white tracking-tight sm:text-xl">IntentFolio</span>
+          {/* D-568: the wordmark is set wide, like the name on a device. Normal width under 360 px. */}
+          <span className="text-lg font-bold tracking-tight text-bone [font-stretch:118%] max-[359px]:text-[1rem] max-[359px]:[font-stretch:100%] sm:text-xl">IntentFolio</span>
           {/* Not `sm:text-base`: `base` is also a theme color, and that class would paint it near-black. */}
-          <span className="text-sm text-slate-400 sm:text-[1rem]">.app</span>
+          <span className="text-sm text-bone-dim max-[359px]:hidden sm:text-[1rem]">.app</span>
         </Link>
 
         {/* Right side */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 max-[359px]:gap-1.5 sm:gap-3">
           {/* Guide link — hidden on the smallest screens; the landing teaser card
               keeps the guide discoverable there. */}
           <Link
             href="/learn"
-            className="hidden rounded text-sm text-slate-300 transition hover:text-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:inline-flex"
+            className="hidden rounded text-sm text-bone-dim transition hover:text-bone focus:outline-none focus-visible:ring-2 focus-visible:ring-bone/70 sm:inline-flex"
           >
             {t.learn}
           </Link>
@@ -46,8 +50,9 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
           {/* Language toggle */}
           <div
             role="group"
-            aria-label="Language"
-            className="flex gap-1 rounded-xl bg-slate-800 p-1"
+            data-needs-js
+            aria-label={landingTranslations[lang].a11y.language}
+            className="flex gap-0.5 rounded-md border border-bone/15 p-0.5"
           >
             {LANGUAGES.map((language) => (
               <button
@@ -56,10 +61,11 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
                 aria-pressed={lang === language}
                 onClick={() => setLang(language)}
                 // D-401: under `sm` the header ran 3 px past a 360 px screen in Spanish.
-                className={`rounded-md px-1.5 py-1 text-xs sm:px-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                // The `after` box stretches the touch area to 44 px tall without changing the look.
+                className={`relative rounded after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] px-1.5 py-1 text-xs sm:px-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bone/70 ${
                   lang === language
-                    ? "bg-cyan-300 text-black font-semibold"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-bone text-graphite font-semibold"
+                    : "text-bone-dim hover:text-bone"
                 }`}
               >
                 {language.toUpperCase()}
@@ -74,7 +80,8 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
             comingSoon={comingSoon}
             soonBadge={tSoon.badge}
             soonSrLabel={tSoon.srLabel}
-            className="inline-flex items-center whitespace-nowrap rounded-xl bg-cyan-500 px-3 py-2 sm:px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            // D-568: a bone key with a pressed lower edge, the world's one action style.
+            className="inline-flex items-center whitespace-nowrap rounded-md bg-bone px-3 py-2 max-[359px]:px-2.5 sm:px-4 text-sm font-semibold text-graphite shadow-[inset_0_-3px_0_rgb(185_177_156)] transition hover:bg-[#f3eddf] focus:outline-none focus-visible:ring-2 focus-visible:ring-bone/70 focus-visible:ring-offset-2 focus-visible:ring-offset-graphite"
           />
         </div>
       </div>

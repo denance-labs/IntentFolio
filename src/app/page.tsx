@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { profile } from "@/content/profile";
 import { LandingPage } from "@/features/landing";
 import { isComingSoonHost } from "@/features/landing/lib/coming-soon-domains";
+import { isStockBlockedRequest } from "@/features/stocks/lib/stock-region";
 
 const title = "IntentFolio — Build your portfolio, earn spread along the way";
 const description =
@@ -44,7 +45,11 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
       />
-      <LandingPage comingSoon={isComingSoonHost(host)} />
+      <LandingPage
+        comingSoon={isComingSoonHost(host)}
+        // D-569: read here, on the request, so the hero's first paint already has the stocks last.
+        stocksBlocked={isStockBlockedRequest(headersList.get("x-vercel-ip-country"), headersList.get("cookie"))}
+      />
     </>
   );
 }

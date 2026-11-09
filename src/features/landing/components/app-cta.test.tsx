@@ -19,11 +19,6 @@ describe("AppCta", () => {
     expect(link?.textContent).toBe("Open app");
   });
 
-  it("renders the animated variant as a link too", () => {
-    const { container } = render(<AppCta {...baseProps} comingSoon={false} animated />);
-    expect(container.querySelector("a")?.getAttribute("href")).toBe("/dashboard");
-  });
-
   it("renders a disabled, non-navigable control with the soon badge when coming-soon", () => {
     const { container } = render(<AppCta {...baseProps} comingSoon />);
     expect(container.querySelector("a")).toBeNull();
