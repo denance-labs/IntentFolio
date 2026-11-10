@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_H2 } from "../lib/world";
+import { WORLD_H2 } from "@/features/world/world";
 
 /** A neutral window around the app capture: graphite chrome, no colored glow (D-568). */
 function BrowserFrame({ children }: { children: React.ReactNode }) {

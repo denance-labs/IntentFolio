@@ -3,7 +3,7 @@
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { ChainIcon, TokenIcon } from "@/features/market/lib/token-icons";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_H2, WORLD_LABEL, WORLD_PANEL } from "../lib/world";
+import { WORLD_H2, WORLD_LABEL, WORLD_PANEL } from "@/features/world/world";
 
 // Conservative, verified subset. Every symbol here resolves to a real branded
 // icon in token-icons.tsx, and every chainId is present in the attributed

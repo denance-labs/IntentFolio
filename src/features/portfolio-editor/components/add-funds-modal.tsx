@@ -387,7 +387,7 @@ export function AddFundsModal({
       {showPendingNotice ? (
         <p
           role="status"
-          className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-[12px] leading-snug text-cyan-100"
+          className="mt-3 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[12px] leading-snug text-accent"
         >
           {shellT.pendingAllocateFundingNotice}
         </p>
@@ -416,7 +416,7 @@ export function AddFundsModal({
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t.searchToken}
               aria-label={t.searchToken}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-accent"
             />
           </div>
         )}
@@ -438,7 +438,7 @@ export function AddFundsModal({
                 <button
                   type="button"
                   onClick={onRetryBalance}
-                  className="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                  className="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 >
                   {t.addFundsRetry}
                 </button>
@@ -451,7 +451,7 @@ export function AddFundsModal({
                   <button
                     type="button"
                     onClick={onDeposit}
-                    className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                    className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                   >
                     {t.addFundsDeposit}
                   </button>
@@ -542,7 +542,7 @@ export function AddFundsModal({
                           placeholder="0"
                           aria-label={`${e.symbol} ${t.withdrawAmount}`}
                           aria-invalid={overMax || belowMinFunded}
-                          className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                         <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">
                           ≈ {formatUsd(amt * e.price)}
@@ -550,7 +550,7 @@ export function AddFundsModal({
                         {/* D-319: Max writes the whole float, wider than the field; the cut is only
                             visual (the value signed is the field's), so say it is all of it. */}
                         {wholeBalance && (
-                          <span className="mt-0.5 text-right text-[11px] text-cyan-300/80">
+                          <span className="mt-0.5 text-right text-[11px] text-accent/80">
                             {shellT.amountWholeBalance}
                           </span>
                         )}
@@ -601,7 +601,7 @@ export function AddFundsModal({
           <button
             type="button"
             onClick={onDeposit}
-            className="mt-2 rounded text-[12px] text-cyan-300 underline-offset-2 transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="mt-2 rounded text-[12px] text-accent underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.addFundsDepositOther}
           </button>
@@ -643,7 +643,7 @@ export function AddFundsModal({
             <p className="mt-1.5">{realFunding ? t.realAddSeeMyAccount : shellT.realStageSeeMyAccount}</p>
           </div>
         ) : isSigning && realAllocateStage ? (
-          <p className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-3 py-2 text-[12px] leading-tight text-cyan-100">
+          <p className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[12px] leading-tight text-accent">
             <Loader2 aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
             {realStageCopy(realAllocateStage)}
           </p>
@@ -704,7 +704,7 @@ export function AddFundsModal({
             type="button"
             onClick={onClose}
             disabled={isSigning}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.cancel}
           </button>
@@ -722,7 +722,7 @@ export function AddFundsModal({
                 ? "add-tokens-relay-paused"
                 : undefined
           }
-          className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {unconfirmedReason
             ? t.addTokensClose

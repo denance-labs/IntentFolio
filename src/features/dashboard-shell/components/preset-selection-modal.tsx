@@ -28,6 +28,8 @@ export const PRESET_NAME_KEY: Record<PresetId, keyof ShellTranslations> = {
   pioneers: "presetPioneersName",
   techTitans: "presetTechTitansName",
   nearStocks: "presetNearStocksName",
+  aiLeaders: "presetAiLeadersName",
+  everydayTech: "presetEverydayTechName",
 };
 const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
   conservative: "presetConservativeDesc",
@@ -38,6 +40,8 @@ const DESC_KEY: Record<PresetId, keyof ShellTranslations> = {
   pioneers: "presetPioneersDesc",
   techTitans: "presetTechTitansDesc",
   nearStocks: "presetNearStocksDesc",
+  aiLeaders: "presetAiLeadersDesc",
+  everydayTech: "presetEverydayTechDesc",
 };
 // Neutral descriptor chip for presets whose name alone says little about the mix (T6).
 const TAG_KEY: Partial<Record<PresetId, keyof ShellTranslations>> = {
@@ -75,8 +79,8 @@ export function presetHoldsStock(presetId: PresetId): boolean {
 // The border color is left to each card: two of them on one element resolve by stylesheet order.
 // The hover is apart so a card that can't be chosen (D-569) doesn't light up.
 const CARD_CLASS =
-  "flex flex-col gap-2 rounded-2xl border bg-slate-900 p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
-const CARD_HOVER_CLASS = "hover:border-cyan-400/60 hover:bg-slate-800/60";
+  "flex flex-col gap-2 rounded-2xl border bg-slate-900 p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
+const CARD_HOVER_CLASS = "hover:border-accent/60 hover:bg-slate-800/60";
 const CHIP_CLASS = "rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none";
 
 export function PresetSelectionModal({
@@ -123,7 +127,7 @@ export function PresetSelectionModal({
             <span className="text-sm font-semibold text-slate-100">{t[PRESET_NAME_KEY[preset.id]]}</span>
             {isStockPreset ? <StockChip label={t.presetStocksChip} /> : null}
             {preset.id === STARTING_POINT_PRESET_ID ? (
-              <span className={`${CHIP_CLASS} border-cyan-400/40 bg-cyan-400/10 text-cyan-200`}>
+              <span className={`${CHIP_CLASS} border-accent/40 bg-accent/10 text-accent`}>
                 {t.presetStartingPointBadge}
               </span>
             ) : null}
@@ -215,7 +219,7 @@ export function PresetSelectionModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.cancel}
         </button>

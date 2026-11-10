@@ -1,9 +1,12 @@
-// D-568: the landing world's shared surfaces, so the hero, the middle sections and /learn's closing
-// call to action draw the same panel, heading and button instead of near-identical copies.
+// D-568: the world's shared surfaces, so the hero, the middle sections and /learn's closing call to
+// action draw the same panel, heading and button instead of near-identical copies. D-571: shared
+// with the app too (src/features/world/).
 
-/** The frosted panel: translucent bone over graphite, a lit top edge and a soft drop. */
-export const WORLD_PANEL =
-  "rounded-2xl border border-bone/[0.13] bg-gradient-to-b from-bone/[0.075] to-bone/[0.025] shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_18px_36px_rgb(0_0_0/0.35)] backdrop-blur-md";
+/**
+ * The frosted panel: translucent bone over graphite, a lit top edge and a soft drop. The glass
+ * itself is `.glass` (globals.css), shared with the app's panels; only the landing blurs.
+ */
+export const WORLD_PANEL = "rounded-2xl glass backdrop-blur-md";
 
 /** Section headings: one step below the hero's h1, same face and width. */
 export const WORLD_H2 =

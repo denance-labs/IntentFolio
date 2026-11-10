@@ -96,9 +96,9 @@ const LS_LAST_USED_WITHDRAWAL_TOKEN = "last-used-withdrawal-token";
 // Step 3's two actions trade weights after the `not-registered` refusal (D-374). Vertical
 // padding is left to the caller.
 const PRIMARY_BUTTON =
-  "w-full rounded-xl bg-cyan-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "w-full rounded-xl bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 const SECONDARY_BUTTON =
-  "w-full rounded-xl border border-cyan-400/60 px-4 py-2.5 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "w-full rounded-xl border border-accent/60 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 /** Why the destination cannot receive, in the user's language. Keys mirror the error's own. */
 const DESTINATION_PROBLEM_KEY: Record<
@@ -556,7 +556,7 @@ export function WithdrawalModal({
         aria-modal="true"
         aria-labelledby="withdrawal-modal-title"
         tabIndex={-1}
-        className="relative z-10 flex w-full flex-col rounded-t-2xl bg-slate-900 shadow-2xl outline-none sm:max-w-md sm:rounded-2xl"
+        className="relative z-10 flex w-full flex-col rounded-t-2xl glass bg-slate-900 outline-none sm:max-w-md sm:rounded-2xl"
         style={{ maxHeight: "85dvh", minHeight: sheetFloor ? `min(${sheetFloor}px, 85dvh)` : undefined }}
       >
         {/* Header */}
@@ -567,7 +567,7 @@ export function WithdrawalModal({
                 type="button"
                 onClick={handleBack}
                 disabled={busy}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 aria-label={t.back}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
@@ -581,7 +581,7 @@ export function WithdrawalModal({
             type="button"
             onClick={closeIfIdle}
             disabled={busy}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             aria-label={t.close}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -1481,7 +1481,7 @@ function WithdrawStep4({
               onClick={handleBuyGasClick}
               disabled={buyingGas || submitting}
               aria-busy={buyingGas}
-              className="w-full rounded-xl border border-cyan-400/40 px-4 py-2.5 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="w-full rounded-xl border border-accent/40 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {buyingGas
                 ? t.gasPurchaseBuying.replace("{symbol}", gasTicker)
@@ -1529,7 +1529,7 @@ function WithdrawStep4({
       {errorText && (
         <div role="alert" className="rounded-xl bg-red-950/40 px-3 py-2.5">
           <p className="text-xs font-medium text-red-300">{t.withdrawNotSent}</p>
-          <p className="mt-1 break-words text-[11px] text-red-400/80">{errorText}</p>
+          <p className="mt-1 break-words text-[11px] text-red-300/80">{errorText}</p>
         </div>
       )}
 
@@ -1540,7 +1540,7 @@ function WithdrawStep4({
         onClick={handleConfirmClick}
         disabled={submitting || rechecking || belowFloor || feeUnknown}
         aria-busy={submitting || rechecking}
-        className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {submitting
           ? t.withdrawSigningButton
@@ -1973,7 +1973,7 @@ function WithdrawConversionStep4({
           <button
             type="button"
             onClick={handleRetryClick}
-            className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.conversionRetryButton}
           </button>
@@ -2003,7 +2003,7 @@ function WithdrawConversionStep4({
       {errorText && (
         <div role="alert" className="rounded-xl bg-red-950/40 px-3 py-2.5">
           <p className="text-xs font-medium text-red-300">{t.withdrawNotSent}</p>
-          <p className="mt-1 break-words text-[11px] text-red-400/80">{errorText}</p>
+          <p className="mt-1 break-words text-[11px] text-red-300/80">{errorText}</p>
         </div>
       )}
 
@@ -2029,7 +2029,7 @@ function WithdrawConversionStep4({
           onClick={handleConfirmClick}
           disabled={submitting || !quote}
           aria-busy={submitting || pending}
-          className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {submitting ? t.withdrawSigningButton : pending ? t.conversionQuoteLoading : t.confirmWithdrawalButton}
         </button>
@@ -2456,9 +2456,9 @@ function WithdrawStep3({
                   aria-pressed={selected}
                   onClick={() => changeDestination(c)}
                   disabled={locked}
-                  className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed ${
+                  className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed ${
                     selected
-                      ? "bg-cyan-900/50 text-cyan-100 ring-1 ring-cyan-400/60"
+                      ? "bg-accent/10 text-accent ring-1 ring-accent/60"
                       : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
                 >
@@ -2475,7 +2475,7 @@ function WithdrawStep3({
                 .replace("{chain}", chainMeta?.displayName ?? chainId)}
               {(generalBalance.get(conversion.deliveryTokenId) ?? 0) > 0 && (
                 // D-426: the Delivery Token itself is in the balance, so it leaves without 1Click.
-                <span className="mt-1 block text-cyan-300">
+                <span className="mt-1 block text-accent">
                   {t.withdrawHoldsDeliveryToken
                     .replace("{ticker}", tickerOf(conversion.deliveryTokenId))
                     .replace("{chain}", chainMeta?.displayName ?? chainId)}
@@ -2505,7 +2505,7 @@ function WithdrawStep3({
               // Only fills the input: everything below runs on it as if it had been typed.
               onClick={() => changeAddress(ownWalletAddress)}
               disabled={locked}
-              className="rounded text-xs font-semibold text-cyan-300 transition hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded text-xs font-semibold text-accent underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.useMyWallet}
             </button>
@@ -2518,7 +2518,7 @@ function WithdrawStep3({
           onChange={(e) => changeAddress(e.target.value.trim())}
           readOnly={locked}
           placeholder={getAddressPlaceholder(chainId)}
-          className="w-full rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-cyan-300/60"
+          className="w-full rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/60"
           autoComplete="off"
           spellCheck={false}
         />
@@ -2538,7 +2538,7 @@ function WithdrawStep3({
             {switchTarget ? (
               <button
                 type="button"
-                className="underline text-cyan-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-300/60"
+                className="underline text-accent focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
                 onClick={() => changeDestination(switchTarget)}
               >
                 {t.sendToChainInstead.replace(
@@ -2549,7 +2549,7 @@ function WithdrawStep3({
             ) : (
               <button
                 type="button"
-                className="underline text-cyan-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-300/60"
+                className="underline text-accent focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
                 onClick={onBackToStart}
               >
                 {t.backToStart}
@@ -2586,7 +2586,7 @@ function WithdrawStep3({
             onChange={(e) => setQty(e.target.value)}
             readOnly={locked}
             placeholder="0.00"
-            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-cyan-300/60"
+            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/60"
           />
           <button
             type="button"
@@ -2595,7 +2595,7 @@ function WithdrawStep3({
             // turns it into the exact raw balance — on either side of the float's noise.
             onClick={() => setQty(formatDecimalForInput(balance))}
             disabled={locked}
-            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-cyan-300 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-accent transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.maxButton}
           </button>
@@ -2644,7 +2644,7 @@ function WithdrawStep3({
             onChange={(e) => setMemo(e.target.value)}
             readOnly={locked}
             placeholder={t.memoRequired}
-            className="w-full rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-cyan-300/60"
+            className="w-full rounded-xl bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/60"
           />
         </div>
       )}
@@ -2750,7 +2750,7 @@ function WithdrawChainPicker({
                 type="button"
                 onClick={() => onSelect(variant)}
                 disabled={!variant.available}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent ${variant === preselected ? "bg-slate-800 ring-1 ring-inset ring-cyan-400/60" : ""}`}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent ${variant === preselected ? "bg-slate-800 ring-1 ring-inset ring-accent/60" : ""}`}
               >
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-slate-300"
@@ -2852,7 +2852,7 @@ function WithdrawTokenPicker({
                 type="button"
                 onClick={() => onSelect(group)}
                 disabled={!available}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
               >
                 <TokenAvatar
                   symbol={group.ticker}
@@ -2871,7 +2871,7 @@ function WithdrawTokenPicker({
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {isLastUsed && (
-                    <span className="rounded-full bg-cyan-900/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
                       {t.lastUsed}
                     </span>
                   )}

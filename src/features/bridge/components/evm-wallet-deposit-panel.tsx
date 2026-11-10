@@ -190,7 +190,7 @@ export function EvmWalletDepositPanel({
       {hasChainIcon(token.chainId) && <ChainIcon chainId={token.chainId} size={24} />}
       <div className="min-w-0">
         <p className="text-xs text-slate-400">{t.walletDepositFromNetwork.replace("{network}", network)}</p>
-        <p className="truncate text-sm font-medium text-cyan-300" title={owner}>
+        <p className="truncate text-sm font-medium text-accent" title={owner}>
           {`${owner.slice(0, 6)}…${owner.slice(-4)}`}
         </p>
       </div>
@@ -207,7 +207,7 @@ export function EvmWalletDepositPanel({
     </p>
   );
   const primaryClass =
-    "rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+    "rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
   // A deposit in flight or finished is shown as such whatever the reads are doing.
   if (busy || settled) {
@@ -339,7 +339,7 @@ export function EvmWalletDepositPanel({
             placeholder="0.00"
             aria-invalid={fieldError ? true : undefined}
             aria-describedby={fieldError ? "wallet-deposit-field-error" : undefined}
-            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm tabular-nums text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-cyan-300/60"
+            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm tabular-nums text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/60"
           />
           <button
             type="button"
@@ -349,7 +349,7 @@ export function EvmWalletDepositPanel({
               setMaxAmount(spendable);
               setText(shortDecimalText(formatBaseUnits(spendable, decimals), DISPLAY_DECIMALS));
             }}
-            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-cyan-300 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
+            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-accent transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
           >
             {t.walletDepositMax}
           </button>
@@ -381,7 +381,7 @@ export function EvmWalletDepositPanel({
         type="button"
         onClick={handleDeposit}
         disabled={!canDeposit}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 active:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:bg-accent/90 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
       >
         {amount !== null && amount > BigInt(0)
           ? t.walletDepositButton

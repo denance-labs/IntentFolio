@@ -255,7 +255,7 @@ function StackedShareChart({ series, selected, onSelect, ariaLabel, dateOf, litT
             </text>
           ))}
 
-          <line x1={sx} y1={PAD.top} x2={sx} y2={PAD.top + CH} stroke="#e2e8f0" strokeWidth="1.5" strokeDasharray="4 2" pointerEvents="none" />
+          <line x1={sx} y1={PAD.top} x2={sx} y2={PAD.top + CH} className="stroke-slate-200" strokeWidth="1.5" strokeDasharray="4 2" pointerEvents="none" />
         </svg>
       )}
       {litTokenId && tag ? (
@@ -281,7 +281,7 @@ function StackedShareChart({ series, selected, onSelect, ariaLabel, dateOf, litT
 
 function EvolutionSkeleton() {
   return (
-    <div aria-hidden="true" className="rounded-2xl border border-slate-800 bg-surface p-4">
+    <div aria-hidden="true" className="rounded-2xl glass p-4">
       <SkeletonBlock className="mb-4 h-4 w-40" />
       <SkeletonBlock className="h-[240px] w-full rounded-xl" />
     </div>
@@ -341,7 +341,7 @@ export function EvolutionView() {
     return (
       <div className="flex flex-col gap-6 p-4 sm:p-6">
         {header}
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <p className="mx-auto max-w-md py-10 text-center text-sm text-slate-400">{t.evolutionMockEmpty}</p>
         </div>
       </div>
@@ -370,7 +370,7 @@ export function EvolutionView() {
       {composition.isLoading ? (
         <EvolutionSkeleton />
       ) : (
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div>
               <p className="text-sm font-medium text-slate-400">{t.evolutionChartTitle}</p>
@@ -386,7 +386,7 @@ export function EvolutionView() {
                     setRange(r);
                     setHovered(null);
                   }}
-                  className={`rounded px-2 py-0.5 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                  className={`rounded px-2 py-0.5 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                     range === r ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-300"
                   }`}
                 >

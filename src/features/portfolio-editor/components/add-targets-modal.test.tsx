@@ -57,7 +57,7 @@ describe.each(["en", "es"] as const)("AddTargetsModal — %s", (lang) => {
   // D-558: the stocks lead, in a section that holds their note once.
   it("lists the stocks first, with the note once and each one marked", () => {
     renderModal({ lang });
-    expect(symbols().slice(0, 6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(symbols().slice(0, 8)).toEqual(["AAPL", "AMZN", "GOOGL", "METAon", "MSFT", "NVDA", "QQQ", "TSLA"]);
     expect(screen.getAllByText(t.stockSectionNote)).toHaveLength(1);
     expect(screen.getByRole("list", { name: t.stockSectionTitle })).toBeTruthy();
     expect(screen.getByRole("list", { name: t.stockOtherTokens })).toBeTruthy();
@@ -172,7 +172,7 @@ describe.each(["en", "es"] as const)("AddTargetsModal — %s", (lang) => {
 it("finds the stocks by the Spanish word", () => {
   renderModal({ lang: "es" });
   fireEvent.change(screen.getByRole("textbox", { name: translations.es.searchToken }), { target: { value: "acciones" } });
-  expect(symbols()).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+  expect(symbols()).toEqual(["AAPL", "AMZN", "GOOGL", "METAon", "MSFT", "NVDA", "QQQ", "TSLA"]);
   cleanup();
 });
 
@@ -188,7 +188,7 @@ describe.each(["en", "es"] as const)("AddTargetsModal — where stocks can't be 
     renderModal({ lang });
     const lists = screen.getAllByRole("list");
     expect(lists[lists.length - 1]).toBe(screen.getByRole("list", { name: t.stockSectionTitle }));
-    expect(symbols().slice(-6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(symbols().slice(-8)).toEqual(["AAPL", "AMZN", "GOOGL", "METAon", "MSFT", "NVDA", "QQQ", "TSLA"]);
     expect(screen.getAllByText(t.stockRegionBlockedNote)).toHaveLength(1);
     expect(screen.queryByText(t.stockSectionNote)).toBeNull();
     for (const symbol of ["AAPL", "NVDA", "QQQ"]) {
@@ -208,7 +208,7 @@ describe.each(["en", "es"] as const)("AddTargetsModal — where stocks can't be 
   it("offers them as always from anywhere else (control)", () => {
     setCountry("AR");
     renderModal({ lang });
-    expect(symbols().slice(0, 6)).toEqual(["AAPL", "AMZN", "GOOGL", "NVDA", "QQQ", "TSLA"]);
+    expect(symbols().slice(0, 8)).toEqual(["AAPL", "AMZN", "GOOGL", "METAon", "MSFT", "NVDA", "QQQ", "TSLA"]);
     expect(within(rowOf("NVDA")).getByRole("button")).toBeTruthy();
     expect(screen.queryByText(t.stockRegionBlockedNote)).toBeNull();
   });

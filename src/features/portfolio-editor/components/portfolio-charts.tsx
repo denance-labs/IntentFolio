@@ -38,7 +38,7 @@ export function CompositionBars({ rows, currentTotalUsd, colorByToken, t }: Comp
   const visibleRows = rows.filter((row) => row.symbol);
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+    <div className="rounded-2xl glass p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h2 className="text-sm font-semibold text-slate-200">{t.comparison}</h2>
         <MiniBandLegend now={t.bandLegendNow} target={t.bandLegendTarget} />
@@ -128,7 +128,7 @@ function Donut({
       <div className="max-w-[50%]">
         <p className={`line-clamp-2 leading-tight text-slate-400 ${long ? "text-[10px]" : "text-[11px] uppercase"}`}>{name}</p>
         <p className="mt-0.5 text-[19px] font-semibold leading-tight tabular-nums text-slate-100">{shareOf(token).toFixed(1)}%</p>
-        <p className="text-[11px] tabular-nums text-cyan-300">{formatUsd(usdOf(token))}</p>
+        <p className="text-[11px] tabular-nums text-accent">{formatUsd(usdOf(token))}</p>
       </div>
     );
   };
@@ -228,7 +228,7 @@ export function CompositionDonuts({ rows, currentTotalUsd, targetTotalUsd, color
             type="button"
             onClick={() => setMobileMode("current")}
             aria-pressed={mobileMode === "current"}
-            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               mobileMode === "current"
                 ? "bg-slate-700 text-slate-100 shadow"
                 : "text-slate-400 hover:text-slate-200"
@@ -240,7 +240,7 @@ export function CompositionDonuts({ rows, currentTotalUsd, targetTotalUsd, color
             type="button"
             onClick={() => setMobileMode("target")}
             aria-pressed={mobileMode === "target"}
-            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               mobileMode === "target"
                 ? "bg-slate-700 text-slate-100 shadow"
                 : "text-slate-400 hover:text-slate-200"

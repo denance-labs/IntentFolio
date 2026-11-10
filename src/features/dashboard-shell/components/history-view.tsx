@@ -41,7 +41,7 @@ const EVENT_TYPE_CONFIG: Record<HistoryRowType, EventTypeConfig> = {
   },
   external_rebalance: {
     labelKey: "historyEventExternalRebalance",
-    badgeClass: "bg-cyan-300/15 border-cyan-300/30 text-cyan-200",
+    badgeClass: "bg-accent/15 border-accent/30 text-accent",
   },
   internal_rebalance: {
     labelKey: "historyEventInternalRebalance",
@@ -255,7 +255,7 @@ function CompositionTable({
               </td>
               <td
                 className={`py-0.5 text-right tabular-nums ${
-                  changed ? "font-medium text-cyan-200" : "text-slate-400"
+                  changed ? "font-medium text-accent" : "text-slate-400"
                 }`}
               >
                 {aPct !== undefined ? `${aPct.toFixed(1)}%` : "—"}
@@ -335,7 +335,7 @@ function HistoryEventCard({
   const canExpand = hasChildren || hasComposition;
 
   return (
-    <article className="rounded-2xl border border-slate-800 bg-surface">
+    <article className="rounded-2xl glass">
       {/* Collapsed header */}
       <div className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
         <div className="min-w-0 flex-1">
@@ -375,7 +375,7 @@ function HistoryEventCard({
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className="text-[11px] text-slate-400 underline-offset-2 transition hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="text-[11px] text-slate-400 underline-offset-2 transition hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {expanded ? t.historyEventHideDetails : t.historyEventShowDetails}
             </button>
@@ -480,7 +480,7 @@ function HistorySkeleton() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="rounded-2xl border border-slate-800 bg-surface px-4 py-3.5 sm:px-5"
+          className="rounded-2xl glass px-4 py-3.5 sm:px-5"
         >
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1 space-y-2">
@@ -640,7 +640,7 @@ export function HistoryView() {
     return (
       <section aria-label={t.subNavActivity}>
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-white">{t.subNavActivity}</h1>
+          <h1 className="text-xl font-semibold text-slate-100">{t.subNavActivity}</h1>
           <p className="mt-1 text-sm text-slate-400">{activePortfolio.name}</p>
         </div>
         <ErrorState
@@ -656,7 +656,7 @@ export function HistoryView() {
     return (
       <section aria-label={t.subNavActivity}>
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-white">{t.subNavActivity}</h1>
+          <h1 className="text-xl font-semibold text-slate-100">{t.subNavActivity}</h1>
           <p className="mt-1 text-sm text-slate-400">{activePortfolio.name}</p>
         </div>
         <div className="flex min-h-[40vh] items-center justify-center">
@@ -671,7 +671,7 @@ export function HistoryView() {
   return (
     <section aria-label={t.subNavActivity} className="mx-auto max-w-3xl">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-white">{t.subNavActivity}</h1>
+        <h1 className="text-xl font-semibold text-slate-100">{t.subNavActivity}</h1>
         <p className="mt-1 text-sm text-slate-400">
           {activePortfolio.name}
           <span className="mx-2 text-slate-600">·</span>
@@ -690,9 +690,9 @@ export function HistoryView() {
           <button
             type="button"
             onClick={() => setSelectedTypes(new Set())}
-            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               selectedTypes.size === 0
-                ? "border-slate-500 bg-slate-700 text-white"
+                ? "border-slate-500 bg-slate-700 text-slate-100"
                 : "border-slate-700 bg-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
@@ -707,7 +707,7 @@ export function HistoryView() {
               key={type}
               type="button"
               onClick={() => toggleType(type)}
-              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                 active ? cfg.badgeClass : "border-slate-700 bg-transparent text-slate-400 hover:text-slate-300"
               }`}
             >
@@ -719,7 +719,7 @@ export function HistoryView() {
           <select
             value={activeToken}
             onChange={(e) => setActiveToken(e.target.value)}
-            className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-[11px] font-medium text-slate-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 hover:border-slate-500 hover:text-slate-200"
+            className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-[11px] font-medium text-slate-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 hover:border-slate-500 hover:text-slate-200"
           >
             <option value="">{t.historyFilterAllTokens}</option>
             {availableTokens.map((sym) => (
@@ -764,7 +764,7 @@ export function HistoryView() {
           type="button"
           onClick={showMore}
           disabled={realHistory.isFetchingNextPage}
-          className="mt-4 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
+          className="mt-4 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
         >
           {t.activityShowMore}
         </button>

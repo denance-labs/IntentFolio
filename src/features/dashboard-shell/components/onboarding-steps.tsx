@@ -85,9 +85,9 @@ export function OnboardingSteps({
           const guideHref =
             stepTitle === "onboardingStep3Title" || stepTitle === "onboardingStep4Title" ? GUIDE_HREF[stepTitle] : undefined;
           const cardClass = `flex w-full gap-3 rounded-xl border px-4 py-3 text-left ${
-            isCurrent ? "border-cyan-400/40 bg-cyan-400/5" : "border-slate-800"
+            isCurrent ? "border-accent/40 bg-accent/5" : "border-slate-800"
           }`;
-          const interactiveClass = `${cardClass} transition hover:border-slate-600 hover:bg-slate-800/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60`;
+          const interactiveClass = `${cardClass} transition hover:border-slate-600 hover:bg-slate-800/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`;
           const content = (
             <>
               <span
@@ -95,7 +95,7 @@ export function OnboardingSteps({
                   done
                     ? "bg-emerald-400/10 text-emerald-300"
                     : isCurrent
-                      ? "bg-cyan-400/15 text-cyan-300"
+                      ? "bg-accent/15 text-accent"
                       : "bg-slate-800 text-slate-400"
                 }`}
               >
@@ -104,7 +104,7 @@ export function OnboardingSteps({
               <span className="min-w-0 flex-1">
                 <span
                   data-step-title
-                  className={`block text-sm font-semibold ${isCurrent ? "text-white" : "text-slate-200"}`}
+                  className={`block text-sm font-semibold ${isCurrent ? "text-slate-100" : "text-slate-200"}`}
                 >
                   <span className="mr-1.5 text-xs font-bold text-slate-400">{step}.</span>
                   {t[title]}

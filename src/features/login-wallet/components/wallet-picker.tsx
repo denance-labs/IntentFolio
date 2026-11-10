@@ -121,11 +121,11 @@ function WalletCard({
       className={`
         group relative flex w-full items-center gap-3 rounded-2xl border bg-slate-900 px-4 py-3.5
         text-left transition
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60
         disabled:cursor-not-allowed disabled:opacity-50
         ${disabled && !showSpinner ? "opacity-50" : ""}
         ${!disabled ? "border-slate-800 hover:border-slate-600 hover:bg-slate-800" : "border-slate-800"}
-        ${showSpinner ? "border-cyan-500/40 bg-slate-800" : ""}
+        ${showSpinner ? "border-accent/40 bg-slate-800" : ""}
       `}
       aria-label={card.label}
       aria-busy={showSpinner}
@@ -138,11 +138,12 @@ function WalletCard({
       )}
 
       {/* Label */}
-      <span className="flex-1 text-sm font-medium text-white">{card.label}</span>
+      <span className="flex-1 text-sm font-medium text-slate-100">{card.label}</span>
 
-      {/* Recent badge */}
+      {/* Recent badge — on the card's top edge, not in the row: at 390 px the two-per-row cards
+          have no room for icon, label and badge, and it was cut at the dialog's edge (D-571). */}
       {showRecent && !showSpinner && (
-        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="absolute -top-2.5 right-3 rounded-full bg-emerald-950 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
           {recentLabel}
         </span>
       )}
@@ -150,7 +151,7 @@ function WalletCard({
       {/* Spinner */}
       {showSpinner && (
         <span
-          className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-400"
+          className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-700 border-t-accent"
           aria-hidden="true"
         />
       )}
@@ -245,7 +246,7 @@ export function WalletPicker({ lang = "en", titleId = "wallet-picker-title" }: P
       <div className="mb-6 text-center">
         <h2
           id={titleId}
-          className="text-lg font-semibold text-white"
+          className="text-lg font-semibold text-slate-100"
         >
           {t.title}
         </h2>

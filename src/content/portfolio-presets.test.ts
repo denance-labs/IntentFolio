@@ -21,12 +21,14 @@ const LOCKED: Record<PresetId, { band: number; pcts: number[] }> = {
   pioneers:     { band: 10, pcts: [60, 40] },
   techTitans:   { band: 10, pcts: [30, 25, 25, 20] },
   nearStocks:   { band: 10, pcts: [40, 20, 20, 20] },
+  aiLeaders:    { band: 10, pcts: [30, 25, 25, 20] },
+  everydayTech: { band: 10, pcts: [20, 20, 20, 20, 20] },
 };
 
 describe("portfolio presets", () => {
   it("exposes all presets", () => {
     expect(portfolioPresets.map((p) => p.id).sort()).toEqual(
-      ["aggressive", "balanced", "conservative", "nearStocks", "pioneers", "satoshi", "stables", "techTitans"]
+      ["aggressive", "aiLeaders", "balanced", "conservative", "everydayTech", "nearStocks", "pioneers", "satoshi", "stables", "techTitans"]
     );
   });
 
@@ -92,15 +94,15 @@ describe("portfolio presets", () => {
   // lifts these presets to the top by itself, so they stay last here.
   it("keeps the presets holding a stock last, and only uses stocks with a route at every size", () => {
     const withStock = portfolioPresets.filter((p) => p.slots.some((s) => isStockToken(s.tokenId)));
-    expect(withStock.map((p) => p.id)).toEqual(["techTitans", "nearStocks"]);
-    expect(portfolioPresets.slice(-2)).toEqual(withStock);
+    expect(withStock.map((p) => p.id)).toEqual(["techTitans", "aiLeaders", "everydayTech", "nearStocks"]);
+    expect(portfolioPresets.slice(-4)).toEqual(withStock);
+    // TSLA still had gaps at 25 USD; GOOGL joined with D-576 after answering at every size.
     const symbols = withStock.flatMap((p) => p.slots.map((s) => getTokenById(s.tokenId)?.symbol));
     expect(symbols).not.toContain("TSLA");
-    expect(symbols).not.toContain("GOOGL");
   });
 
   // Who funds with a token outside the mix is the common case for these two (D-319).
-  it.each(["techTitans", "nearStocks"] as const)("%s passes the gate funded with a token outside its mix", (id) => {
+  it.each(["techTitans", "nearStocks", "aiLeaders", "everydayTech"] as const)("%s passes the gate funded with a token outside its mix", (id) => {
     const preset = getPreset(id)!;
     const composition = preset.slots.map((s) => ({
       tokenId: s.tokenId,

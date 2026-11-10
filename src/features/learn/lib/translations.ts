@@ -123,6 +123,14 @@ export const learnTranslations = {
           body: "US tech stocks, tokenized: NVIDIA, Apple and Amazon, plus a Nasdaq-100 ETF. No crypto in the mix.",
         },
         {
+          title: "AI Leaders",
+          body: "US companies leading AI, tokenized: NVIDIA, Microsoft, Alphabet and Amazon. No crypto in the mix.",
+        },
+        {
+          title: "Everyday Tech",
+          body: "The companies behind the apps you use every day, tokenized: Apple, Microsoft, Alphabet, Amazon and Meta, in equal parts.",
+        },
+        {
           title: "NEAR + Stocks",
           body: "NEAR alongside tokenized stocks: NVIDIA, Apple and a Nasdaq-100 ETF. Crypto and stocks in one portfolio.",
         },
@@ -208,7 +216,7 @@ export const learnTranslations = {
         },
         {
           q: "Can I withdraw whenever I want?",
-          a: "Yes. You can withdraw at any time. Stocks are the exception: you sell them for USDC first, and that can wait while their market is closed.",
+          a: "Yes. You can withdraw at any time. Stocks are the exception: you sell them for USDC first.",
         },
       ] as FaqItem[],
     },
@@ -324,6 +332,14 @@ export const learnTranslations = {
           body: "Acciones tecnológicas de EE. UU., tokenizadas: NVIDIA, Apple y Amazon, más un ETF del Nasdaq-100. Sin cripto en la mezcla.",
         },
         {
+          title: "Líderes en IA",
+          body: "Empresas de EE. UU. que lideran la IA, tokenizadas: NVIDIA, Microsoft, Alphabet y Amazon. Sin cripto en la mezcla.",
+        },
+        {
+          title: "Tech cotidiana",
+          body: "Las empresas detrás de las apps que usas todos los días, tokenizadas: Apple, Microsoft, Alphabet, Amazon y Meta, en partes iguales.",
+        },
+        {
           title: "NEAR + Acciones",
           body: "NEAR junto a acciones tokenizadas: NVIDIA, Apple y un ETF del Nasdaq-100. Cripto y acciones en un mismo portfolio.",
         },
@@ -409,7 +425,7 @@ export const learnTranslations = {
         },
         {
           q: "¿Puedo retirar cuando quiera?",
-          a: "Sí. Puedes retirar en cualquier momento. Los stocks son la excepción: primero se venden por USDC, y eso puede tener que esperar si su mercado está cerrado.",
+          a: "Sí. Puedes retirar en cualquier momento. Los stocks son la excepción: primero se venden por USDC.",
         },
       ] as FaqItem[],
     },

@@ -258,7 +258,7 @@ describe("From your connected wallet, on step 1", () => {
     expect(screen.getByText("Select a network")).toBeTruthy();
     const networks = screen.getAllByRole("listitem").flatMap((li) => li.querySelector("p")?.textContent ?? []);
     expect(networks[0]).toBe("NEAR");
-    expect(row("NEAR").className).toContain("ring-cyan-400/60");
+    expect(row("NEAR").className).toContain("ring-accent/60");
     expect(screen.queryByRole("tab")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("tab", { name: "From your wallet" }).getAttribute("aria-selected")).toBe("true");
@@ -356,7 +356,7 @@ describe("From your connected wallet, EVM login", () => {
     fireEvent.click(base.closest("button")!);
     const networks = screen.getAllByRole("listitem").flatMap((li) => li.querySelector("p")?.textContent ?? []);
     expect(networks[0]).toBe("Base");
-    expect(row("Base").className).toContain("ring-cyan-400/60");
+    expect(row("Base").className).toContain("ring-accent/60");
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     // No wallet tab for EVM yet (part 2B): the address step as always, for the session's account.
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());

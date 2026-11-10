@@ -150,16 +150,16 @@ export function PortfolioEditorLatest() {
       className="w-full"
       style={{ animation: "sectionIn 360ms cubic-bezier(.2,.8,.2,1)" }}
     >
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-800 bg-surface px-6 py-5 shadow-lg shadow-black/20">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl glass px-6 py-5">
         <div>
           <p className="text-xs font-medium uppercase text-slate-400">{t.totalCurrent}</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white tabular-nums">{formatUsd(editor.currentTotalUsd)}</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-100 tabular-nums">{formatUsd(editor.currentTotalUsd)}</p>
           {editor.priceState.error ? <p className="mt-2 text-xs text-amber-200">{t.priceStatusFallback}</p> : null}
         </div>
         <button
           type="button"
           onClick={openAddModal}
-          className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-medium text-cyan-200 transition hover:bg-cyan-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm font-medium text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.addFundsButton}
         </button>
@@ -196,10 +196,10 @@ export function PortfolioEditorLatest() {
       {pendingTopUp ? (
         <div
           role="status"
-          className="mb-6 flex items-start gap-2.5 rounded-2xl border border-cyan-300/25 bg-cyan-300/5 px-4 py-3"
+          className="mb-6 flex items-start gap-2.5 rounded-2xl border border-accent/25 bg-accent/5 px-4 py-3"
         >
-          <Clock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
-          <p className="text-sm text-cyan-100">{t.pendingTopUpStrip}</p>
+          <Clock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <p className="text-sm text-accent">{t.pendingTopUpStrip}</p>
         </div>
       ) : null}
 
@@ -217,7 +217,7 @@ export function PortfolioEditorLatest() {
               <div
                 key={u.unallocationId}
                 role="status"
-                className={`flex items-center gap-2.5 rounded-2xl border px-4 py-3 ${failed ? "border-red-400/30 bg-red-400/5" : "border-cyan-300/25 bg-cyan-300/5"}`}
+                className={`flex items-center gap-2.5 rounded-2xl border px-4 py-3 ${failed ? "border-red-400/30 bg-red-400/5" : "border-accent/25 bg-accent/5"}`}
               >
                 {failed ? (
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-red-300">
@@ -227,11 +227,11 @@ export function PortfolioEditorLatest() {
                   </svg>
                 ) : (
                   <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-50" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-400" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-50" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent" />
                   </span>
                 )}
-                <p className={`text-sm ${failed ? "text-red-100" : "text-cyan-100"}`}>
+                <p className={`text-sm ${failed ? "text-red-100" : "text-accent"}`}>
                   {failed ? shellT.unallocationStatusFailed : shellT.unallocationReleasingTitle}{" "}
                   <span className="font-medium tabular-nums">{formatCrypto(u.qty)} {symbol}</span>
                   {" — "}
@@ -286,18 +286,18 @@ export function PortfolioEditorLatest() {
       ) : null}
 
       {/* Edit-mode banner: persistent "your changes aren't live yet" reminder while a draft
-          is open. Calm cyan styling distinguishes it from the amber restored-draft prompt
+          is open. The calm accent styling distinguishes it from the amber restored-draft prompt
           above; suppressed while that prompt is showing to avoid two stacked banners. */}
       {isEditing && !draftWasRestored ? (
         <div
           role="status"
-          className="mb-6 flex items-center gap-2.5 rounded-2xl border border-cyan-300/25 bg-cyan-300/5 px-4 py-3"
+          className="mb-6 flex items-center gap-2.5 rounded-2xl border border-accent/25 bg-accent/5 px-4 py-3"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-cyan-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-accent">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
-          <p className="text-sm text-cyan-100">{t.editModeBanner}</p>
+          <p className="text-sm text-accent">{t.editModeBanner}</p>
         </div>
       ) : null}
 
@@ -305,7 +305,7 @@ export function PortfolioEditorLatest() {
         <>
           <div className="mt-4 grid gap-5 lg:grid-cols-2">
             <CompositionBars rows={editor.chartRows} currentTotalUsd={editor.currentTotalUsd} targetTotalUsd={editor.targetTotalUsd} colorByToken={editor.colorByToken} t={t} />
-            <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+            <div className="rounded-2xl glass p-4">
               <CompositionDonuts rows={editor.chartRows} currentTotalUsd={editor.currentTotalUsd} targetTotalUsd={editor.targetTotalUsd} colorByToken={editor.colorByToken} t={t} />
             </div>
           </div>
@@ -378,7 +378,7 @@ export function PortfolioEditorLatest() {
               type="button"
               onClick={() => setTargetsModalOpen(true)}
               // Same look as "Edit targets" (operator, 2026-10-28): both change the composition.
-              className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-6 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:mr-3"
+              className="rounded-2xl border border-accent/30 bg-accent/10 px-6 py-3 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:mr-3"
             >
               + {t.addTokensButton}
             </button>
@@ -395,14 +395,14 @@ export function PortfolioEditorLatest() {
                 <button
                   type="button"
                   onClick={cancelEditing}
-                  className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 >
                   {t.cancelEdit}
                 </button>
                 <button
                   type="button"
                   onClick={() => { if (hasErrors) setSaveBlockedOpen(true); else saveEditing(); }}
-                  className="rounded-2xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                  className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 >
                   {t.savePanel}
                 </button>
@@ -415,7 +415,7 @@ export function PortfolioEditorLatest() {
                 <button
                   type="button"
                   onClick={() => startEditing()}
-                  className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-6 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                  className="rounded-2xl border border-accent/30 bg-accent/10 px-6 py-3 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 >
                   {t.editPanel}
                 </button>
@@ -615,13 +615,13 @@ function WithdrawModal({
             autoComplete="off"
             value={withdrawDialog.raw}
             onChange={(event) => onAmountChange(event.target.value)}
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 tabular-nums outline-none transition focus:border-cyan-300"
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 tabular-nums outline-none transition focus:border-accent"
           />
           <span className="text-sm font-semibold text-slate-300">{withdrawDialog.symbol}</span>
           <button
             type="button"
             onClick={() => onAmountChange(withdrawDialog.maxAmount)}
-            className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-2 py-1.5 text-[11px] font-semibold text-cyan-200 transition hover:bg-cyan-300/20"
+            className="rounded-lg border border-accent/30 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent transition hover:bg-accent/20"
           >
             {t.withdrawMax}
           </button>
@@ -633,7 +633,7 @@ function WithdrawModal({
           step={step}
           value={withdrawDialog.amount}
           onChange={(event) => onAmountChange(event.target.value)}
-          className="mt-3 w-full accent-cyan-300"
+          className="mt-3 w-full accent-accent"
           aria-label={t.withdrawAmount}
         />
         <div className="mt-1 flex justify-between text-[10px] text-slate-400 tabular-nums">
@@ -643,12 +643,12 @@ function WithdrawModal({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <div className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-3">
-          <p className="text-[10px] uppercase text-cyan-200/80">{t.withdrawSummary}</p>
-          <p className="mt-1 text-sm font-semibold text-cyan-200 tabular-nums">
+        <div className="rounded-xl border border-accent/30 bg-accent/10 p-3">
+          <p className="text-[10px] uppercase text-accent/80">{t.withdrawSummary}</p>
+          <p className="mt-1 text-sm font-semibold text-accent tabular-nums">
             {formatTokenAmount(withdrawDialog.amount, withdrawDialog.price)} {withdrawDialog.symbol}
           </p>
-          <p className="text-[11px] text-cyan-200/70 tabular-nums">≈ {formatUsd(withdrawUsd)}</p>
+          <p className="text-[11px] text-accent/70 tabular-nums">≈ {formatUsd(withdrawUsd)}</p>
         </div>
         <div className="rounded-xl border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] uppercase text-slate-400">{t.withdrawRemaining}</p>
@@ -660,10 +660,10 @@ function WithdrawModal({
       </div>
 
       <div className="mt-6 flex justify-end gap-3">
-        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60">
+        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
           {t.cancel}
         </button>
-        <button type="button" onClick={onConfirm} disabled={withdrawDialog.amount <= 0} className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60">
+        <button type="button" onClick={onConfirm} disabled={withdrawDialog.amount <= 0} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
           {t.withdrawSimulateConfirm}
         </button>
       </div>
@@ -698,7 +698,7 @@ export function SaveBlockedModal({ t, blockers, onClose }: { t: Record<string, s
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-cyan-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.saveBlockedClose}
         </button>
@@ -727,7 +727,7 @@ export function RemoveEmptyModal({ t, symbol, tokenId, spreadPct, lang, onCancel
         </p>
       ) : null}
       <div className="mt-6 flex justify-end gap-3">
-        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60">
+        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
           {t.cancel}
         </button>
         <button type="button" onClick={onConfirm} className="rounded-xl border border-rose-400/40 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-400/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/60">

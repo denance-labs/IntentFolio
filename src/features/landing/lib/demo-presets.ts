@@ -21,6 +21,8 @@ export type DemoAllocation = {
   label: string;
   /** Full name for the row subtitle, e.g. "Bitcoin". */
   name: string;
+  /** Registry symbol, which picks the logo (`TokenIcon`), e.g. "USDC(NEAR)", "NVDA". */
+  symbol: string;
   pct: number;
   /** Slice/row color (hex). */
   color: string;
@@ -42,7 +44,8 @@ const START_TOKEN_ID = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd
 const DEMO_PRESET_ORDER: PresetId[] = ["satoshi", "balanced", "aggressive", "conservative"];
 
 // D-568: the landing hero's switcher leads with the stock presets, and opens on the first one.
-export const HERO_PRESET_ORDER: PresetId[] = ["techTitans", "nearStocks", ...DEMO_PRESET_ORDER];
+// D-576: AI Leaders and Everyday Tech join them.
+export const HERO_PRESET_ORDER: PresetId[] = ["techTitans", "aiLeaders", "everydayTech", "nearStocks", ...DEMO_PRESET_ORDER];
 
 const PRESET_TITLES: Record<PresetId, { en: string; es: string }> = {
   conservative: { en: "Conservative", es: "Conservador" },
@@ -53,6 +56,8 @@ const PRESET_TITLES: Record<PresetId, { en: string; es: string }> = {
   pioneers: { en: "Pioneers", es: "Pioneros" },
   techTitans: { en: "Tech Titans", es: "Tech Titans" },
   nearStocks: { en: "NEAR + Stocks", es: "NEAR + Acciones" },
+  aiLeaders: { en: "AI Leaders", es: "Líderes en IA" },
+  everydayTech: { en: "Everyday Tech", es: "Tech cotidiana" },
 };
 
 const slotIds = (ids: PresetId[]) =>
@@ -69,6 +74,7 @@ export function buildDemoPresets(lang: "en" | "es", order: PresetId[] = DEMO_PRE
     id: START_TOKEN_ID,
     label: startToken?.assetName ?? startToken?.symbol ?? "USDC",
     name: startToken?.name ?? "",
+    symbol: startToken?.symbol ?? "USDC",
     pct: 100,
     color: colorById.get(START_TOKEN_ID)?.hex ?? "#38bdf8",
   };
@@ -84,6 +90,7 @@ export function buildDemoPresets(lang: "en" | "es", order: PresetId[] = DEMO_PRE
         id: slot.tokenId,
         label: labels.get(slot.tokenId) ?? slot.tokenId,
         name: token?.name ?? "",
+        symbol: token?.symbol ?? slot.tokenId,
         pct: slot.targetPct,
         color: colorById.get(slot.tokenId)?.hex ?? "#38bdf8",
       };

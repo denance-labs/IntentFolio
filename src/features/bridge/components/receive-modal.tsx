@@ -307,7 +307,7 @@ export function ReceiveModal({ open, lang, onClose, onWalletDepositCredited, dra
         aria-labelledby="receive-modal-title"
         aria-describedby="receive-modal-subtitle"
         tabIndex={-1}
-        className="relative z-10 flex w-full flex-col rounded-t-2xl bg-slate-900 shadow-2xl outline-none sm:max-w-md sm:rounded-2xl"
+        className="relative z-10 flex w-full flex-col rounded-t-2xl glass bg-slate-900 outline-none sm:max-w-md sm:rounded-2xl"
         style={{ maxHeight: "85dvh", minHeight: sheetFloor ? `min(${sheetFloor}px, 85dvh)` : undefined }}
       >
         {/* Header */}
@@ -318,7 +318,7 @@ export function ReceiveModal({ open, lang, onClose, onWalletDepositCredited, dra
               <button
                 type="button"
                 onClick={handleBack}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 aria-label={t.back}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
@@ -338,7 +338,7 @@ export function ReceiveModal({ open, lang, onClose, onWalletDepositCredited, dra
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             aria-label={t.close}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -491,9 +491,9 @@ function StepIndicator({
             <span
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
                 done
-                  ? "bg-cyan-700 text-white"
+                  ? "bg-accent text-accent-ink"
                   : current
-                    ? "border border-cyan-400 text-cyan-300"
+                    ? "border border-accent text-accent"
                     : "border border-slate-700 text-slate-400"
               }`}
               aria-hidden="true"
@@ -507,7 +507,7 @@ function StepIndicator({
             </span>
             {i < labels.length - 1 && (
               <span
-                className={`h-px min-w-3 flex-1 ${done ? "bg-cyan-700" : "bg-slate-700"}`}
+                className={`h-px min-w-3 flex-1 ${done ? "bg-accent" : "bg-slate-700"}`}
                 aria-hidden="true"
               />
             )}
@@ -563,7 +563,7 @@ function DepositTabs({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(id)}
             onKeyDown={handleKeyDown}
-            className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               selected ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
             }`}
           >
@@ -675,7 +675,7 @@ function TokenPicker({
                 type="button"
                 onClick={() => onSelect(group)}
                 disabled={notAvailable}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
               >
                 {/* Avatar: real token icon when available, initials fallback otherwise */}
                 {hasTokenIcon(group.ticker) ? (
@@ -703,7 +703,7 @@ function TokenPicker({
                 {/* Right side: badge + chain label */}
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {isLastUsed && (
-                    <span className="rounded-full bg-cyan-900/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
                       {t.lastUsed}
                     </span>
                   )}
@@ -771,7 +771,7 @@ function ChainPicker({
                 type="button"
                 onClick={() => onSelect(chain.id)}
                 disabled={!chain.available}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent ${chain === preselected ? "bg-slate-800 ring-1 ring-inset ring-cyan-400/60" : ""}`}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 active:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent ${chain === preselected ? "bg-slate-800 ring-1 ring-inset ring-accent/60" : ""}`}
               >
                 {/* Chain icon / initial avatar */}
                 <div
@@ -797,7 +797,7 @@ function ChainPicker({
 
                 {/* Last used badge — never on a pair the user can no longer pick */}
                 {isLastUsed && chain.available && (
-                  <span className="shrink-0 rounded-full bg-cyan-900/60 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+                  <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
                     {t.lastUsed}
                   </span>
                 )}
@@ -811,7 +811,7 @@ function ChainPicker({
           <button
             type="button"
             onClick={() => onSelect(preselected.id)}
-            className="flex w-full items-center justify-center rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 active:bg-cyan-800"
+            className="flex w-full items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:bg-accent/90"
           >
             {t.continueButton}
           </button>
@@ -904,7 +904,7 @@ function DepositStep({
         <button
           type="button"
           onClick={handleRetry}
-          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.retry}
         </button>
@@ -1006,7 +1006,7 @@ function DepositStep({
         <button
           type="button"
           onClick={handleCopy}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 active:bg-cyan-800"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:bg-accent/90"
         >
           {copied ? (
             <>
@@ -1042,7 +1042,7 @@ function DepositStep({
       <button
         type="button"
         onClick={onDone}
-        className="w-full rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="w-full rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {t.receiveDone}
       </button>

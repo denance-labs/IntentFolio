@@ -67,12 +67,12 @@ import { PRESET_NAME_KEY } from "./preset-selection-modal";
 const ROW_GRID = "sm:grid sm:grid-cols-[minmax(0,1fr)_6rem_2.75rem_6.5rem_2.75rem] sm:items-center sm:gap-x-3";
 const FIELD_BOX = "flex h-11 items-center rounded-xl border px-3 transition sm:h-9";
 const ICON_BUTTON =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:h-9 sm:w-9";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:h-9 sm:w-9";
 const SECONDARY_BUTTON =
-  "rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 // Tinted, so "Save draft" does not read as one more way out next to "Back".
 const SAVE_DRAFT_BUTTON =
-  "rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "rounded-xl border border-accent/30 bg-accent/5 px-4 py-2 text-sm text-accent transition hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 // The rules engine names its messages by key; the editor's translation table holds them.
 const ruleMessage = (te: Record<string, string>, code: RuleCode) => te[RULE_MESSAGE_KEYS[code]];
@@ -405,7 +405,7 @@ export function NewPortfolioDraftEditor({
         placeholder={t.portfolioNamePlaceholder}
         aria-invalid={nameInvalid}
         aria-describedby={nameInvalid ? "draft-editor-name-error" : "draft-editor-name-hint"}
-        className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+        className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
           nameInvalid ? "border-rose-500" : "border-slate-700 focus:border-slate-500"
         }`}
       />
@@ -429,7 +429,7 @@ export function NewPortfolioDraftEditor({
       {/* Target composition */}
       <section className="mt-5" aria-labelledby="draft-editor-composition">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 id="draft-editor-composition" className="text-[11px] font-semibold uppercase tracking-wide text-cyan-300">
+          <h3 id="draft-editor-composition" className="text-[11px] font-semibold uppercase tracking-wide text-accent">
             {t.presetReviewComposition}
           </h3>
           {rows.length > 0 ? <SumChip totalPct={totalPct} t={te} /> : null}
@@ -530,7 +530,7 @@ export function NewPortfolioDraftEditor({
                                 ? "border-slate-800 bg-slate-900/50"
                                 : pctInvalid
                                   ? "border-rose-400/60 bg-rose-400/5 focus-within:border-rose-300"
-                                  : "border-slate-700 bg-slate-950 focus-within:border-cyan-300"
+                                  : "border-slate-700 bg-slate-950 focus-within:border-accent"
                             }`}
                           >
                             <input
@@ -563,8 +563,8 @@ export function NewPortfolioDraftEditor({
                             aria-describedby={lockHint === row.tokenId ? msgId : undefined}
                             className={`${ICON_BUTTON} border ${
                               row.locked
-                                ? "border-cyan-300/50 bg-cyan-300/10 text-cyan-200"
-                                : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white"
+                                ? "border-accent/50 bg-accent/10 text-accent"
+                                : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-100"
                             } ${lock.canToggle ? "" : "opacity-40"}`}
                           >
                             {row.locked ? (
@@ -578,7 +578,7 @@ export function NewPortfolioDraftEditor({
 
                       <div className="w-[6.5rem] sm:order-4 sm:w-full">
                         <div
-                          className={`${FIELD_BOX} px-2 focus-within:border-cyan-300 ${
+                          className={`${FIELD_BOX} px-2 focus-within:border-accent ${
                             tolIsError
                               ? "border-rose-400/60 bg-rose-400/5"
                               : tolViolation
@@ -655,7 +655,7 @@ export function NewPortfolioDraftEditor({
           ref={addButtonRef}
           type="button"
           onClick={() => setView("picker")}
-          className="mt-3 inline-flex min-h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-600 px-4 text-sm font-medium text-slate-200 transition hover:border-cyan-400/60 hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:w-auto sm:min-h-0 sm:py-2"
+          className="mt-3 inline-flex min-h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-600 px-4 text-sm font-medium text-slate-200 transition hover:border-accent/60 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:w-auto sm:min-h-0 sm:py-2"
         >
           <Plus aria-hidden="true" className="h-4 w-4" />
           {t.draftAddToken}
@@ -705,7 +705,7 @@ export function NewPortfolioDraftEditor({
                 ref={keepEditingRef}
                 type="button"
                 onClick={() => setConfirmLeave(null)}
-                className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               >
                 {t.draftKeepEditing}
               </button>
@@ -733,9 +733,9 @@ export function NewPortfolioDraftEditor({
               onClick={createsPortfolio ? handleCreate : handleSave}
               aria-disabled={!primaryEnabled}
               aria-describedby={blockerText ? "draft-editor-blocker" : undefined}
-              className={`rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+              className={`rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                 offersSaveDraft ? "order-1 w-full sm:order-none sm:w-auto" : ""
-              } ${primaryEnabled ? "hover:bg-cyan-200" : "cursor-not-allowed opacity-40"}`}
+              } ${primaryEnabled ? "hover:bg-accent/90" : "cursor-not-allowed opacity-40"}`}
             >
               {createsPortfolio || signedOut ? t.draftCreate : t.draftSaveDraft}
             </button>

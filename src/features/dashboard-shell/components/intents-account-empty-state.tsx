@@ -23,7 +23,7 @@ export function IntentsAccountEmptyState({
   // building as its one button (D-450: Deposit is the summary's and step 2's).
   onBuildFirst?: () => void;
   // D-353: a New Portfolio Draft card above already leads with its own deposit button; two
-  // filled cyan buttons would compete, so this one steps down to the outlined style.
+  // filled accent buttons would compete, so this one steps down to the outlined style.
   secondary?: boolean;
   // 022-A (D-453): no wallet, so nothing to deposit into, and no step is marked as next.
   signedOut?: boolean;
@@ -79,7 +79,7 @@ export function IntentsAccountEmptyState({
               onClick={onBuildFirst}
               // D-360: where the focus lands when a discarded draft leaves for My Account.
               data-focus-landing
-              className="rounded-xl bg-cyan-500 px-6 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.myAccountBuild}
             </button>
@@ -88,10 +88,10 @@ export function IntentsAccountEmptyState({
           <button
             type="button"
             onClick={onAddFunds}
-            className={`rounded-xl px-6 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+            className={`rounded-xl px-6 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               secondary
                 ? "border border-slate-600 text-slate-100 hover:bg-slate-800"
-                : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                : "bg-accent text-accent-ink hover:bg-accent/90"
             }`}
           >
             {t.myAccountAddFunds}

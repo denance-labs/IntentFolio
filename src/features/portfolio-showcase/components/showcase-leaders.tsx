@@ -115,9 +115,9 @@ export function ShowcaseLeaders({ tokens, mode, activeTokenId, innerSide, ring, 
               strokeWidth={isActive ? 0.9 : 0.6}
               strokeLinejoin="round"
             />
-            <circle cx={label.dot.x} cy={label.dot.y} r={1.7} fill="#fff" stroke={token.color} strokeWidth={0.8} />
+            <circle cx={label.dot.x} cy={label.dot.y} r={1.7} className="fill-slate-100" stroke={token.color} strokeWidth={0.8} />
             <rect x={boxX} y={label.text.y - PCT_SIZE * 0.7} width={width} height={PCT_SIZE * 0.7 + SYMBOL_SIZE * 1.6} fill="transparent" />
-            <text x={label.text.x} y={label.text.y + PCT_SIZE * 0.35} textAnchor={anchor} fontSize={PCT_SIZE} fontWeight={600} fill="#fff" className="tabular-nums">
+            <text x={label.text.x} y={label.text.y + PCT_SIZE * 0.35} textAnchor={anchor} fontSize={PCT_SIZE} fontWeight={600} className="fill-slate-100 tabular-nums">
               {formatShare(label.pct)}
             </text>
             <text
@@ -125,7 +125,7 @@ export function ShowcaseLeaders({ tokens, mode, activeTokenId, innerSide, ring, 
               y={label.text.y + PCT_SIZE * 0.35 + SYMBOL_SIZE * 1.25}
               textAnchor={anchor}
               fontSize={SYMBOL_SIZE}
-              fill={isActive ? "#e2e8f0" : "#94a3b8"}
+              className={isActive ? "fill-slate-200" : "fill-slate-400"}
             >
               {name}
             </text>

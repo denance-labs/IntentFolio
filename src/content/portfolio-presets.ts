@@ -47,13 +47,19 @@ const USDT_ETH: TokenId =
   "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near";
 const USDT_SOL: TokenId =
   "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near";
-// D-558: the four stocks with a route both ways at every size measured (plan 039). TSLA and
-// GOOGL stay out while D1 has them in doubt. Ids as in `stock-tokens.ts`.
+// D-558: the four stocks with a route both ways at every size measured (plan 039). The weekend
+// measurement (plan 038) later cleared TSLA too; it is in no preset by choice. Ids as in `stock-tokens.ts`.
 // Attribution: see ATTRIBUTIONS.md #24
 const NVDA: TokenId = "nep141:bnb-0xa9ee28c80f960b889dfbd1902055218cba016f75.omdep.near";
 const AAPL: TokenId = "nep141:bnb-0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4.omdep.near";
 const AMZN: TokenId = "nep141:bnb-0x4553cfe1c09f37f38b12dc509f676964e392f8fc.omdep.near";
 const QQQ: TokenId = "nep141:bnb-0x0cde6936d305d5b34667fc46425e852efd73559a.omdep.near";
+// D-576: AI Leaders and Everyday Tech. GOOGL joins a preset now: it answered 1Click both ways at 10, 25 and 100 USD
+// on 2026-11-10, and its buy route at US$20 held in 172 of 212 weekend samples (the misses mostly
+// on 2026-11-04/05).
+const MSFT: TokenId = "nep141:bnb-0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3.omdep.near";
+const GOOGL: TokenId = "nep141:bnb-0x091fc7778e6932d4009b087b191d1ee3bac5729a.omdep.near";
+const META: TokenId = "nep141:bnb-0xd7df5863a3e742f0c767768cdfcb63f09e0422f6.omdep.near";
 
 export type PresetId =
   | "conservative"
@@ -63,7 +69,9 @@ export type PresetId =
   | "satoshi"
   | "pioneers"
   | "techTitans"
-  | "nearStocks";
+  | "nearStocks"
+  | "aiLeaders"
+  | "everydayTech";
 
 export type PresetSlot = { tokenId: TokenId; targetPct: number };
 
@@ -158,6 +166,31 @@ export const portfolioPresets: PortfolioPreset[] = [
       { tokenId: AAPL, targetPct: 25 },
       { tokenId: AMZN, targetPct: 25 },
       { tokenId: QQQ, targetPct: 20 },
+    ],
+  },
+  // D-576: after Tech Titans, as on the landing; their new tokens come after the ones already on
+  // screen, so those keep their colors.
+  {
+    id: "aiLeaders",
+    risk: "veryHigh",
+    tolerancePct: 10,
+    slots: [
+      { tokenId: NVDA, targetPct: 30 },
+      { tokenId: MSFT, targetPct: 25 },
+      { tokenId: GOOGL, targetPct: 25 },
+      { tokenId: AMZN, targetPct: 20 },
+    ],
+  },
+  {
+    id: "everydayTech",
+    risk: "veryHigh",
+    tolerancePct: 10,
+    slots: [
+      { tokenId: AAPL, targetPct: 20 },
+      { tokenId: MSFT, targetPct: 20 },
+      { tokenId: GOOGL, targetPct: 20 },
+      { tokenId: AMZN, targetPct: 20 },
+      { tokenId: META, targetPct: 20 },
     ],
   },
   {

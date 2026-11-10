@@ -11,7 +11,7 @@ import { MetaPoolSection } from "./components/meta-pool-section";
 import { LearnTeaserSection } from "./components/learn-teaser-section";
 import { ClosingCta } from "./components/closing-cta";
 import { LandingFooter } from "./components/landing-footer";
-import { archivo } from "./lib/fonts";
+import { archivo } from "@/features/world/fonts";
 
 export function LandingPage({
   comingSoon = false,

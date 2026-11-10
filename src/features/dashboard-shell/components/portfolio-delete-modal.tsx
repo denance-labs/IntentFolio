@@ -79,7 +79,7 @@ export function PortfolioDeleteModal({ portfolioId, onClose }: { portfolioId: st
 
   return (
     <Modal titleId="delete-portfolio-title" onClose={deleting ? () => {} : onClose}>
-      <h2 id="delete-portfolio-title" className="mb-3 text-base font-semibold text-white">
+      <h2 id="delete-portfolio-title" className="mb-3 text-base font-semibold text-slate-100">
         {t.portfolioDeleteTitle.replace("{name}", name)}
       </h2>
       <p role={status === "checking" ? "status" : undefined} className="text-sm text-slate-300">
@@ -97,7 +97,7 @@ export function PortfolioDeleteModal({ portfolioId, onClose }: { portfolioId: st
               type="button"
               onClick={onClose}
               disabled={deleting}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t.cancel}
             </button>
@@ -114,7 +114,7 @@ export function PortfolioDeleteModal({ portfolioId, onClose }: { portfolioId: st
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {status === "checking" ? t.cancel : t.portfolioDeleteClose}
           </button>

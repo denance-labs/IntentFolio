@@ -36,7 +36,7 @@ export function ConnectWalletModal({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={onClose}
           aria-label={t.walletConnectClose}
-          className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           <X aria-hidden="true" className="h-4 w-4" />
         </button>

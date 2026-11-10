@@ -34,11 +34,11 @@ import { shellTranslations } from "../lib/translations";
 
 const SALE_LABEL = "USDC";
 const FIELD =
-  "min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm tabular-nums text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50";
+  "min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm tabular-nums text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50";
 const BUTTON =
-  "rounded-xl px-4 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-xl px-4 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50";
 const SECONDARY = `${BUTTON} border border-slate-700 text-slate-200 hover:border-slate-500`;
-const PRIMARY = `${BUTTON} bg-cyan-500 text-slate-950 hover:bg-cyan-400`;
+const PRIMARY = `${BUTTON} bg-accent text-accent-ink hover:bg-accent/90`;
 
 export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose: () => void }) {
   const { lang } = useLanguage();

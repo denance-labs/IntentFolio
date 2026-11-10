@@ -3,6 +3,7 @@
 import { InfoTooltip } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
 import type { Language } from "@/features/portfolio-editor/types";
+import { themeColor } from "@/features/world/colors";
 import { cumulativeStepPath, dailyWindow } from "../lib/showcase-geometry";
 import type { ShowcaseEarnings, ShowcaseLabels, ShowcaseNetwork } from "../types";
 
@@ -11,9 +12,9 @@ const SPARK_W = 320;
 const SPARK_H = 56;
 // Networks are a part-to-whole of a handful of places, not a token identity: a neutral ramp, so
 // they never borrow a token's color. Past four, the rest folds into one "other" row.
-const NETWORK_SHADES = ["#d2dce8", "#8b9aaf", "#55647a", "#3a475b"];
+const NETWORK_SHADES = [themeColor("slate-200"), themeColor("slate-400"), themeColor("slate-600"), themeColor("slate-700")];
 
-const CARD = "ov-rise rounded-[20px] border border-white/[0.07] bg-surface/60 px-5 pb-4 pt-5";
+const CARD = "ov-rise glass rounded-[20px] px-5 pb-4 pt-5";
 
 function formatDay(day: string, lang: Language): string {
   return new Intl.DateTimeFormat(lang === "es" ? "es-AR" : "en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(
@@ -75,7 +76,7 @@ export function ShowcaseKpis({ earnings, networks, tokenCount, todayDay, lang, l
         {earnings.status === "loading" ? (
           <Skeleton className="mt-2 h-[34px] w-24" />
         ) : (
-          <p className={`mt-2 text-[34px] font-semibold leading-none ${ready ? "text-cyan-300" : "text-slate-500"}`}>
+          <p className={`mt-2 text-[34px] font-semibold leading-none ${ready ? "text-accent" : "text-slate-500"}`}>
             {ready ? `${ready.spreadIsMinimum ? "≥ " : ""}${formatSpread(ready.spreadUsd)}` : "—"}
           </p>
         )}
@@ -98,12 +99,12 @@ export function ShowcaseKpis({ earnings, networks, tokenCount, todayDay, lang, l
                 aria-label={`${labels.spread}: ${formatSpread(ready?.spreadUsd ?? 0)}`}
                 className="block h-full w-full"
               >
-                <path d={spark.area} fill="rgb(34 211 238 / 0.10)" />
-                <path d={spark.line} fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                <path d={spark.area} className="fill-accent/10" />
+                <path d={spark.line} fill="none" className="stroke-accent" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
               </svg>
               <span
                 aria-hidden="true"
-                className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400 ring-2 ring-[#172031]"
+                className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-slate-900"
                 style={{ left: `${(spark.end.x / SPARK_W) * 100}%`, top: `${(spark.end.y / SPARK_H) * 100}%` }}
               />
             </div>
@@ -121,7 +122,7 @@ export function ShowcaseKpis({ earnings, networks, tokenCount, todayDay, lang, l
         {earnings.status === "loading" ? (
           <Skeleton className="mt-2 h-[34px] w-14" />
         ) : (
-          <p className={`mt-2 text-[34px] font-semibold leading-none ${ready ? "text-white" : "text-slate-500"}`}>
+          <p className={`mt-2 text-[34px] font-semibold leading-none ${ready ? "text-slate-100" : "text-slate-500"}`}>
             {ready ? ready.swaps : "—"}
           </p>
         )}
@@ -142,7 +143,7 @@ export function ShowcaseKpis({ earnings, networks, tokenCount, todayDay, lang, l
                     d.swaps > 0
                       ? {
                           height: `${Math.max(12, (d.swaps / busiest) * 100)}%`,
-                          backgroundColor: d.swaps === busiest ? "rgb(103 232 249 / 0.85)" : "rgb(103 232 249 / 0.5)",
+                          backgroundColor: themeColor("accent", d.swaps === busiest ? 0.85 : 0.5),
                         }
                       : { height: "2px" }
                   }
@@ -156,7 +157,7 @@ export function ShowcaseKpis({ earnings, networks, tokenCount, todayDay, lang, l
 
       <div className={`${CARD} col-span-2 md:col-span-1`} style={{ animationDelay: "550ms" }}>
         <p className="text-[13px] text-slate-400">{labels.networks}</p>
-        <p className="mt-2 text-[34px] font-semibold leading-none text-white">
+        <p className="mt-2 text-[34px] font-semibold leading-none text-slate-100">
           {networks.length} <span className="text-[17px] font-normal text-slate-300">{networkWord}</span>
         </p>
         <p className="mt-2 text-xs text-slate-400">

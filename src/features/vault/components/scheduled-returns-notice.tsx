@@ -85,15 +85,15 @@ function ScheduledReturnsList({ accountId }: { accountId: string }) {
   return (
     <section
       aria-labelledby="scheduled-returns-heading"
-      className="flex items-start gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-4"
+      className="flex items-start gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-5 py-4"
     >
-      <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" aria-hidden="true" />
+      <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <h2 id="scheduled-returns-heading" className="font-semibold text-cyan-200">
+        <h2 id="scheduled-returns-heading" className="font-semibold text-accent">
           {t.scheduledReturnsTitle}
         </h2>
-        <p className="mt-0.5 text-sm text-cyan-300/70">{t.scheduledReturnsBody}</p>
-        <ul className="mt-3 divide-y divide-cyan-500/20">
+        <p className="mt-0.5 text-sm text-accent/70">{t.scheduledReturnsBody}</p>
+        <ul className="mt-3 divide-y divide-accent/20">
           {returns.map((r) => {
             const amount = amountLabel(r);
             // Past its eta but still listed (not executed yet), or being executed right now:

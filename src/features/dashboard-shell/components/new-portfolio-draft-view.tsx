@@ -37,7 +37,7 @@ import { NewPortfolioDraftSimulation } from "./new-portfolio-draft-simulation";
 import { SkeletonBlock } from "./view-states";
 
 const SECONDARY_BUTTON =
-  "rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 // Nothing is held, so no row is ever a held token to promote.
 const noop = () => {};
@@ -224,12 +224,10 @@ export function NewPortfolioDraftView(props: ViewProps) {
       style={{ animation: "sectionIn 360ms cubic-bezier(.2,.8,.2,1)" }}
     >
       <div
-        className={`mb-6 rounded-3xl border bg-surface px-6 py-5 shadow-lg shadow-black/20 ${
-          props.variant === "ready" ? "border-cyan-400/40" : "border-slate-800"
-        }`}
+        className={`glass mb-6 rounded-3xl px-6 py-5 ${props.variant === "ready" ? "border-accent/40" : ""}`}
       >
         <p className="text-xs font-medium uppercase text-slate-400">{te.totalCurrent}</p>
-        <p className="mt-3 text-3xl font-semibold tracking-tight text-white tabular-nums">{formatUsd(0)}</p>
+        <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-100 tabular-nums">{formatUsd(0)}</p>
 
         <div className="mt-4 border-t border-slate-800/60 pt-4">
           {/* D-360: the landing for the focus when the control that opened the editor is gone. */}
@@ -237,7 +235,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
             id="new-portfolio-draft-view-title"
             tabIndex={-1}
             data-focus-landing
-            className="rounded font-semibold text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded font-semibold text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {title.replace("{name}", draft.name)}
           </h2>
@@ -261,7 +259,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               <button
                 type="button"
                 onClick={primary.onClick}
-                className="rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               >
                 {primary.label}
               </button>
@@ -274,19 +272,19 @@ export function NewPortfolioDraftView(props: ViewProps) {
       {isEditing ? (
         <div
           role="status"
-          className="mb-6 flex items-center gap-2.5 rounded-2xl border border-cyan-300/25 bg-cyan-300/5 px-4 py-3"
+          className="mb-6 flex items-center gap-2.5 rounded-2xl border border-accent/25 bg-accent/5 px-4 py-3"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-cyan-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-accent">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
-          <p className="text-sm text-cyan-100">{t.draftEditModeBanner}</p>
+          <p className="text-sm text-accent">{t.draftEditModeBanner}</p>
         </div>
       ) : null}
 
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
         <CompositionBars rows={rows} currentTotalUsd={0} targetTotalUsd={0} colorByToken={colorByToken} t={te} />
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <CompositionDonuts rows={rows} currentTotalUsd={0} targetTotalUsd={0} colorByToken={colorByToken} t={te} />
         </div>
       </div>
@@ -352,7 +350,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
             beginEdit();
             setPickerOpen(true);
           }}
-          className="order-2 rounded-xl border border-dashed border-cyan-300/30 bg-cyan-300/5 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:order-none sm:mr-auto"
+          className="order-2 rounded-xl border border-dashed border-accent/30 bg-accent/5 px-4 py-2 text-sm text-accent transition hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:order-none sm:mr-auto"
         >
           + {te.addTarget}
         </button>
@@ -363,7 +361,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
             <button
               type="button"
               onClick={stopEditing}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {te.cancelEdit}
             </button>
@@ -371,7 +369,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               ref={saveRef}
               type="button"
               onClick={save}
-              className="rounded-2xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.draftSaveDraft}
             </button>
@@ -405,7 +403,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               ref={discardRef}
               type="button"
               onClick={() => setConfirming(true)}
-              className="order-4 w-full rounded-2xl px-4 py-3 text-sm text-slate-400 transition hover:bg-slate-800 hover:text-rose-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:order-none sm:w-auto"
+              className="order-4 w-full rounded-2xl px-4 py-3 text-sm text-slate-400 transition hover:bg-slate-800 hover:text-rose-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:order-none sm:w-auto"
             >
               {t.draftCardDiscard}
             </button>
@@ -413,7 +411,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               ref={editRef}
               type="button"
               onClick={beginEdit}
-              className="order-3 ml-auto rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-6 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:order-none sm:ml-0"
+              className="order-3 ml-auto rounded-2xl border border-accent/30 bg-accent/10 px-6 py-3 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:order-none sm:ml-0"
             >
               {te.editPanel}
             </button>
@@ -421,7 +419,7 @@ export function NewPortfolioDraftView(props: ViewProps) {
               <button
                 type="button"
                 onClick={primary.onClick}
-                className="order-1 w-full rounded-2xl bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:order-none sm:w-auto"
+                className="order-1 w-full rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:order-none sm:w-auto"
               >
                 {primary.label}
               </button>

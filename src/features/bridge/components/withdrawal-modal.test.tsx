@@ -1015,8 +1015,8 @@ describe("WithdrawalModal — registering the destination (D-316)", () => {
     await refusedOnStep3({ chainKind: "near", address: ME }, ME);
     const register = screen.getByRole("button", { name: "Register this account" });
     const continueButton = screen.getByRole("button", { name: "Continue" });
-    expect(register.className).toContain("bg-cyan-500");
-    expect(continueButton.className).not.toContain("bg-cyan-500");
+    expect(register.className.split(/\s+/)).toContain("bg-accent");
+    expect(continueButton.className.split(/\s+/)).not.toContain("bg-accent");
     expect(document.activeElement).toBe(register);
   });
 
@@ -1041,7 +1041,7 @@ describe("WithdrawalModal — registering the destination (D-316)", () => {
 
   it("with nothing to register from here, Continue stays the primary action", async () => {
     await refusedOnStep3({ chainKind: "near", address: ME }, "alice.near");
-    expect(screen.getByRole("button", { name: "Continue" }).className).toContain("bg-cyan-500");
+    expect(screen.getByRole("button", { name: "Continue" }).className.split(/\s+/)).toContain("bg-accent");
   });
 
   it("someone else's account gets the way to do it outside, not the button", async () => {

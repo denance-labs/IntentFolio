@@ -2,7 +2,7 @@
 
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_H2 } from "../lib/world";
+import { WORLD_H2 } from "@/features/world/world";
 import { ExampleSpreadChart } from "./example-spread-chart";
 
 export function PerformanceSection() {

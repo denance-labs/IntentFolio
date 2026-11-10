@@ -27,11 +27,11 @@ import {
   type PendingAllocateKind,
 } from "../lib/pending-allocates";
 
-// Same pills as the activity feed: cyan = in hand and moving (TX_BROADCASTED), amber = not
+// Same pills as the activity feed: accent = in hand and moving (TX_BROADCASTED), amber = not
 // confirmed yet (PENDING). None is red — nothing here is a failure, not even a record under
 // the team's review (D-448), which shares the amber of "not settled yet".
 const KIND_STYLES: Record<PendingAllocateKind, string> = {
-  completing: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
+  completing: "border-accent/40 bg-accent/10 text-accent",
   confirming: "border-amber-500/40 bg-amber-500/10 text-amber-300",
   review: "border-amber-500/40 bg-amber-500/10 text-amber-300",
 };
@@ -189,14 +189,14 @@ export function PendingAllocatesBanner({ signerId }: { signerId: string | null |
       {notice}
       <section
         aria-labelledby="pending-allocates-heading"
-        className="flex items-start gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-4"
+        className="flex items-start gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-5 py-4"
       >
-        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" aria-hidden="true" />
+        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <h2 id="pending-allocates-heading" className="font-semibold text-cyan-200">
+          <h2 id="pending-allocates-heading" className="font-semibold text-accent">
             {title}
           </h2>
-          <p className="mt-0.5 text-sm text-cyan-300/70">
+          <p className="mt-0.5 text-sm text-accent/70">
             {body}
           </p>
           {/* D-448: the body promises the funds will show up by themselves, which a record under
@@ -204,7 +204,7 @@ export function PendingAllocatesBanner({ signerId }: { signerId: string | null |
           {pending.some((p) => p.kind === "review") ? (
             <p className="mt-1 text-sm text-amber-300/80">{t.pendingAllocatesReviewNote}</p>
           ) : null}
-          <ul className="mt-3 divide-y divide-cyan-500/20">
+          <ul className="mt-3 divide-y divide-accent/20">
             {pending.map((p) => (
               <li key={p.id} className="py-2 first:pt-0 last:pb-0">
                 {/* Wraps instead of truncating: the portfolio name is what says where the funds

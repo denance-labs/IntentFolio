@@ -63,13 +63,15 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     const cards = within(block).getAllByRole("button");
     expect(cards.map((card) => card.textContent)).toEqual([
       expect.stringContaining(t.presetTechTitansName),
+      expect.stringContaining(t.presetAiLeadersName),
+      expect.stringContaining(t.presetEverydayTechName),
       expect.stringContaining(t.presetNearStocksName),
     ]);
     expect(block.textContent).toContain(editorTranslations[lang].stockSectionNote);
     const all = screen.getAllByRole("button").filter((b) => b.textContent?.includes(t.presetBandLabel));
     expect(all[0]).toBe(cards[0]);
     expect(all[1]).toBe(cards[1]);
-    expect(all).toHaveLength(8);
+    expect(all).toHaveLength(10);
     for (const card of cards) {
       expect(card.textContent).toContain(t.presetStocksChip);
       expect(card.className).toContain("border-fuchsia-300/60");
@@ -122,6 +124,7 @@ describe.each(["en", "es"] as const)("PresetSelectionModal (%s)", (lang) => {
     const trigger = screen.getByRole("button", { name: t.presetToleranceQuestion });
     expect(trigger.closest("button")).toBe(trigger);
     expect(trigger.parentElement?.closest("button")).toBeNull();
+    fireEvent.focus(trigger);
     expect(screen.getByRole("tooltip").textContent).toBe(t.presetToleranceTooltip);
   });
 });
@@ -145,7 +148,7 @@ describe.each(["en", "es"] as const)("PresetSelectionModal — where stocks can'
     expect(within(block).getByText(te.stockRegionBlockedNote)).toBeTruthy();
     expect(within(block).queryByText(te.stockSectionNote)).toBeNull();
     const cards = within(block).getAllByRole("button") as HTMLButtonElement[];
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(4);
     for (const card of cards) expect(card.disabled).toBe(true);
     fireEvent.click(cardFor(t.presetTechTitansName));
     expect(onSelectPreset).not.toHaveBeenCalled();

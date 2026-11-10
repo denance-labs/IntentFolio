@@ -1,7 +1,7 @@
 "use client";
 
 import { FlaskConical, Globe, Hourglass, SlidersHorizontal, Sprout } from "lucide-react";
-import { WORLD_PANEL } from "@/features/landing/lib/world";
+import { WORLD_PANEL } from "@/features/world/world";
 import { LEARN_H2, LEARN_H3, LEARN_ICON_BOX, LEARN_TILE, LEARN_TILE_BODY } from "../lib/styles";
 
 type ListItem = { title: string; body: string };

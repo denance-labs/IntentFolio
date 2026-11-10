@@ -55,14 +55,14 @@ export function NewPortfolioDraftCard(props: CardProps) {
   return (
     <section
       aria-labelledby="new-portfolio-draft-card-title"
-      className={`rounded-2xl border bg-slate-900 px-5 py-4 ${ready ? "border-cyan-400/40" : "border-slate-700"}`}
+      className={`glass rounded-2xl px-5 py-4 ${ready ? "border-accent/40" : ""}`}
     >
       {/* D-360: the landing for the focus when the control that opened the editor is gone. */}
       <h2
         id="new-portfolio-draft-card-title"
         tabIndex={-1}
         data-focus-landing
-        className="rounded font-semibold text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="rounded font-semibold text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {props.variant === "ready"
           ? t.draftReadyTitle.replace("{amount}", formatUsd(props.amountUsd)).replace("{name}", draft.name)
@@ -109,7 +109,7 @@ export function NewPortfolioDraftCard(props: CardProps) {
             onClick={
               props.variant === "ready" ? props.onConfirm : props.variant === "signed-out" ? props.onConnect : props.onDeposit
             }
-            className="rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {{ ready: t.draftReadyConfirm, waiting: t.draftCardDeposit, "signed-out": t.walletConnect }[props.variant]}
           </button>
@@ -117,7 +117,7 @@ export function NewPortfolioDraftCard(props: CardProps) {
         <button
           type="button"
           onClick={onView}
-          className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.draftCardView}
         </button>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { appPortalRoot } from "@/features/world/portal-root";
 import type { ComputedTargetAllocation, TargetAllocation } from "../types";
 import { getBandStateClass } from "../lib/calculations";
 import { colorForSymbol, formatCrypto, formatTokenAmount, formatUsd, type RingColor } from "../lib/format";
@@ -165,7 +166,7 @@ function RemovedRow({ removed, t, rowColor, balanceMove, onUndo }: {
           type="button"
           onClick={() => onUndo?.(removed.tokenId)}
           aria-label={t.pendingUndoAria.replace("{symbol}", removed.symbol)}
-          className="whitespace-nowrap rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-200 transition hover:border-cyan-300/50 hover:text-cyan-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="whitespace-nowrap rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-200 transition hover:border-accent/50 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.pendingUndo}
         </button>
@@ -307,7 +308,7 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
       {/* Target % — editable (incl. held rows → promote) or read-only */}
       <div className="relative">
         {targetEditable ? (
-          <div className={`flex items-center rounded-xl border px-3 py-2 transition ${target.locked ? "border-slate-800 bg-slate-900/50" : "border-slate-700 bg-slate-900 focus-within:border-cyan-300"}`}>
+          <div className={`flex items-center rounded-xl border px-3 py-2 transition ${target.locked ? "border-slate-800 bg-slate-900/50" : "border-slate-700 bg-slate-900 focus-within:border-accent"}`}>
             <input
               type="number"
               min="0"
@@ -369,7 +370,7 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
                 ? onPromoteHeld(target.tokenId, Number(event.target.value))
                 : onUpdatePct(target.id, Number(event.target.value))
             }
-            className="w-full accent-cyan-300 disabled:opacity-40"
+            className="w-full accent-accent disabled:opacity-40"
             disabled={target.locked}
             aria-label={`${t.slider} ${target.symbol}`}
           />
@@ -397,7 +398,7 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
       <div className="pl-3">
         {zeroTarget && !toleranceIsError ? null : rowEditing ? (
           <>
-            <div className={`flex items-center rounded-xl border px-2 py-2 transition focus-within:border-cyan-300 ${toleranceIsError ? "border-rose-400/60 bg-rose-400/5" : toleranceViolation ? "border-amber-400/60 bg-amber-400/5" : "border-slate-700 bg-slate-900"}`}>
+            <div className={`flex items-center rounded-xl border px-2 py-2 transition focus-within:border-accent ${toleranceIsError ? "border-rose-400/60 bg-rose-400/5" : toleranceViolation ? "border-amber-400/60 bg-amber-400/5" : "border-slate-700 bg-slate-900"}`}>
               <span className="mr-1 text-slate-400" aria-hidden="true">±</span>
               <input
                 type="text"
@@ -513,8 +514,8 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
               disabled={!canToggleLock}
               aria-label={`${target.locked ? t.locked : t.unlocked} ${target.symbol}`}
               aria-pressed={target.locked}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 ${
-                target.locked ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-200" : "border-slate-700 text-slate-400 hover:text-white"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 ${
+                target.locked ? "border-accent/40 bg-accent/10 text-accent" : "border-slate-700 text-slate-400 hover:text-slate-100"
               }`}
             >
               <LockIcon locked={target.locked} />
@@ -530,7 +531,7 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
               >
                 {lockBlockedReason}
               </span>,
-              document.body
+              appPortalRoot()
             )
           : null}
       </div>
@@ -565,7 +566,7 @@ function TargetRow({ target, t, rowColor, isEditing, canToggleLock, lockBlockedR
               >
                 {removeBlockedReason}
               </span>,
-              document.body
+              appPortalRoot()
             )
           : null}
       </div>
@@ -596,10 +597,10 @@ export function PortfolioTargetsTable({
   // buttons on it remounts them, which replays the one-shot flash.
   const [lockFlashCount, setLockFlashCount] = useState(0);
   const flashLockAll = () => setLockFlashCount((n) => n + 1);
-  const lockAllClass = `inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60${lockFlashCount > 0 ? " lock-flash" : ""}`;
+  const lockAllClass = `inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 text-slate-400 transition hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60${lockFlashCount > 0 ? " lock-flash" : ""}`;
   return (
     <div className="mt-3">
-      <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-surface">
+      <div className="overflow-x-auto rounded-2xl glass">
         {/* D-340: the action column used to be a bare `1fr` inside a 900px floor, but the fixed
             columns alone need ~1030px, so below that it collapsed to nothing and the row button
             spilled over the lock and status cells. Its floor is now the button's own width and

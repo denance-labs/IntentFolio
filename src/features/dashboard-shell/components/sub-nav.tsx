@@ -63,9 +63,9 @@ export function SubNav({ basePath = "/dashboard", draft = false }: { basePath?: 
               <Link
                 href={href}
                 aria-current={isActive ? "page" : undefined}
-                className={`inline-flex items-center justify-center px-3 py-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                className={`inline-flex items-center justify-center px-3 py-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                   isActive
-                    ? "border-b-2 border-cyan-300 text-white"
+                    ? "border-b-2 border-accent text-slate-100"
                     : "border-b-2 border-transparent text-slate-400 hover:text-slate-100"
                 }`}
               >

@@ -83,7 +83,7 @@ export function WalletStatusIndicator({
       <button
         type="button"
         onClick={onConnect}
-        className="rounded-xl bg-cyan-500 px-3 py-1.5 text-xs font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="rounded-xl bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {/* D-408: signed out, this row also holds the language toggle and the guide link; at
             375 px the full label cut the wordmark. The accessible name stays the full one. */}
@@ -102,12 +102,12 @@ export function WalletStatusIndicator({
         // Server HTML sits on this state forever without JS; the dashboard layout hides it then (D-566b).
         data-needs-js
         onClick={() => void signOut()}
-        className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-slate-600 hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-slate-600 hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         aria-busy="true"
         title={t.walletSignOut}
       >
         <span
-          className="h-3 w-3 rounded-full border-2 border-slate-600 border-t-cyan-300 animate-spin"
+          className="h-3 w-3 rounded-full border-2 border-slate-600 border-t-accent animate-spin"
           aria-hidden="true"
         />
         <span className="hidden sm:inline">{t.walletConnecting}</span>
@@ -128,7 +128,7 @@ export function WalletStatusIndicator({
   }
 
   const itemClass =
-    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:bg-slate-800 focus-visible:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:bg-slate-800 focus-visible:text-slate-100 focus-visible:ring-2 focus-visible:ring-accent/60";
 
   return (
     <div
@@ -145,7 +145,7 @@ export function WalletStatusIndicator({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 transition hover:border-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 transition hover:border-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         <ChainIcon chainId={FAMILY_ICON_CHAIN[chainKind]} size={16} className="shrink-0" />
         <span className="sr-only">{t.walletConnected}: </span>
@@ -162,7 +162,7 @@ export function WalletStatusIndicator({
       <div
         id={panelId}
         hidden={!open}
-        className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg shadow-black/40"
+        className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl glass bg-slate-900 p-2"
       >
         <div className="flex flex-col gap-2 px-3 pb-3 pt-2">
           <div className="flex items-center gap-2">
@@ -178,7 +178,7 @@ export function WalletStatusIndicator({
           <button
             type="button"
             onClick={handleCopy}
-            className="flex w-fit items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="flex w-fit items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {copied ? (
               <Check size={14} aria-hidden="true" className="text-emerald-300" />

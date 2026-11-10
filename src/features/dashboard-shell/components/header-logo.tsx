@@ -24,11 +24,10 @@ function AppMark({ size }: { size: number }) {
 
 function Wordmark({ withDomain }: { withDomain: boolean }) {
   return (
+    // D-571: the landing's wordmark (landing-nav.tsx): set wide, like the name on a device.
     <span className="flex items-baseline gap-0.5 whitespace-nowrap">
-      <span className="bg-gradient-to-r from-white to-cyan-300 bg-clip-text text-lg font-semibold tracking-tight text-transparent">
-        IntentFolio
-      </span>
-      {withDomain && <span className="text-xs font-normal text-slate-400">.app</span>}
+      <span className="text-lg font-bold tracking-tight text-slate-100 [font-stretch:118%]">IntentFolio</span>
+      {withDomain && <span className="text-sm font-normal text-slate-400">.app</span>}
     </span>
   );
 }
@@ -88,7 +87,7 @@ export function HeaderLogo({ home }: { home: boolean }) {
       {home ? (
         <Link
           href="/"
-          className="flex items-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="flex items-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {logo}
         </Link>

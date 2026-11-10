@@ -1,7 +1,7 @@
 import { ChartCandlestick } from "lucide-react";
 
 // D-558: what marks a stock next to an ordinary token. Fuchsia because the app's other accents
-// already mean something (cyan: action; amber, rose, emerald: state; violet: out of band). Always
+// already mean something (bone `accent`: action; amber, rose, emerald: state; violet: out of band). Always
 // an icon and a word too, so the mark never depends on color alone. To change the accent, change
 // this file.
 

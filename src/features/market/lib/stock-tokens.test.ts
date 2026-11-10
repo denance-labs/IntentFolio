@@ -40,7 +40,7 @@ describe("STOCK_TOKENS in the portfolio pickers", () => {
 describe("STOCK_TOKENS in the registry", () => {
   it("is in the registry and the pickers with no flag", async () => {
     const { depositableTokens, getTokenById } = await import("./token-registry");
-    expect(depositableTokens.filter((token) => token.category === "Stocks")).toHaveLength(6);
+    expect(depositableTokens.filter((token) => token.category === "Stocks")).toHaveLength(8);
     expect(getTokenById(APPLE.id)?.decimals).toBe(18);
   });
 

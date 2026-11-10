@@ -93,7 +93,7 @@ export function PortfolioTabMenu({
           e.stopPropagation();
           if (!disabled) setIsOpen((prev) => !prev);
         }}
-        className={`flex h-5 w-5 items-center justify-center rounded text-slate-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+        className={`flex h-5 w-5 items-center justify-center rounded text-slate-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
           disabled ? "cursor-not-allowed opacity-30" : "cursor-pointer hover:bg-slate-700 hover:text-slate-100"
         }`}
       >
@@ -116,14 +116,14 @@ export function PortfolioTabMenu({
           role="menu"
           style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translateX(-100%)" }}
           ref={menuRef}
-          className="z-[200] min-w-[140px] rounded-xl border border-slate-700 bg-slate-900 py-1 shadow-2xl"
+          className="z-[200] min-w-[140px] rounded-xl glass bg-slate-900 py-1"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
             role="menuitem"
             onClick={handleRename}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:bg-slate-800"
+            className="w-full px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:bg-slate-800"
           >
             {t.portfolioRenameMenuItem}
           </button>

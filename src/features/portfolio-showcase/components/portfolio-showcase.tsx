@@ -99,7 +99,7 @@ export function PortfolioShowcase({
       <div className="grid gap-5 lg:order-2 lg:mt-7 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-7">
         <div className="ov-rise flex flex-col justify-center">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-400">{labels.value}</p>
-          <p className="mt-2.5 text-5xl font-semibold leading-none tracking-tight text-white sm:text-6xl">{formatUsd(totalUsd)}</p>
+          <p className="mt-2.5 text-5xl font-semibold leading-none tracking-tight text-slate-100 sm:text-6xl">{formatUsd(totalUsd)}</p>
           {dayChange ? <DayChangeLine change={dayChange} locale={locale} labels={labels} /> : null}
           {valueNote ? <p className="mt-2 text-xs text-amber-200">{valueNote}</p> : null}
           {totalUsd > 0 ? (
@@ -247,15 +247,14 @@ function InPlaceCard({
 
   return (
     <div
-      className="ov-rise rounded-3xl border border-white/[0.07] px-6 pb-5 pt-6 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_18px_70px_rgb(0_0_0/0.28)] sm:px-7"
-      style={{ background: "linear-gradient(180deg, rgb(var(--slate-900) / 0.72), rgb(var(--slate-900) / 0.45))" }}
+      className="ov-rise glass rounded-3xl px-6 pb-5 pt-6 sm:px-7"
     >
       {ready ? (
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="flex items-baseline gap-2.5">
-                <span aria-hidden="true" className="text-5xl font-semibold leading-none text-white">
+                <span aria-hidden="true" className="text-5xl font-semibold leading-none text-slate-100">
                   {Math.floor(counted)}%
                 </span>
                 <span className="sr-only">{shown}%</span>

@@ -2,7 +2,7 @@
 
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_CTA, WORLD_H2 } from "../lib/world";
+import { WORLD_CTA, WORLD_H2 } from "@/features/world/world";
 import { AppCta } from "./app-cta";
 
 // Shared with /learn, which ends on the same call to action.

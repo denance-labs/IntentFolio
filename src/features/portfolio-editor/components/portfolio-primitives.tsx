@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useDialogFocus } from "../hooks/use-dialog-focus";
 
 type ModalProps = {
@@ -39,7 +39,7 @@ export function Modal({
         role="dialog"
         aria-modal={trapFocus}
         aria-labelledby={titleId}
-        className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto ${maxWidth} rounded-3xl border border-slate-700 bg-slate-950 p-6 shadow-2xl`}
+        className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto ${maxWidth} rounded-3xl glass bg-slate-950 p-6`}
         style={{ animation: "modalIn 180ms cubic-bezier(.2,.8,.2,1)" }}
       >
         {children}
@@ -48,12 +48,34 @@ export function Modal({
   );
 }
 
+// D-574: gap kept between an open bubble and either edge of the viewport.
+const TOOLTIP_EDGE = 8;
+
+// D-574: the bubble exists only while open. Drawn closed at opacity 0, it still widened the page
+// (3 px of sideways scroll at 320 px when the "?" sat near the right edge). Open, it is centered on
+// the button and nudged back inside the viewport, and never wider than the viewport allows.
 export function InfoTooltip({ label, children, width = 256 }: { label: string; children: ReactNode; width?: number }) {
   const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Before paint, so the bubble never shows at its overflowing spot first.
+  useLayoutEffect(() => {
+    const button = buttonRef.current;
+    const viewport = document.documentElement.clientWidth;
+    // No layout (a test DOM reports 0): leave it centered.
+    if (!open || !button || viewport <= 0) return;
+    const rect = button.getBoundingClientRect();
+    const bubble = Math.min(width, viewport - 2 * TOOLTIP_EDGE);
+    const centered = rect.left + rect.width / 2 - bubble / 2;
+    const fitted = Math.min(Math.max(centered, TOOLTIP_EDGE), viewport - TOOLTIP_EDGE - bubble);
+    setShift(fitted - centered);
+  }, [open, width]);
 
   return (
     <span className="relative inline-block">
       <button
+        ref={buttonRef}
         type="button"
         aria-label={label}
         aria-expanded={open}
@@ -61,17 +83,22 @@ export function InfoTooltip({ label, children, width = 256 }: { label: string; c
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-slate-700 text-[9px] text-slate-400 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-slate-700 text-[9px] text-slate-400 transition hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         ?
       </button>
-      <span
-        role="tooltip"
-        style={{ width }}
-        className={`pointer-events-none absolute left-1/2 top-6 z-30 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-200 shadow-2xl transition-opacity duration-150 ${open ? "opacity-100" : "opacity-0"}`}
-      >
-        {children}
-      </span>
+      {open ? (
+        <span
+          role="tooltip"
+          style={{
+            width: `min(${width}px, calc(100vw - ${2 * TOOLTIP_EDGE}px))`,
+            transform: `translateX(calc(-50% + ${shift}px))`,
+          }}
+          className="tooltip-in pointer-events-none absolute left-1/2 top-6 z-30 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-200 shadow-2xl"
+        >
+          {children}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -110,9 +137,9 @@ export function SumChip({ totalPct, t }: { totalPct: number; t: Record<string, s
 // field holds exactly that chip's amount — derived on every render, never stored, so typing
 // another number or a changed balance clears it instead of leaving a chip that no longer holds.
 export function amountChipClass(selected: boolean): string {
-  return `h-8 rounded-md border px-2 text-[11px] font-medium tabular-nums transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:h-7 sm:px-1.5 ${
+  return `h-8 rounded-md border px-2 text-[11px] font-medium tabular-nums transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:h-7 sm:px-1.5 ${
     selected
-      ? "border-cyan-300/60 bg-cyan-300/10 text-cyan-200"
-      : "border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white"
+      ? "border-accent/60 bg-accent/10 text-accent"
+      : "border-slate-700 text-slate-300 hover:border-slate-500 hover:text-slate-100"
   }`;
 }

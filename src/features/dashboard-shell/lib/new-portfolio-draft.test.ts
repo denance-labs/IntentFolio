@@ -132,9 +132,9 @@ describe("validateNewPortfolioDraft", () => {
 
     it("reading a stored draft: every offerable token at once passes, 33 does not (the vault's cap)", () => {
       const offerable = depositableTokens.filter((t) => isPortfolioOfferable(t.id)).map((t) => t.id);
-      expect(offerable).toHaveLength(27);
-      // 26 × 3.5 + 9 = 100.00
-      const all = offerable.map((id, i) => row(id, i === 26 ? 9 : 3.5));
+      expect(offerable).toHaveLength(29);
+      // 28 × 3.25 + 9 = 100.00
+      const all = offerable.map((id, i) => row(id, i === 28 ? 9 : 3.25));
       expect(validateNewPortfolioDraft(withRows(...all), [], MAX_TOKENS_PER_PORTFOLIO).ok).toBe(true);
       const ids = depositableTokens.slice(0, 33).map((t) => t.id);
       const rows33 = ids.map((id, i) => row(id, i === 32 ? 0.8 : 3.1));

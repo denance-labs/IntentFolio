@@ -247,7 +247,7 @@ export function WalletDepositPanel({
       {hasChainIcon(NEAR_CHAIN_ID) && <ChainIcon chainId={NEAR_CHAIN_ID} size={24} />}
       <div className="min-w-0">
         <p className="text-xs text-slate-400">{t.walletDepositFrom}</p>
-        <p className="truncate text-sm font-medium text-cyan-300" title={accountId}>
+        <p className="truncate text-sm font-medium text-accent" title={accountId}>
           {accountId}
         </p>
       </div>
@@ -281,7 +281,7 @@ export function WalletDepositPanel({
           <button
             type="button"
             onClick={() => handleContinue(credit)}
-            className="rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.walletDepositConfirmDraft}
           </button>
@@ -290,7 +290,7 @@ export function WalletDepositPanel({
           <button
             type="button"
             onClick={onDone}
-            className="rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.receiveDone}
           </button>
@@ -387,7 +387,7 @@ export function WalletDepositPanel({
             placeholder="0.00"
             aria-invalid={tooMuch || undefined}
             aria-describedby={tooMuch ? "wallet-deposit-too-much" : undefined}
-            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm tabular-nums text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-cyan-300/60"
+            className="min-w-0 flex-1 rounded-xl bg-slate-800 px-3 py-2.5 text-sm tabular-nums text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent/60"
           />
           <button
             type="button"
@@ -398,7 +398,7 @@ export function WalletDepositPanel({
               setMaxAmount(balance.available);
               setText(shortDecimalText(formatBaseUnits(balance.available, decimals), DISPLAY_DECIMALS));
             }}
-            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-cyan-300 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
+            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2.5 text-xs font-semibold text-accent transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
           >
             {t.walletDepositMax}
           </button>
@@ -431,7 +431,7 @@ export function WalletDepositPanel({
         type="button"
         onClick={handleDeposit}
         disabled={!canDeposit}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 active:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:bg-accent/90 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
       >
         {amount !== null
           ? t.walletDepositButton
@@ -453,7 +453,7 @@ export function SecondaryButton({ onClick, children }: { onClick: () => void; ch
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+      className="rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
     >
       {children}
     </button>
@@ -467,8 +467,8 @@ export function UseAddressButton({ t, onClick, primary = false }: { t: T; onClic
       onClick={onClick}
       className={
         primary
-          ? "rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-          : "rounded-lg px-4 py-2 text-sm font-medium text-cyan-300 underline-offset-2 transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          ? "rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          : "rounded-lg px-4 py-2 text-sm font-medium text-accent underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       }
     >
       {t.walletDepositUseAddress}

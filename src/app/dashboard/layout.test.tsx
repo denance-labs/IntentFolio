@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
 
 vi.mock("@/features/dashboard-shell", () => ({ DashboardShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
+// next/font only runs inside Next; the layout only needs the CSS variable's class name.
+vi.mock("@/features/world/fonts", () => ({ archivo: { variable: "font-archivo-var" } }));
 
 import DashboardLayout from "./layout";
 

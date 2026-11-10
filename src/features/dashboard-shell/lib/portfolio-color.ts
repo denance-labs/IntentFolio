@@ -6,9 +6,9 @@ export type PortfolioColor = {
 };
 
 // 021 R5: one hue per portfolio, from a fixed list. Written out in full so Tailwind sees each
-// class. The 300 shades all read over 7:1 on the app's base, surface and card levels. Cyan is
-// left out (it marks what is selected, e.g. My Account), and so are red and amber (they are
-// the app's error and warning colors). Ordered so neighbours sit far apart on the wheel:
+// class. The 300 shades all read over 7:1 on the app's base, surface and card levels. None is
+// near the bone accent, which marks what is selected (e.g. My Account). Cyan stays out (it was
+// the accent before D-571), and so do red and amber (the app's error and warning colors). Ordered so neighbours sit far apart on the wheel:
 // consecutive vault ids get clearly different colors.
 const PALETTE: readonly PortfolioColor[] = [
   { text: "text-sky-300", dot: "bg-sky-300" },

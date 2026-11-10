@@ -4,7 +4,7 @@ import { useLanguage } from "@/features/dashboard-shell/context/language-context
 import { LandingNav } from "@/features/landing/components/landing-nav";
 import { LandingFooter } from "@/features/landing/components/landing-footer";
 import { ClosingCta } from "@/features/landing/components/closing-cta";
-import { archivo } from "@/features/landing/lib/fonts";
+import { archivo } from "@/features/world/fonts";
 import { learnTranslations } from "./lib/translations";
 import { LearnHero } from "./components/learn-hero";
 import { LearnIndex } from "./components/learn-index";

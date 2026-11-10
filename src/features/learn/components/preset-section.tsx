@@ -12,6 +12,8 @@ import { LEARN_H2, LEARN_H3, LEARN_INTRO, LEARN_TILE } from "../lib/styles";
 // come first, as on the landing hero (D-568); Stables and Pioneers left the guide for them.
 const PRESET_ORDER: PresetId[] = [
   "techTitans",
+  "aiLeaders",
+  "everydayTech",
   "nearStocks",
   "conservative",
   "balanced",

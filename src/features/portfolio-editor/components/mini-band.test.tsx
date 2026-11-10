@@ -13,7 +13,7 @@ function renderBand(state: BandState, currentPct: number, canRise = true) {
   render(<MiniBand minPct={17} targetPct={20} maxPct={23} currentPct={currentPct} state={state} canRise={canRise} label="bar" />);
   const bar = screen.getByRole("img", { name: "bar" });
   return {
-    dot: bar.querySelector(".rounded-full.bg-slate-50") as HTMLElement | null,
+    dot: bar.querySelector(".rounded-full.bg-slate-100") as HTMLElement | null,
     connector: bar.querySelector(".border-dotted") as HTMLElement | null,
   };
 }

@@ -10,7 +10,7 @@ import { LanguageToggle } from "./language-toggle";
 import { WalletStatusIndicator } from "./wallet-status-indicator";
 
 const headerItemClass =
-  "flex items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2 text-sm text-slate-300 transition hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "flex items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2 text-sm text-slate-300 transition hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 export function DashboardHeader({
   onGettingStarted,

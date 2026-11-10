@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight, BookOpen } from "lucide-react";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_PANEL } from "../lib/world";
+import { WORLD_PANEL } from "@/features/world/world";
 
 export function LearnTeaserSection() {
   const { lang } = useLanguage();

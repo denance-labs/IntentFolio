@@ -494,6 +494,8 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftEditor (%s)", (lang) => {
       "AAPL",
       "AMZN",
       "GOOGL",
+      "METAon",
+      "MSFT",
       "NVDA",
       "QQQ",
       "TSLA",

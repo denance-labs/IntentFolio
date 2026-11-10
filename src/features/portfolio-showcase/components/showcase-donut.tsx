@@ -91,8 +91,10 @@ export function ShowcaseDonut({
         style={{ background: `conic-gradient(${glow})` }}
       />
       <svg viewBox="0 0 240 240" role="group" aria-label={ariaLabel} className="relative block h-full w-full overflow-visible">
-        <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="none" stroke="rgb(148 163 184 / 0.07)" strokeWidth={STROKE} />
-        <circle cx={CENTER} cy={CENTER} r={DISC} fill="rgb(2 6 23 / 0.55)" />
+        {/* D-571: track and disc read the slate steps, so they turn graphite in the app; outside it
+            (the landing's hero) those keep Tailwind's values and these look as before. */}
+        <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="none" className="stroke-slate-400/[0.07]" strokeWidth={STROKE} />
+        <circle cx={CENTER} cy={CENTER} r={DISC} className="fill-slate-950/55" />
         <defs>
           <filter id={`${uid}-blur`} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="6" />

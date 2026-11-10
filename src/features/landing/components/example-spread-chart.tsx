@@ -3,7 +3,7 @@ import {
   EXAMPLE_SPREAD_AXIS_TICKS_USD as TICKS,
 } from "@/content/example-spread";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
-import { WORLD_PANEL } from "../lib/world";
+import { WORLD_PANEL } from "@/features/world/world";
 
 type Copy = {
   title: string;

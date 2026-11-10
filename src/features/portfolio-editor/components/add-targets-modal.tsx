@@ -127,7 +127,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
         onChange={(e) => setSearch(e.target.value)}
         placeholder={t.searchToken}
         aria-label={t.searchToken}
-        className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
+        className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-accent"
       />
       {atMax ? (
         <p className="mt-2 text-xs text-amber-200">
@@ -154,7 +154,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                 // D-534: a marked row reads apart from the rest, not only its button. The border is
                 // always there, so marking it never changes the row's height.
                 className={`flex items-center gap-3 rounded-xl border px-2.5 py-2 transition-colors ${
-                  isSelected ? "border-cyan-300/50 bg-cyan-300/[0.08]" : "border-transparent"
+                  isSelected ? "border-accent/50 bg-accent/[0.08]" : "border-transparent"
                 } ${(!e.offerable || blockedHere) && !e.inPortfolio ? "opacity-50" : ""}`}
               >
                 <span
@@ -187,10 +187,10 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
                     aria-label={`${t.addTokensAddAction} ${e.symbol} — ${e.name}`}
                     disabled={!isSelected && atMax}
                     onClick={() => toggle(e.id)}
-                    className={`inline-flex min-h-[2.75rem] w-24 shrink-0 items-center justify-center gap-1 rounded-xl border px-2.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:py-1.5 ${
+                    className={`inline-flex min-h-[2.75rem] w-24 shrink-0 items-center justify-center gap-1 rounded-xl border px-2.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:py-1.5 ${
                       isSelected
-                        ? "border-cyan-300 bg-cyan-300 text-black hover:bg-cyan-200"
-                        : "border-cyan-300/30 text-cyan-200 hover:bg-cyan-300/10"
+                        ? "border-accent bg-accent text-accent-ink hover:bg-accent/90"
+                        : "border-accent/30 text-accent hover:bg-accent/10"
                     }`}
                   >
                     {isSelected ? (
@@ -211,7 +211,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.cancel}
         </button>
@@ -219,7 +219,7 @@ export function AddTargetsModal({ t, compositionTokenIds, existingBalances, onAd
           type="button"
           onClick={handleConfirm}
           disabled={selected.size === 0}
-          className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {confirmLabel}
         </button>

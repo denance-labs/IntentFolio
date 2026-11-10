@@ -218,13 +218,13 @@ describe("IntentsAccountView — a New Portfolio Draft waiting for funds", () =>
     const plainDeposit = emptyStateDeposit;
     state.portfolios = [{ id: "p1", name: "Old", deposits: {} }];
     renderView({ withPortfolios: true });
-    expect(plainDeposit().className).toContain("bg-cyan-500");
+    expect(plainDeposit().className.split(/\s+/)).toContain("bg-accent");
 
     cleanup();
     saveDraft();
     renderView({ withPortfolios: true });
-    expect(screen.getByRole("button", { name: t.draftCardDeposit }).className).toContain("bg-cyan-500");
-    expect(plainDeposit().className).not.toContain("bg-cyan-500");
+    expect(screen.getByRole("button", { name: t.draftCardDeposit }).className.split(/\s+/)).toContain("bg-accent");
+    expect(plainDeposit().className.split(/\s+/)).not.toContain("bg-accent");
     expect(plainDeposit().className).toContain("border-slate-600");
   });
 
@@ -356,7 +356,7 @@ describe("IntentsAccountView — a new account can build its portfolio first", (
     const build = buildFirst()!;
     const emptyStateButtons = within(emptyState()!).getAllByRole("button");
     expect(emptyStateButtons.map((b) => b.textContent)).not.toContain(t.myAccountAddFunds);
-    expect(build.className).toContain("bg-cyan-500");
+    expect(build.className.split(/\s+/)).toContain("bg-accent");
     expect(build.hasAttribute("data-focus-landing")).toBe(true);
 
     fireEvent.click(build);
@@ -658,21 +658,21 @@ describe("IntentsAccountView — the account summary (021 R3 + R4)", () => {
   it("with a draft card, the summary's deposit is outlined, not a second cyan primary", () => {
     const deposit = () => within(summaryButtons()).getByRole("button", { name: t.myAccountAddFunds });
     renderView();
-    expect(deposit().className).toContain("bg-cyan-500");
+    expect(deposit().className.split(/\s+/)).toContain("bg-accent");
 
     cleanup();
     saveDraft();
     renderView();
     expect(card()).toBeTruthy();
-    expect(deposit().className).not.toContain("bg-cyan-500");
+    expect(deposit().className.split(/\s+/)).not.toContain("bg-accent");
     expect(deposit().className).toContain("border-slate-600");
 
     cleanup();
     state.balance = new Map([["near", 5]]);
     state.fundable = { status: "known", fundable: true, tokenIds: ["near"], usd: 7.9 };
     renderView();
-    expect(screen.getByRole("button", { name: t.draftReadyConfirm }).className).toContain("bg-cyan-500");
-    expect(deposit().className).not.toContain("bg-cyan-500");
+    expect(screen.getByRole("button", { name: t.draftReadyConfirm }).className.split(/\s+/)).toContain("bg-accent");
+    expect(deposit().className.split(/\s+/)).not.toContain("bg-accent");
   });
 
   // A New Portfolio Draft holds no funds and is not a portfolio until its signature creates
@@ -738,7 +738,7 @@ describe("IntentsAccountView — signed out (022-A)", () => {
     expect(screen.getAllByRole("listitem").some((li) => li.getAttribute("aria-current"))).toBe(false);
 
     const build = screen.getByRole("button", { name: t.myAccountBuild });
-    expect(build.className).toContain("bg-cyan-500");
+    expect(build.className.split(/\s+/)).toContain("bg-accent");
     expect(build.hasAttribute("data-focus-landing")).toBe(true);
     fireEvent.click(build);
     expect(onCreatePortfolio).toHaveBeenCalledTimes(1);
@@ -767,7 +767,7 @@ describe("IntentsAccountView — signed out (022-A)", () => {
     // Two Connect Wallet: the summary's (outlined) and the card's (the one primary, D-406).
     const connects = screen.getAllByRole("button", { name: t.walletConnect });
     expect(connects).toHaveLength(2);
-    const cardConnect = connects.find((b) => b.className.includes("bg-cyan-500"))!;
+    const cardConnect = connects.find((b) => b.className.split(/\s+/).includes("bg-accent"))!;
     expect(summaryButtons().contains(cardConnect)).toBe(false);
     fireEvent.click(cardConnect);
     expect(onConnect).toHaveBeenCalledTimes(1);

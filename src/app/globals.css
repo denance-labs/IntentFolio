@@ -8,6 +8,8 @@
   color: #f1f5f9;
 
   /* Tailwind's slate, as RGB channels (tailwind.config.ts reads them). */
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
   --slate-300: 203 213 225;
   --slate-400: 148 163 184;
   --slate-500: 100 116 139;
@@ -16,50 +18,75 @@
   --slate-800: 30 41 59;
   --slate-900: 15 23 42;
   --slate-950: 2 6 23;
+
+  /* D-571: the roles (tailwind.config.ts), the same on every page: the accent is bone and the
+     target copper, as in the landing's world. Focus rings and text selection use the accent. */
+  --accent: 233 226 208;
+  --accent-ink: 21 20 19;
+  --target: 201 139 79;
 }
 
 /*
- * The app's depth scale (021 R1): base (950) → surface (900) → card (800), each a visible step
- * lighter, and secondary text (400, 500) at WCAG AA on all three. Scoped with :has() on the
- * root rather than on the marked element so that what a component portals to <body> (a
- * tooltip) gets the same values as the rest of the app. The landing has no marker and keeps
- * Tailwind's slate.
+ * D-571: the app's palette, the landing's world (D-568) by role. Every color in the app reads
+ * these lines or the roles above, so retuning the look is editing them:
+ *   - depth: base (950) -> surface (900) -> card (800), warm graphite, each a visible step lighter;
+ *   - text: 100 (bone, primary) down to 500, all at WCAG AA on the three depths (500 on 800: 4.5);
+ *   - accent (above): buttons, focus, the selected tab, links; accent-ink is text on a solid accent;
+ *   - target (above): target markers only (copper).
+ * Scoped with :has() on the root rather than on the marked element so that what a component
+ * portals to <body> (a tooltip) gets the same values as the rest of the app.
  */
 :root:has([data-app-theme]) {
-  --slate-300: 210 220 232;
-  --slate-400: 170 183 201;
-  --slate-500: 139 154 175;
-  --slate-600: 85 100 122;
-  --slate-700: 58 71 91;
-  --slate-800: 38 49 66;
-  --slate-900: 23 32 49;
+  --slate-100: 233 226 208;
+  --slate-200: 222 215 198;
+  --slate-300: 205 198 182;
+  --slate-400: 176 170 156;
+  --slate-500: 150 144 132;
+  --slate-600: 98 94 87;
+  --slate-700: 66 63 58;
+  --slate-800: 44 42 39;
+  --slate-900: 31 30 28;
+  --slate-950: 21 20 19;
 }
 
 /*
- * D-568: the landing world (landing and /learn, marked with data-landing-world). A graphite plate
- * with a fine brushed grain, the ground the frosted panels read against; the page's own scrollbar,
- * overscroll and selection take the same palette. The app has no marker and is untouched.
+ * The world's ground (D-568 landing and /learn, marked data-landing-world; D-571 the app, marked
+ * data-app-theme). A graphite plate with a fine brushed grain, the ground the frosted panels read
+ * against; the page's own scrollbar and overscroll take the same palette. Focus and selection
+ * follow --accent everywhere (below).
  */
-:root:has([data-landing-world]) {
+:root:has(:is([data-landing-world], [data-app-theme])) {
   background: #151413;
   scrollbar-color: #4a4640 #151413;
 }
 
-:root:has([data-landing-world]) body {
+:root:has(:is([data-landing-world], [data-app-theme])) body {
   background: #151413;
 }
 
-[data-landing-world] {
+:is([data-landing-world], [data-app-theme]) {
   background-color: #151413;
   background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.014) 0 1px, transparent 1px 3px);
 }
 
-[data-landing-world] ::selection {
-  background: rgb(233 226 208 / 0.26);
+/*
+ * D-571: the world's frosted panel, one definition for the landing, /learn and the app: a bone
+ * wash over whatever base the panel sets (none on a page; a dialog keeps its opaque one), a lit
+ * top edge and a soft drop. Each panel keeps its own rounding and padding, and a border-color
+ * utility on top still wins (a "ready" accent edge). No backdrop blur here: the app's dialogs
+ * are fixed-position children of the page, and a backdrop filter on an ancestor would pin them
+ * inside the panel. The landing adds its blur itself (WORLD_PANEL).
+ */
+@layer components {
+  .glass {
+    @apply border border-bone/[0.13] bg-gradient-to-b from-bone/[0.075] to-bone/[0.025] shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_18px_36px_rgb(0_0_0/0.35)];
+  }
 }
 
-[data-landing-world] :is(button, a, input):focus-visible {
-  outline-color: #e9e2d0;
+/* D-571: the app's page and dialog titles take the landing's wide cut (WORLD_H2's 108%), in one
+   place instead of on each of the ~30 headings. Running text stays at normal width. */
+[data-app-theme] :is(h1, h2) {
+  font-stretch: 108%;
 }
 
 /* Shown only without JavaScript: the <noscript> style in layout.tsx turns it on (D-566, D-568). */
@@ -93,12 +120,12 @@ textarea {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: 2px solid #67e8f9;
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgb(103 232 249 / 0.28);
+  background: rgb(var(--accent) / 0.26);
 }
 
 @keyframes sectionIn {
@@ -131,6 +158,23 @@ input:focus-visible {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* D-574: InfoTooltip's bubble mounts on open, so its fade-in is an animation, not a transition.
+   Opacity only: its transform holds the position. */
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip-in {
+    animation: tooltipIn 150ms ease-out;
   }
 }
 
@@ -238,6 +282,10 @@ input:focus-visible {
   }
   .hero-donut .ov-cap {
     transition-duration: 3000ms;
+  }
+  /* D-575: the logos on the hero's slices come in with the ring, on its curve. */
+  .hero-logos-in {
+    animation: ovDonutIn 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
   .hero-donut-rest .ov-slice,
   .hero-donut-rest .ov-cap {

@@ -21,9 +21,9 @@ export function LanguageToggle({ compact = false }: { compact?: boolean } = {}) 
         type="button"
         onClick={() => setLang(other)}
         aria-label={`${t.languageLabel}: ${lang.toUpperCase()}`}
-        className="rounded-xl bg-slate-800 p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="rounded-xl bg-slate-800 p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
-        <span className="block rounded-md bg-cyan-300 px-2 py-1 text-xs text-black">{lang.toUpperCase()}</span>
+        <span className="block rounded-md bg-accent px-2 py-1 text-xs text-accent-ink">{lang.toUpperCase()}</span>
       </button>
     );
   }
@@ -36,8 +36,8 @@ export function LanguageToggle({ compact = false }: { compact?: boolean } = {}) 
           type="button"
           aria-pressed={lang === language}
           onClick={() => setLang(language)}
-          className={`rounded-md px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-            lang === language ? "bg-cyan-300 text-black" : "text-slate-400 hover:text-white"
+          className={`rounded-md px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+            lang === language ? "bg-accent text-accent-ink" : "text-slate-400 hover:text-slate-100"
           }`}
         >
           {language.toUpperCase()}

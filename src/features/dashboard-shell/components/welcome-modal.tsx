@@ -75,7 +75,7 @@ export function WelcomeModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {t.welcomeNotNow}
           </button>
@@ -85,7 +85,7 @@ export function WelcomeModal({
               onClose();
               onStart();
             }}
-            className="rounded-xl bg-cyan-500 px-5 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl bg-accent px-5 py-2 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {hasDraft ? t.draftCardView : hasPortfolios ? t.welcomeCtaAnother : t.welcomeCta}
           </button>

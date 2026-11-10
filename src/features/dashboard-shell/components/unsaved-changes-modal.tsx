@@ -17,7 +17,7 @@ export function UnsavedChangesModal({ draft = false, onDiscard, onClose }: Unsav
 
   return (
     <Modal titleId="unsaved-changes-title" onClose={onClose}>
-      <h2 id="unsaved-changes-title" className="mb-3 text-base font-semibold text-white">
+      <h2 id="unsaved-changes-title" className="mb-3 text-base font-semibold text-slate-100">
         {t.unsavedChangesTitle}
       </h2>
       <p className="mb-6 text-sm leading-relaxed text-slate-300">{draft ? t.unsavedDraftChangesBody : t.unsavedChangesBody}</p>
@@ -25,14 +25,14 @@ export function UnsavedChangesModal({ draft = false, onDiscard, onClose }: Unsav
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {t.cancel}
         </button>
         <button
           type="button"
           onClick={() => { onDiscard(); onClose(); }}
-          className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+          className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
         >
           {t.unsavedChangesDiscard}
         </button>

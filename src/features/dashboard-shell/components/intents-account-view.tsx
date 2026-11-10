@@ -118,7 +118,7 @@ function TokenRow({ row, onSell, t }: { row: BalanceRow; onSell?: (tokenId: stri
             type="button"
             onClick={() => onSell(row.tokenId)}
             aria-label={`${t.stockSellAction} ${symbol}`}
-            className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {t.stockSellAction}
           </button>
@@ -153,17 +153,17 @@ function CreatePortfolioBanner({
   t: typeof shellTranslations.en;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="font-semibold text-cyan-200">{t.createPortfolioCta}</p>
-        <p className="mt-0.5 text-sm text-cyan-300/70">{t.createPortfolioCtaBody}</p>
+        <p className="font-semibold text-accent">{t.createPortfolioCta}</p>
+        <p className="mt-0.5 text-sm text-accent/70">{t.createPortfolioCtaBody}</p>
       </div>
       <button
         type="button"
         onClick={onCreatePortfolio}
         // D-360: where the focus lands when the draft card that replaced this is discarded.
         data-focus-landing
-        className="shrink-0 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="shrink-0 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {t.createPortfolioCta}
       </button>
@@ -200,7 +200,7 @@ function BalanceUnreadNotice({
       <button
         type="button"
         onClick={read.retry}
-        className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+        className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
         {t.myAccountBalanceRetry}
       </button>
@@ -239,15 +239,14 @@ function AccountTotals({
     // that includes the portfolios would not be funding.
     <div
       data-testid="account-summary"
-      className="ov-rise rounded-3xl border border-white/[0.07] px-6 pb-5 pt-6 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_18px_70px_rgb(0_0_0/0.28)] sm:px-7"
-      style={{ background: "linear-gradient(180deg, rgb(var(--slate-900) / 0.72), rgb(var(--slate-900) / 0.45))" }}
+      className="ov-rise glass rounded-3xl px-6 pb-5 pt-6 sm:px-7"
     >
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-5">
         <dl className="min-w-0">
           <dt className="text-xs uppercase tracking-[0.08em] text-slate-400">{t.myAccountGeneralBalance}</dt>
           <dd
             className={`mt-2.5 break-words text-5xl font-semibold leading-none tracking-tight ${
-              generalUsd === null ? "text-slate-500" : "text-white"
+              generalUsd === null ? "text-slate-500" : "text-slate-100"
             }`}
           >
             {generalUsd === null ? "—" : formatUsd(generalUsd)}
@@ -286,7 +285,7 @@ function AccountTotals({
         <p className="mt-2 text-xs text-slate-300">{t.myAccountSignedOutNote}</p>
       )}
       {totalSpreadUsd > 0 && (
-        <p className="mt-3 text-sm font-medium text-cyan-300">
+        <p className="mt-3 text-sm font-medium text-accent">
           {t.myAccountTotalSpreadLabel}:{" "}
           <span className="tabular-nums">{formatUsd(totalSpreadUsd)}</span>
           {/* Own line: inline, the card's width left one word of the note alone on line two. */}
@@ -300,13 +299,13 @@ function AccountTotals({
 const DEPOSIT_STATUS_STYLES: Record<string, string> = {
   PENDING:   "border-amber-500/40 bg-amber-500/10 text-amber-300",
   COMPLETED: "border-blue-500/40 bg-blue-500/10 text-blue-300",
-  CREDITED:  "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
+  CREDITED:  "border-accent/40 bg-accent/10 text-accent",
 };
 
 const WITHDRAWAL_STATUS_STYLES: Record<string, string> = {
   PENDING:        "border-amber-500/40 bg-amber-500/10 text-amber-300",
-  TX_BROADCASTED: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
-  SETTLED:        "border-cyan-400/60 bg-cyan-400/15 text-cyan-200",
+  TX_BROADCASTED: "border-accent/40 bg-accent/10 text-accent",
+  SETTLED:        "border-accent/60 bg-accent/15 text-accent",
   DELIVERED:      "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
   // Amber, never red: "not confirmed" is an open question, not a failure (005.plan §8 5.4).
   UNCONFIRMED:    "border-amber-400/50 bg-amber-400/10 text-amber-200",
@@ -379,7 +378,7 @@ const NEAR_EXPLORER = chainRegistry["near:mainnet"];
 // D-561: the summary is the one filled block; the two lists under it share Overview's second-level
 // card (showcase-kpis.tsx), each under a real title.
 const SECTION_HEADING = "text-sm font-semibold text-slate-200";
-const SECTION_CARD = "ov-rise divide-y divide-slate-800 rounded-[20px] border border-white/[0.07] bg-surface/60 px-4 sm:px-5";
+const SECTION_CARD = "ov-rise glass divide-y divide-slate-800 rounded-[20px] px-4 sm:px-5";
 
 // C1: a pending unallocation in flight (funds reserved in the portfolio, arriving to the
 // General Balance). PENDING shows the calm "releasing" chip; FAILED is rare (the async leg
@@ -425,8 +424,8 @@ const ACTIVITY_ICONS: Record<ActivityIconKind, { Icon: LucideIcon; tone: string 
   withdrawal:  { Icon: ArrowUpRight,  tone: "bg-sky-500/10 text-sky-300" },
   returning:   { Icon: Undo2,         tone: "bg-slate-700/40 text-slate-300" },
   moved:       { Icon: Undo2,         tone: "bg-slate-700/40 text-slate-300" },
-  created:     { Icon: Plus,          tone: "bg-cyan-500/10 text-cyan-300" },
-  added:       { Icon: Plus,          tone: "bg-cyan-500/10 text-cyan-300" },
+  created:     { Icon: Plus,          tone: "bg-accent/10 text-accent" },
+  added:       { Icon: Plus,          tone: "bg-accent/10 text-accent" },
   composition: { Icon: PieChart,      tone: "bg-violet-500/10 text-violet-300" },
   edited:      { Icon: PieChart,      tone: "bg-violet-500/10 text-violet-300" },
   renamed:     { Icon: PencilLine,    tone: "bg-violet-500/10 text-violet-300" },
@@ -480,7 +479,7 @@ function DepositRow({ deposit, t }: { deposit: DepositStatusEntry; t: typeof she
                 target="_blank"
                 rel="noopener noreferrer"
                 title={t.depositViewOnExplorer}
-                className="font-mono text-slate-400 underline-offset-2 hover:text-cyan-400 hover:underline"
+                className="font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
               >
                 {truncateHash(deposit.tx_hash)}
               </a>
@@ -584,7 +583,7 @@ function WithdrawalRow({
               target="_blank"
               rel="noopener noreferrer"
               title={t.depositViewOnExplorer}
-              className="font-mono text-slate-400 underline-offset-2 hover:text-cyan-400 hover:underline"
+              className="font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
             >
               {truncateHash(shownHash)}
             </a>
@@ -631,7 +630,7 @@ function WithdrawalRow({
               <button
                 type="button"
                 onClick={() => onDismiss(withdrawal.intentId)}
-                className="rounded font-medium text-slate-200 underline underline-offset-2 transition hover:text-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="rounded font-medium text-slate-200 underline underline-offset-2 transition hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               >
                 {t.withdrawalHide}
               </button>
@@ -782,7 +781,7 @@ function CompletedPortfolioRow({
       <button
         type="button"
         onClick={onOpen}
-        className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60"
+        className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
       >
         {content}
       </button>
@@ -832,7 +831,7 @@ function CompletedMovementRow({
             target="_blank"
             rel="noopener noreferrer"
             title={t.depositViewOnExplorer}
-            className="min-w-0 truncate font-mono text-slate-400 underline-offset-2 hover:text-cyan-400 hover:underline"
+            className="min-w-0 truncate font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
           >
             {truncateHash(row.txHash)}
           </a>
@@ -982,7 +981,7 @@ function RecentActivityFeed({
             <button
               type="button"
               onClick={history.onRetry}
-              className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.activityHistoryRetry}
             </button>
@@ -994,7 +993,7 @@ function RecentActivityFeed({
           type="button"
           onClick={showMore}
           disabled={ready?.more?.fetching}
-          className="mt-3 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:opacity-60"
+          className="mt-3 w-full rounded-xl border border-slate-700 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
         >
           {t.activityShowMore}
         </button>
@@ -1255,7 +1254,7 @@ export function IntentsAccountView({
         <button
           type="button"
           onClick={onConnect}
-          className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           <Wallet size={16} aria-hidden="true" />
           {t.walletConnect}
@@ -1264,10 +1263,10 @@ export function IntentsAccountView({
         <button
           type="button"
           onClick={onAddFunds}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm sm:px-5 font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm sm:px-5 font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
             hasDraftCard
               ? "border border-slate-600 text-slate-100 hover:bg-slate-800"
-              : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+              : "bg-accent text-accent-ink hover:bg-accent/90"
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7 7 7-7"/><path d="M5 21h14"/></svg>
@@ -1279,7 +1278,7 @@ export function IntentsAccountView({
         onClick={onWithdraw}
         disabled={signedOut || !hasGeneralBalance}
         title={signedOut ? t.myAccountWithdrawSignedOutHint : undefined}
-        className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-2.5 sm:px-5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7-7-7 7"/><path d="M5 3h14"/></svg>
         {t.myAccountWithdraw}

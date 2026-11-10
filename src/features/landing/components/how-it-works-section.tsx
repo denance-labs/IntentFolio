@@ -4,7 +4,7 @@ import { Coins, RefreshCw, Sliders, Wallet } from "lucide-react";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { WalletIcon } from "@/features/market/lib/token-icons";
 import { landingTranslations } from "../lib/translations";
-import { WORLD_H2, WORLD_LABEL } from "../lib/world";
+import { WORLD_H2, WORLD_LABEL } from "@/features/world/world";
 
 // Build first, connect and fund second (D-393): the same order as the signed-out start.
 // D-568: the four steps read as one track instead of four cards. Each step carries a segment of it,

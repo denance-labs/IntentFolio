@@ -5,6 +5,7 @@ import { usePortfolio } from "../context/portfolio-context";
 import { useLanguage } from "../context/language-context";
 import { shellTranslations } from "../lib/translations";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
+import { themeColor } from "@/features/world/colors";
 import { InfoTooltip } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { formatAxisUsd, niceYAxis } from "../lib/chart-axis";
 import { SkeletonBlock, ErrorState } from "./view-states";
@@ -24,12 +25,49 @@ import type { Language } from "@/features/portfolio-editor/types";
 type SpreadPoint = { timestamp: number; spreadUsd: number };
 
 // --- Chart constants ---
+// D-572: drawn in CSS pixels at the container's width, as Evolution is. A fixed 560×200 viewBox
+// stretched to the panel made the axis labels ~6 px at 390 px and ~22 px at 1440. Text, line and
+// dots now keep one size at every width. The height keeps the old box's low, wide shape on a phone
+// (the operator's choice), with a floor so the labels still fit, and stops at 240 px on desktop.
 
-const W = 560;
-const H = 200;
-const PAD = { top: 16, right: 20, bottom: 44, left: 60 };
-const CW = W - PAD.left - PAD.right;
-const CH = H - PAD.top - PAD.bottom;
+const BASE_W = 560;
+const BASE_H = 200;
+const MIN_H = 130;
+const MAX_H = 240;
+const PAD = { top: 16, right: 16, bottom: 28, left: 56 };
+
+/** The old box's height at this width, between MIN_H (phones) and MAX_H (desktop). */
+function chartHeight(width: number): number {
+  return Math.min(MAX_H, Math.max(MIN_H, Math.round((BASE_H * width) / BASE_W)));
+}
+const AXIS_FONT = 11;
+const TIP_FONT = 11;
+const TIP_VALUE_FONT = 13;
+
+/** The box's width in CSS pixels, 0 until it is measured (nothing is drawn until then). */
+function useBoxWidth() {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setWidth(el.clientWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return { boxRef, width };
+}
+
+/** Four date labels, evenly spread and never repeated; the first starts and the last ends at its point. */
+function xLabelIndexes(count: number): number[] {
+  return [...new Set(Array.from({ length: 4 }, (_, i) => Math.round((i / 3) * (count - 1))))];
+}
+
+function xLabelAnchor(i: number, total: number): "start" | "middle" | "end" {
+  if (total > 1 && i === 0) return "start";
+  if (total > 1 && i === total - 1) return "end";
+  return "middle";
+}
 
 // --- Helpers ---
 
@@ -85,7 +123,7 @@ type ChartProps = {
 
 // D-548: a point that includes funds the user moved gets a neutral ring — never green/red or an
 // arrow, which would read as the gain or loss it is there to rule out.
-const FLOW_RING = "#e2e8f0";
+const FLOW_RING = "stroke-slate-200";
 
 /** Arrow path inside a ring of radius ~6, centred on 0,0: up when funds came in, down when out. */
 const FLOW_ARROW_UP = "M0 3V-3M-2.2 -0.8 0 -3 2.2 -0.8";
@@ -97,13 +135,13 @@ const FLOW_ARROW_UP = "M0 3V-3M-2.2 -0.8 0 -3 2.2 -0.8";
 function FlowMark({ cx, cy, flowUsd, hovered }: { cx: number; cy: number; flowUsd: number | null; hovered: boolean }) {
   return (
     <g transform={`translate(${cx} ${cy})`}>
-      <circle r={hovered ? 7 : 6} fill={hovered ? "#22d3ee" : "#0f172a"} stroke={FLOW_RING} strokeWidth="1.5" />
+      <circle r={hovered ? 7 : 6} className={`${hovered ? "fill-accent" : "fill-slate-900"} ${FLOW_RING}`} strokeWidth="1.5" />
       {flowUsd !== null && (
         <path
           d={FLOW_ARROW_UP}
           transform={flowUsd < 0 ? "rotate(180)" : undefined}
           fill="none"
-          stroke={hovered ? "#0f172a" : FLOW_RING}
+          className={hovered ? "stroke-slate-900" : FLOW_RING}
           strokeWidth="1.4"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -114,7 +152,10 @@ function FlowMark({ cx, cy, flowUsd, hovered }: { cx: number; cy: number; flowUs
 }
 
 function ValueLineChart({ points, nowLabel, flowLabel }: ChartProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const { boxRef, width: W } = useBoxWidth();
+  const CW = Math.max(0, W - PAD.left - PAD.right);
+  const H = chartHeight(W);
+  const CH = H - PAD.top - PAD.bottom;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const { minTs, maxTs, axis } = useMemo(() => {
@@ -149,17 +190,12 @@ function ValueLineChart({ points, nowLabel, flowLabel }: ChartProps) {
     points.map((p) => `L${scaleX(p.timestamp)},${scaleY(p.valueUsd)}`).join(" ") +
     ` L${lastX},${baseY} Z`;
 
-  const xLabelIdxs = Array.from({ length: 4 }, (_, i) =>
-    Math.round((i / 3) * (points.length - 1))
-  );
+  const xLabelIdxs = xLabelIndexes(points.length);
 
   const yLevels = axis.ticks.map((val) => ({ val, y: scaleY(val) }));
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const el = svgRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const svgX = e.clientX - e.currentTarget.getBoundingClientRect().left;
     let nearestIdx = 0;
     let nearestDist = Infinity;
     points.forEach((p, i) => {
@@ -176,120 +212,129 @@ function ValueLineChart({ points, nowLabel, flowLabel }: ChartProps) {
   const hx = hp ? scaleX(hp.timestamp) : 0;
   const hy = hp ? scaleY(hp.valueUsd) : 0;
   const hFlow = hp && hp.flowUsd !== undefined ? flowLabel(hp.flowUsd) : null;
-  // Wide enough for the movement line at 10px (~5.8 per character), never narrower than before.
-  const tooltipW = hFlow ? Math.max(116, Math.ceil(hFlow.length * 5.8) + 24) : 116;
-  const tooltipH = hFlow ? 58 : 42;
+  // Wide enough for the movement line at 11 px (~6.4 per character), never narrower than 124.
+  const tooltipW = hFlow ? Math.max(124, Math.ceil(hFlow.length * 6.4) + 24) : 124;
+  const tooltipH = hFlow ? 62 : 44;
   const tooltipLeft = hx > W - tooltipW - 24;
+  // D-572: in CSS pixels a narrow chart can be thinner than point + tooltip on either side: kept inside it.
+  const tipX = Math.min(Math.max(tooltipLeft ? hx - tooltipW - 12 : hx + 10, 0), Math.max(0, W - tooltipW));
+  // A low phone chart has little room above a point: the tooltip stays inside the chart's height too.
+  const tipY = Math.min(Math.max(hy - 30, 0), Math.max(0, H - tooltipH));
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      aria-label="Managed portfolio value over time"
-      role="img"
-      className="overflow-visible"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHoveredIdx(null)}
-    >
-      <defs>
-        <linearGradient id="perf-area-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-        </linearGradient>
-        <clipPath id="perf-clip">
-          <rect x={PAD.left} y={PAD.top} width={CW} height={CH} />
-        </clipPath>
-      </defs>
+    <div ref={boxRef} style={{ height: H }}>
+      {W > 0 && (
+        <svg
+          width={W}
+          height={H}
+          aria-label="Managed portfolio value over time"
+          role="img"
+          className="overflow-visible"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
+          <defs>
+            <linearGradient id="perf-area-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" style={{ stopColor: themeColor("accent") }} stopOpacity="0.18" />
+              <stop offset="100%" style={{ stopColor: themeColor("accent") }} stopOpacity="0" />
+            </linearGradient>
+            <clipPath id="perf-clip">
+              <rect x={PAD.left} y={PAD.top} width={CW} height={CH} />
+            </clipPath>
+          </defs>
 
-      {yLevels.map(({ y }, i) => (
-        <line key={i} x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y} className="stroke-slate-800" strokeWidth="1" />
-      ))}
+          {yLevels.map(({ y }, i) => (
+            <line key={i} x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y} className="stroke-slate-800" strokeWidth="1" />
+          ))}
 
-      <path d={areaPath} fill="url(#perf-area-grad)" clipPath="url(#perf-clip)" />
+          <path d={areaPath} fill="url(#perf-area-grad)" clipPath="url(#perf-clip)" />
 
-      <polyline
-        points={polylinePts}
-        fill="none"
-        stroke="#22d3ee"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        clipPath="url(#perf-clip)"
-      />
-
-      {points.map((p, i) =>
-        p.flowUsd !== undefined ? (
-          <FlowMark
-            key={i}
-            cx={scaleX(p.timestamp)}
-            cy={scaleY(p.valueUsd)}
-            flowUsd={p.flowUsd}
-            hovered={hoveredIdx === i}
+          <polyline
+            points={polylinePts}
+            fill="none"
+            className="stroke-accent"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            clipPath="url(#perf-clip)"
           />
-        ) : (
-          <circle
-            key={i}
-            cx={scaleX(p.timestamp)}
-            cy={scaleY(p.valueUsd)}
-            r={hoveredIdx === i ? 4.5 : 2.5}
-            fill={hoveredIdx === i ? "#22d3ee" : "#0e7490"}
-            className="stroke-slate-900"
-            strokeWidth="1.5"
-          />
-        )
-      )}
 
-      {xLabelIdxs.map((idx, i) => (
-        <text key={i} x={scaleX(points[idx].timestamp)} y={H - 8} textAnchor="middle" fontSize="10" className="fill-slate-500">
-          {formatValuePointDate(points[idx], nowLabel)}
-        </text>
-      ))}
-
-      {yLevels.map(({ val, y }, i) => (
-        <text key={i} x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="10" className="fill-slate-500">
-          {formatAxisUsd(val, axis.step)}
-        </text>
-      ))}
-
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
-      <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
-
-      {hp && (
-        <line x1={hx} y1={PAD.top} x2={hx} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" strokeDasharray="4 2" />
-      )}
-
-      {hp && (
-        <>
-          <rect
-            x={tooltipLeft ? hx - tooltipW - 12 : hx + 10}
-            y={hy - 30}
-            width={tooltipW}
-            height={tooltipH}
-            rx={6}
-            className="fill-slate-800 stroke-slate-700"
-            strokeWidth="1"
-          />
-          <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy - 13} fontSize="10" className="fill-slate-400">
-            {formatValuePointDate(hp, nowLabel)}
-          </text>
-          <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy + 5} fontSize="12" fontWeight="600" fill="#e2e8f0">
-            {formatUsd(hp.valueUsd)}
-          </text>
-          {hFlow && (
-            <text x={tooltipLeft ? hx - tooltipW - 2 : hx + 20} y={hy + 21} fontSize="10" className="fill-slate-300">
-              {hFlow}
-            </text>
+          {points.map((p, i) =>
+            p.flowUsd !== undefined ? (
+              <FlowMark
+                key={i}
+                cx={scaleX(p.timestamp)}
+                cy={scaleY(p.valueUsd)}
+                flowUsd={p.flowUsd}
+                hovered={hoveredIdx === i}
+              />
+            ) : (
+              <circle
+                key={i}
+                cx={scaleX(p.timestamp)}
+                cy={scaleY(p.valueUsd)}
+                r={hoveredIdx === i ? 4.5 : 2.5}
+                className={`${hoveredIdx === i ? "fill-accent" : "fill-accent/50"} stroke-slate-900`}
+                strokeWidth="1.5"
+              />
+            )
           )}
-        </>
+
+          {xLabelIdxs.map((idx, i) => (
+            <text key={idx} x={scaleX(points[idx].timestamp)} y={H - 8} textAnchor={xLabelAnchor(i, xLabelIdxs.length)} fontSize={AXIS_FONT} className="fill-slate-400">
+              {formatValuePointDate(points[idx], nowLabel)}
+            </text>
+          ))}
+
+          {yLevels.map(({ val, y }, i) => (
+            <text key={i} x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={AXIS_FONT} className="fill-slate-400">
+              {formatAxisUsd(val, axis.step)}
+            </text>
+          ))}
+
+          <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
+          <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
+
+          {hp && (
+            <line x1={hx} y1={PAD.top} x2={hx} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" strokeDasharray="4 2" />
+          )}
+
+          {hp && (
+            <>
+              <rect
+                x={tipX}
+                y={tipY}
+                width={tooltipW}
+                height={tooltipH}
+                rx={6}
+                className="fill-slate-800 stroke-slate-700"
+                strokeWidth="1"
+              />
+              <text x={tipX + 10} y={tipY + 18} fontSize={TIP_FONT} className="fill-slate-400">
+                {formatValuePointDate(hp, nowLabel)}
+              </text>
+              <text x={tipX + 10} y={tipY + 37} fontSize={TIP_VALUE_FONT} fontWeight="600" className="fill-slate-200">
+                {formatUsd(hp.valueUsd)}
+              </text>
+              {hFlow && (
+                <text x={tipX + 10} y={tipY + 54} fontSize={TIP_FONT} className="fill-slate-300">
+                  {hFlow}
+                </text>
+              )}
+            </>
+          )}
+        </svg>
       )}
-    </svg>
+    </div>
   );
 }
 
 // --- Spread chart ---
 
 function SpreadLineChart({ points }: { points: SpreadPoint[] }) {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const { boxRef, width: W } = useBoxWidth();
+  const CW = Math.max(0, W - PAD.left - PAD.right);
+  const H = chartHeight(W);
+  const CH = H - PAD.top - PAD.bottom;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const { minTs, maxTs, axis } = useMemo(() => {
@@ -323,16 +368,11 @@ function SpreadLineChart({ points }: { points: SpreadPoint[] }) {
     points.map((p) => `L${scaleX(p.timestamp)},${scaleY(p.spreadUsd)}`).join(" ") +
     ` L${lastX},${baseY} Z`;
 
-  const xLabelIdxs = Array.from({ length: 4 }, (_, i) =>
-    Math.round((i / 3) * (points.length - 1))
-  );
+  const xLabelIdxs = xLabelIndexes(points.length);
   const yLevels = axis.ticks.map((val) => ({ val, y: scaleY(val) }));
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const el = svgRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const svgX = e.clientX - e.currentTarget.getBoundingClientRect().left;
     let nearestIdx = 0;
     let nearestDist = Infinity;
     points.forEach((p, i) => {
@@ -345,95 +385,100 @@ function SpreadLineChart({ points }: { points: SpreadPoint[] }) {
   const hp = hoveredIdx !== null ? points[hoveredIdx] : null;
   const hx = hp ? scaleX(hp.timestamp) : 0;
   const hy = hp ? scaleY(hp.spreadUsd) : 0;
-  const tooltipLeft = hx > W - 140;
+  const tooltipLeft = hx > W - 148;
+  const tipX = Math.min(Math.max(tooltipLeft ? hx - 136 : hx + 10, 0), Math.max(0, W - 124));
+  const tipY = Math.min(Math.max(hy - 30, 0), Math.max(0, H - 44));
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      aria-label="Cumulative spread earned over time"
-      role="img"
-      className="overflow-visible"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHoveredIdx(null)}
-    >
-      <defs>
-        <linearGradient id="spread-area-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#10b981" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-        </linearGradient>
-        <clipPath id="spread-clip">
-          <rect x={PAD.left} y={PAD.top} width={CW} height={CH} />
-        </clipPath>
-      </defs>
+    <div ref={boxRef} style={{ height: H }}>
+      {W > 0 && (
+        <svg
+          width={W}
+          height={H}
+          aria-label="Cumulative spread earned over time"
+          role="img"
+          className="overflow-visible"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
+          <defs>
+            <linearGradient id="spread-area-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+            </linearGradient>
+            <clipPath id="spread-clip">
+              <rect x={PAD.left} y={PAD.top} width={CW} height={CH} />
+            </clipPath>
+          </defs>
 
-      {yLevels.map(({ y }, i) => (
-        <line key={i} x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y} className="stroke-slate-800" strokeWidth="1" />
-      ))}
+          {yLevels.map(({ y }, i) => (
+            <line key={i} x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y} className="stroke-slate-800" strokeWidth="1" />
+          ))}
 
-      <path d={areaPath} fill="url(#spread-area-grad)" clipPath="url(#spread-clip)" />
+          <path d={areaPath} fill="url(#spread-area-grad)" clipPath="url(#spread-clip)" />
 
-      <polyline
-        points={polylinePts}
-        fill="none"
-        stroke="#10b981"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        clipPath="url(#spread-clip)"
-      />
-
-      {points.map((p, i) => (
-        <circle
-          key={i}
-          cx={scaleX(p.timestamp)}
-          cy={scaleY(p.spreadUsd)}
-          r={hoveredIdx === i ? 4.5 : 2.5}
-          fill={hoveredIdx === i ? "#10b981" : "#065f46"}
-          className="stroke-slate-900"
-          strokeWidth="1.5"
-        />
-      ))}
-
-      {xLabelIdxs.map((idx, i) => (
-        <text key={i} x={scaleX(points[idx].timestamp)} y={H - 8} textAnchor="middle" fontSize="10" className="fill-slate-500">
-          {formatChartDate(points[idx].timestamp)}
-        </text>
-      ))}
-
-      {yLevels.map(({ val, y }, i) => (
-        <text key={i} x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="10" className="fill-slate-500">
-          {formatAxisUsd(val, axis.step)}
-        </text>
-      ))}
-
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
-      <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
-
-      {hp && (
-        <line x1={hx} y1={PAD.top} x2={hx} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" strokeDasharray="4 2" />
-      )}
-
-      {hp && (
-        <>
-          <rect
-            x={tooltipLeft ? hx - 128 : hx + 10}
-            y={hy - 30}
-            width={116}
-            height={42}
-            rx={6}
-            className="fill-slate-800 stroke-slate-700"
-            strokeWidth="1"
+          <polyline
+            points={polylinePts}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            clipPath="url(#spread-clip)"
           />
-          <text x={tooltipLeft ? hx - 118 : hx + 20} y={hy - 13} fontSize="10" className="fill-slate-400">
-            {formatChartDate(hp.timestamp)}
-          </text>
-          <text x={tooltipLeft ? hx - 118 : hx + 20} y={hy + 5} fontSize="12" fontWeight="600" fill="#e2e8f0">
-            {formatUsd(hp.spreadUsd)}
-          </text>
-        </>
+
+          {points.map((p, i) => (
+            <circle
+              key={i}
+              cx={scaleX(p.timestamp)}
+              cy={scaleY(p.spreadUsd)}
+              r={hoveredIdx === i ? 4.5 : 2.5}
+              fill={hoveredIdx === i ? "#10b981" : "#065f46"}
+              className="stroke-slate-900"
+              strokeWidth="1.5"
+            />
+          ))}
+
+          {xLabelIdxs.map((idx, i) => (
+            <text key={idx} x={scaleX(points[idx].timestamp)} y={H - 8} textAnchor={xLabelAnchor(i, xLabelIdxs.length)} fontSize={AXIS_FONT} className="fill-slate-400">
+              {formatChartDate(points[idx].timestamp)}
+            </text>
+          ))}
+
+          {yLevels.map(({ val, y }, i) => (
+            <text key={i} x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={AXIS_FONT} className="fill-slate-400">
+              {formatAxisUsd(val, axis.step)}
+            </text>
+          ))}
+
+          <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
+          <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" />
+
+          {hp && (
+            <line x1={hx} y1={PAD.top} x2={hx} y2={PAD.top + CH} className="stroke-slate-700" strokeWidth="1" strokeDasharray="4 2" />
+          )}
+
+          {hp && (
+            <>
+              <rect
+                x={tipX}
+                y={tipY}
+                width={124}
+                height={44}
+                rx={6}
+                className="fill-slate-800 stroke-slate-700"
+                strokeWidth="1"
+              />
+              <text x={tipX + 10} y={tipY + 18} fontSize={TIP_FONT} className="fill-slate-400">
+                {formatChartDate(hp.timestamp)}
+              </text>
+              <text x={tipX + 10} y={tipY + 37} fontSize={TIP_VALUE_FONT} fontWeight="600" className="fill-slate-200">
+                {formatUsd(hp.spreadUsd)}
+              </text>
+            </>
+          )}
+        </svg>
       )}
-    </svg>
+    </div>
   );
 }
 
@@ -467,13 +512,13 @@ function PerformanceSkeleton() {
       <SkeletonBlock className="h-6 w-40" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="space-y-3 rounded-2xl border border-slate-800 bg-surface p-4">
+          <div key={i} className="space-y-3 rounded-2xl glass p-4">
             <SkeletonBlock className="h-3 w-28" />
             <SkeletonBlock className="h-8 w-32" />
           </div>
         ))}
       </div>
-      <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+      <div className="rounded-2xl glass p-4">
         <SkeletonBlock className="mb-4 h-4 w-32" />
         <SkeletonBlock className="h-[200px] w-full rounded-xl" />
       </div>
@@ -642,14 +687,14 @@ export function PerformanceView() {
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <p className="mb-1 text-xs text-slate-400">{t.performancePortfolioValue}</p>
           <p className="text-2xl font-semibold tabular-nums text-slate-100">
             {formatUsd(currentValueUsd)}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <div className="mb-1 flex items-center gap-1.5">
             <p className="text-xs text-slate-400">{t.historyEventAttributedSpread}</p>
             <InfoTooltip label={t.performanceSpreadInfo}>{t.performanceSpreadInfo}</InfoTooltip>
@@ -657,7 +702,7 @@ export function PerformanceView() {
           <RebalanceMetric
             loading={rebalancesLoading}
             failed={rebalancesFailed}
-            className="text-cyan-300"
+            className="text-accent"
             value={
               isReal
                 ? `${realStats?.spreadIsMinimum ? "≥ " : ""}${formatUsd(realStats?.spreadUsd ?? 0)}`
@@ -669,7 +714,7 @@ export function PerformanceView() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+        <div className="rounded-2xl glass p-4">
           <p className="mb-1 text-xs text-slate-400">{t.performanceSwapsLabel}</p>
           <RebalanceMetric
             loading={rebalancesLoading}
@@ -689,7 +734,7 @@ export function PerformanceView() {
       )}
 
       {/* Value chart */}
-      <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+      <div className="rounded-2xl glass p-4">
         <div className="mb-4 flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-medium text-slate-400">{t.performancePortfolioValue}</p>
@@ -732,8 +777,8 @@ export function PerformanceView() {
             {hasFlowMark && (
               <p className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
                 <svg viewBox="-7 -7 14 14" width="13" height="13" aria-hidden="true" className="mt-px shrink-0">
-                  <circle r="6" fill="#0f172a" stroke={FLOW_RING} strokeWidth="1.5" />
-                  <path d={FLOW_ARROW_UP} fill="none" stroke={FLOW_RING} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle r="6" className={`fill-slate-900 ${FLOW_RING}`} strokeWidth="1.5" />
+                  <path d={FLOW_ARROW_UP} fill="none" className={FLOW_RING} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 {t.performanceFlowLegend}
               </p>
@@ -747,7 +792,7 @@ export function PerformanceView() {
       </div>
 
       {/* Cumulative spread chart */}
-      <div className="rounded-2xl border border-slate-800 bg-surface p-4">
+      <div className="rounded-2xl glass p-4">
         <div className="mb-1">
           <p className="text-sm font-medium text-slate-400">{t.performanceCumulativeSpreadLabel}</p>
           <p className="mt-0.5 text-[11px] text-slate-400">{t.performanceCumulativeSpreadNote}</p>

@@ -75,6 +75,21 @@ type IconProps = {
   variant?: "branded" | "mono" | "background";
 };
 
+// Marks whose branded variant is a single pure-black fill disappear on the app's dark ground (D-571
+// part 6). They draw with the mono variant (fill: currentColor) in the ink color instead. Keys are
+// chain ids and resolved token symbols; other variants are left alone.
+const BLACK_BRAND_MARKS = new Set([
+  "stellar:mainnet",
+  "aptos:mainnet",
+  "eth:196", // X Layer
+  "eth:9745", // Plasma
+  "XLM",
+]);
+
+function inkMarkClass(className?: string): string {
+  return className ? `text-slate-100 ${className}` : "text-slate-100";
+}
+
 // ---------------------------------------------------------------------------
 // Token symbol → web3icons component
 // Chain-specific stables fall back to their base asset icon.
@@ -161,13 +176,16 @@ const LOCAL_SVG_ICON_MAP: Record<string, string> = {
   WALC: "/token-icons/WALC.svg",
   // Same on-chain logo as META (the Meta Pool token): the two catalog entries differ in contract only.
   $META: "/token-icons/META.svg",
-  // The six Ondo stocks (plan 039). Attribution: see ATTRIBUTIONS.md #24.
+  // The Ondo stocks (plan 039, D-576). Attribution: see ATTRIBUTIONS.md #24.
   AAPL: "/token-icons/AAPL.png",
   AMZN: "/token-icons/AMZN.png",
   NVDA: "/token-icons/NVDA.png",
   QQQ: "/token-icons/QQQ.png",
   TSLA: "/token-icons/TSLA.png",
   GOOGL: "/token-icons/GOOGL.png",
+  MSFT: "/token-icons/MSFT.png",
+  // Not "META": that key is Meta Pool's logo (D-576).
+  METAon: "/token-icons/METAon.png",
 };
 
 // Catalog tickers can carry a suffix ("GRAM (ex-TON)", D-247) while the icon maps are keyed by the
@@ -190,6 +208,9 @@ export function TokenIcon({
 }: IconProps & { symbol: string }) {
   const key = resolveIconSymbol(symbol);
   const Icon = TOKEN_ICON_MAP[key];
+  if (Icon && variant === "branded" && BLACK_BRAND_MARKS.has(key)) {
+    return <Icon variant="mono" size={size} className={inkMarkClass(className)} />;
+  }
   if (Icon) return <Icon variant={variant} size={size} className={className} />;
   const localSrc = LOCAL_SVG_ICON_MAP[key];
   if (localSrc) {
@@ -265,6 +286,9 @@ export function ChainIcon({
   variant?: "branded" | "mono" | "background";
 }) {
   const Icon = CHAIN_ICON_MAP[chainId];
+  if (Icon && variant === "branded" && BLACK_BRAND_MARKS.has(chainId)) {
+    return <Icon variant="mono" size={size} className={inkMarkClass(className)} />;
+  }
   if (Icon) return <Icon variant={variant} size={size} className={className} />;
   const localSrc = LOCAL_CHAIN_SVG_MAP[chainId];
   if (localSrc) {

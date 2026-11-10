@@ -432,7 +432,7 @@ export function PresetReviewModal({
               aria-label={`${symbolFor(id)} ${t.presetReviewAllocate}`}
               aria-invalid={rowBelowMin || undefined}
               aria-describedby={rowBelowMin ? `preset-review-min-${id}` : undefined}
-              className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">≈ {formatUsd(amt * price)}</span>
             {/* D-528: the token the Storage Cost is charged in says what reaches the portfolio. */}
@@ -447,7 +447,7 @@ export function PresetReviewModal({
             {/* D-319: the ellipsis cut is only visual (the value signed does not change). One line
                 either way, so pressing Max does not move the chips. */}
             {wholeBalance ? (
-              <span className="mt-0.5 text-right text-[11px] text-cyan-300/80">{t.amountWholeBalance}</span>
+              <span className="mt-0.5 text-right text-[11px] text-accent/80">{t.amountWholeBalance}</span>
             ) : (
               <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-400">
                 {t.presetReviewAvailable}: {formatTokenAmount(avail, price)} <span className="whitespace-nowrap">≈ {formatUsd(avail * price)}</span>
@@ -503,7 +503,7 @@ export function PresetReviewModal({
       {pendingAllocates && pendingAllocates.length > 0 && !isSigning && !unconfirmedReason ? (
         <p
           role="status"
-          className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-[12px] leading-snug text-cyan-100"
+          className="mt-3 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[12px] leading-snug text-accent"
         >
           {t.pendingAllocateFundingNotice}
         </p>
@@ -527,7 +527,7 @@ export function PresetReviewModal({
           maxLength={PORTFOLIO_NAME_MAX_LENGTH}
           placeholder={t.portfolioNamePlaceholder}
           aria-describedby={name !== "" && nameError() ? undefined : "preset-review-name-hint"}
-          className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+          className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
             name !== "" && !nameValidation.ok ? "border-rose-500" : "border-slate-700 focus:border-slate-500"
           }`}
         />
@@ -552,7 +552,7 @@ export function PresetReviewModal({
         <section className="mt-5" aria-labelledby="preset-review-composition">
           <h3
             id="preset-review-composition"
-            className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-cyan-300"
+            className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-accent"
           >
             {t.presetReviewComposition}
           </h3>
@@ -650,7 +650,7 @@ export function PresetReviewModal({
             <p className="mt-1.5">{t.realStageSeeMyAccount}</p>
           </div>
         ) : realAllocateStage ? (
-          <p className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-3 py-2 text-[12px] leading-tight text-cyan-100">
+          <p className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[12px] leading-tight text-accent">
             <Loader2 aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
             {stageCopy(realAllocateStage)}
           </p>
@@ -695,7 +695,7 @@ export function PresetReviewModal({
             type="button"
             onClick={goBack}
             disabled={isSigning}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {onBack ? t.presetReviewBack : t.cancel}
           </button>
@@ -715,7 +715,7 @@ export function PresetReviewModal({
                   ? "preset-review-needs-amount"
                   : undefined
           }
-          className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {unconfirmedReason
             ? t.realAllocateClose

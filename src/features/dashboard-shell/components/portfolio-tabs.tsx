@@ -233,8 +233,8 @@ export function PortfolioTabs({
             {onMiCuentaClick && (
               <>
                 {/* D-561: an anchor of its own, told apart from the portfolios by its shape: a solid
-                    surface and an icon chip, even when not selected. Cyan is free for it because
-                    portfolio colors leave cyan out (portfolio-color.ts). */}
+                    surface and an icon chip, even when not selected. When selected it takes the accent, a
+                    bone no portfolio hue comes near (portfolio-color.ts). */}
                 <button
                   type="button"
                   role="tab"
@@ -242,16 +242,16 @@ export function PortfolioTabs({
                   // D-360: where the focus lands when the draft's tab it was on is discarded.
                   data-focus-landing={miCuentaActive ? "" : undefined}
                   onClick={onMiCuentaClick}
-                  className={`relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-2xl border py-1 pl-2 pr-4 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                  className={`relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-2xl border py-1 pl-2 pr-4 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                     miCuentaActive
-                      ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-200"
-                      : "border-slate-700 bg-surface text-slate-100 hover:border-cyan-400/40"
+                      ? "border-accent/60 bg-accent/15 text-accent"
+                      : "border-slate-700 bg-surface text-slate-100 hover:border-accent/40"
                   }`}
                 >
                   <span
                     aria-hidden="true"
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-                      miCuentaActive ? "bg-cyan-400/20 text-cyan-200" : "bg-cyan-400/10 text-cyan-300"
+                      miCuentaActive ? "bg-accent/20 text-accent" : "bg-accent/10 text-accent"
                     }`}
                   >
                     <Wallet className="h-4 w-4" />
@@ -263,14 +263,14 @@ export function PortfolioTabs({
                     {accountValue !== null && " "}
                     {accountValue !== null && (
                       <span
-                        className={`text-xs font-normal tabular-nums ${miCuentaActive ? "text-cyan-100/80" : "text-slate-300"}`}
+                        className={`text-xs font-normal tabular-nums ${miCuentaActive ? "text-accent/80" : "text-slate-300"}`}
                       >
                         {accountValue}
                       </span>
                     )}
                   </span>
                   {miCuentaBadge && (
-                    <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-400" />
+                    <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
                   )}
                 </button>
                 {/* Apart from the portfolios: Funding is not one more of them. With no portfolio on
@@ -306,7 +306,7 @@ export function PortfolioTabs({
                           data-focus-landing={isActive ? "" : undefined}
                           onClick={() => selectPortfolio(portfolio.id)}
                           title={portfolio.name}
-                          className={`flex max-w-[14rem] flex-col items-start pl-3 text-left text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                          className={`flex max-w-[14rem] flex-col items-start pl-3 text-left text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                             value !== undefined ? "py-1" : "py-1.5"
                           }`}
                         >
@@ -352,8 +352,8 @@ export function PortfolioTabs({
                       data-focus-landing={draftActive ? "" : undefined}
                       onClick={draftTab.onSelect}
                       title={draftTab.name}
-                      className={`max-w-[14rem] truncate whitespace-nowrap py-1.5 pl-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-                        draftActive ? "text-white" : "text-slate-400 hover:text-slate-100"
+                      className={`max-w-[14rem] truncate whitespace-nowrap py-1.5 pl-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                        draftActive ? "text-slate-100" : "text-slate-400 hover:text-slate-100"
                       }`}
                     >
                       {draftTab.name}
@@ -409,7 +409,7 @@ export function PortfolioTabs({
           <button
             type="button"
             {...newButtonProps}
-            className={`ml-2 hidden h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-dashed border-slate-700 px-2 text-sm text-slate-400 transition hover:border-slate-500 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 sm:inline-flex ${
+            className={`ml-2 hidden h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-dashed border-slate-700 px-2 text-sm text-slate-400 transition hover:border-slate-500 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:inline-flex ${
               newBlocked ? "opacity-60" : ""
             }`}
           >
@@ -429,23 +429,23 @@ export function PortfolioTabs({
                   aria-pressed={miCuentaActive}
                   data-focus-landing={miCuentaActive ? "" : undefined}
                   onClick={onMiCuentaClick}
-                  className={`relative inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border pl-1.5 pr-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                  className={`relative inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border pl-1.5 pr-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                     miCuentaActive
-                      ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-200"
-                      : "border-slate-700 bg-surface text-slate-100 hover:border-cyan-400/40"
+                      ? "border-accent/60 bg-accent/15 text-accent"
+                      : "border-slate-700 bg-surface text-slate-100 hover:border-accent/40"
                   }`}
                 >
                   <span
                     aria-hidden="true"
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
-                      miCuentaActive ? "bg-cyan-400/20 text-cyan-200" : "bg-cyan-400/10 text-cyan-300"
+                      miCuentaActive ? "bg-accent/20 text-accent" : "bg-accent/10 text-accent"
                     }`}
                   >
                     <Wallet className="h-3.5 w-3.5" />
                   </span>
                   {t.myAccountTab}
                   {miCuentaBadge && (
-                    <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-400" />
+                    <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
                   )}
                 </button>
               )}
@@ -458,7 +458,7 @@ export function PortfolioTabs({
                 <button
                   type="button"
                   {...newButtonProps}
-                  className={`inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 transition hover:border-slate-500 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+                  className={`inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 transition hover:border-slate-500 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                     newBlocked ? "opacity-60" : ""
                   }`}
                 >
@@ -500,7 +500,7 @@ export function PortfolioTabs({
                     // and a flex item defaults to `min-width: auto`, so `flex-1` alone could not
                     // shrink it. One long portfolio name pushed the header past the viewport and
                     // gave the whole page a horizontal scroll (mobile QA, 008 Fase 2).
-                    className={`min-w-0 flex-1 truncate rounded-xl border border-slate-700 bg-slate-900 py-2 pr-3 text-sm text-slate-100 focus:border-cyan-300 focus:outline-none ${
+                    className={`min-w-0 flex-1 truncate rounded-xl border border-slate-700 bg-slate-900 py-2 pr-3 text-sm text-slate-100 focus:border-accent focus:outline-none ${
                       selectDot ? "pl-7" : "pl-3"
                     }`}
                   >
@@ -568,7 +568,7 @@ export function PortfolioTabs({
             <button
               type="button"
               onClick={() => setModal({ type: "none" })}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.addPortfolioBlockedClose}
             </button>
@@ -582,8 +582,8 @@ export function PortfolioTabs({
                 // The new portfolio is what "+" asked for, so it takes the main button when offered.
                 className={
                   offersNewBesideDraft
-                    ? "rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-                    : "rounded-xl bg-cyan-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                    ? "rounded-xl border border-accent/30 bg-accent/5 px-4 py-2 text-sm text-accent transition hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                    : "rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                 }
               >
                 {t.addPortfolioBlockedGoTo.replace("{name}", () => draftTab.name)}
@@ -596,7 +596,7 @@ export function PortfolioTabs({
                   setModal({ type: "none" });
                   onNewPortfolio?.();
                 }}
-                className="rounded-xl bg-cyan-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+                className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               >
                 {t.addPortfolioBuildNew}
               </button>
@@ -628,7 +628,7 @@ export function PortfolioTabs({
             <button
               type="button"
               onClick={() => setModal({ type: "none" })}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {t.cancel}
             </button>

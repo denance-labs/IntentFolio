@@ -10,6 +10,7 @@ import { LABEL_MIN_SHARE, placeLeaders } from "./showcase-leaders";
 import { clickPins } from "../lib/pin";
 import { formatShare } from "../lib/format";
 import type { ShowcaseLabels, ShowcaseToken } from "../types";
+import { themeColor } from "@/features/world/colors";
 
 type Mode = "current" | "target";
 
@@ -81,7 +82,7 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
   const center = (mode: Mode) => (
     <div>
       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">{mode === "current" ? labels.now : labels.target}</p>
-      <p className="mt-1.5 text-[26px] font-semibold leading-none text-white">
+      <p className="mt-1.5 text-[26px] font-semibold leading-none text-slate-100">
         {mode === "current" ? formatUsd(totalUsd) : plural(targetCount, labels.tokenOne, labels.tokenMany)}
       </p>
       <p className="mt-1.5 text-xs text-slate-400">
@@ -96,11 +97,11 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
     return (
       <div className="max-w-[62%]">
         <p className="truncate text-[11px] text-slate-400">{token.label}</p>
-        <p className="mt-1.5 text-[26px] font-semibold leading-none tabular-nums text-white">{formatShare(pct)}</p>
+        <p className="mt-1.5 text-[26px] font-semibold leading-none tabular-nums text-slate-100">{formatShare(pct)}</p>
         {mode === "target" && token.targetPct === 0 ? (
           <p className="mt-1.5 text-xs text-slate-400">{labels.notInMix}</p>
         ) : (
-          <p className="mt-1.5 text-xs tabular-nums text-cyan-300">{formatUsd(usd)}</p>
+          <p className="mt-1.5 text-xs tabular-nums text-accent">{formatUsd(usd)}</p>
         )}
       </div>
     );
@@ -126,7 +127,7 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
           if (clickPins(e)) onToggle(token.tokenId);
         }}
         data-showcase-token=""
-        className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-1.5 text-[12.5px] text-slate-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+        className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-1.5 text-[12.5px] text-slate-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
           isDimmed ? "border-slate-800 bg-slate-900 opacity-40" : "border-slate-800 bg-slate-900"
         }`}
         style={isActive ? { borderColor: token.color, backgroundColor: `${token.color}24` } : undefined}
@@ -163,12 +164,8 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
   return (
     <section
       aria-labelledby="overview-stage-title"
-      className={`ov-rise mt-7 rounded-[2rem] border border-white/[0.06] px-4 pb-6 pt-5 sm:px-8 sm:pb-7 sm:pt-6 ${className}`}
-      style={{
-        animationDelay: "300ms",
-        background:
-          "radial-gradient(120% 90% at 50% 0%, rgb(103 232 249 / 0.045), rgb(103 232 249 / 0) 60%), rgb(255 255 255 / 0.018)",
-      }}
+      className={`ov-rise glass mt-7 rounded-[2rem] px-4 pb-6 pt-5 sm:px-8 sm:pb-7 sm:pt-6 ${className}`}
+      style={{ animationDelay: "300ms" }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="overview-stage-title" className="text-[15px] font-semibold text-slate-200">
@@ -177,7 +174,7 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
         {editHref ? (
           <Link
             href={editHref}
-            className="hidden items-center gap-1.5 rounded text-[13px] text-cyan-200 transition hover:text-cyan-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 md:inline-flex"
+            className="hidden items-center gap-1.5 rounded text-[13px] text-accent underline-offset-4 transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:inline-flex"
           >
             {labels.editTargets}
             <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
@@ -209,8 +206,8 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
               type="button"
               aria-pressed={phoneMode === mode}
               onClick={() => choose(mode)}
-              className={`relative h-9 rounded-[9px] text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
-                phoneMode === mode ? "text-white" : "text-slate-400"
+              className={`relative h-9 rounded-[9px] text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                phoneMode === mode ? "text-slate-100" : "text-slate-400"
               }`}
             >
               {mode === "current" ? labels.now : labels.target}
@@ -243,7 +240,7 @@ export function ShowcaseStage({ tokens, totalUsd, labels, activeTokenId, onHover
                 if (clickPins(e)) onToggle(token.tokenId);
               }}
               data-showcase-token=""
-              className="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              className="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               style={isActive ? { borderColor: token.color, backgroundColor: `${token.color}1f` } : undefined}
             >
               <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: token.color }} aria-hidden="true" />
@@ -280,7 +277,7 @@ function MoveChip({ token, labels }: { token: ShowcaseToken | null; labels: Show
             <span className="h-2 w-2 shrink-0 rounded-[2px]" style={{ backgroundColor: token.color }} aria-hidden="true" />
             <span className="truncate">{token.label}</span>
           </p>
-          <p className="mt-1.5 whitespace-nowrap text-[17px] font-semibold tabular-nums text-white">
+          <p className="mt-1.5 whitespace-nowrap text-[17px] font-semibold tabular-nums text-slate-100">
             {formatShare(token.currentPct)} → {formatShare(token.targetPct)}
           </p>
           {token.targetPct === 0 ? <p className="mt-1 text-[11px] text-slate-400">{labels.intoOthers}</p> : null}
@@ -290,8 +287,8 @@ function MoveChip({ token, labels }: { token: ShowcaseToken | null; labels: Show
           <svg width="150" height="16" viewBox="0 0 150 16" aria-hidden="true" className="max-w-full">
             <defs>
               <linearGradient id="overview-move-arrow" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="#3a475b" />
-                <stop offset="1" stopColor="#67e8f9" />
+                <stop offset="0" style={{ stopColor: themeColor("slate-700") }} />
+                <stop offset="1" style={{ stopColor: themeColor("accent") }} />
               </linearGradient>
             </defs>
             <path

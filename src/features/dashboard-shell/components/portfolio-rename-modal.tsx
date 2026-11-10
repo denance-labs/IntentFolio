@@ -98,7 +98,7 @@ export function PortfolioRenameModal(props: PortfolioRenameModalProps) {
       <form onSubmit={handleSubmit} noValidate>
         <h2
           id="rename-portfolio-title"
-          className="mb-4 text-base font-semibold text-white"
+          className="mb-4 text-base font-semibold text-slate-100"
         >
           {t.portfolioRename}
         </h2>
@@ -121,7 +121,7 @@ export function PortfolioRenameModal(props: PortfolioRenameModalProps) {
           maxLength={PORTFOLIO_NAME_MAX_LENGTH}
           placeholder={t.portfolioNamePlaceholder}
           aria-describedby={showError ? "rename-portfolio-error" : undefined}
-          className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
+          className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
             showError ? "border-rose-500" : "border-slate-700 focus:border-slate-500"
           }`}
         />
@@ -153,14 +153,14 @@ export function PortfolioRenameModal(props: PortfolioRenameModalProps) {
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {t.cancel}
           </button>
           <button
             type="submit"
             disabled={saving || !isValid || name.trim() === ""}
-            className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? t.portfolioRenameSaving : t.portfolioRenameAction}
           </button>

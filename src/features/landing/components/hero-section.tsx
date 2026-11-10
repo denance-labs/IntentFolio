@@ -6,12 +6,14 @@ import { useInView } from "framer-motion";
 import { PRESET_ENTRY_PARAM } from "@/content/portfolio-presets";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
 import { StockIcon } from "@/features/market/lib/stock-marker";
+import { TokenIcon } from "@/features/market/lib/token-icons";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { ShowcaseDonut, RING } from "@/features/portfolio-showcase/components/showcase-donut";
 import type { ShowcaseToken } from "@/features/portfolio-showcase/types";
 import { landingTranslations } from "../lib/translations";
 import { buildDemoPresets, HERO_PRESET_ORDER, type DemoPreset } from "../lib/demo-presets";
-import { WORLD_CTA, WORLD_LABEL, WORLD_PANEL } from "../lib/world";
+import { sliceLogos } from "../lib/slice-logos";
+import { WORLD_CTA, WORLD_LABEL, WORLD_PANEL } from "@/features/world/world";
 import { AppCta } from "./app-cta";
 import { DEMO_COPY, mixAt, useProgress } from "./portfolio-build-demo";
 
@@ -108,6 +110,33 @@ function TargetMarks({ preset }: { preset: DemoPreset }) {
   );
 }
 
+/**
+ * D-575: each asset's logo on its own slice, only where the slice has room (`sliceLogos`). A layer
+ * of its own over the ring, so the Overview's donut (the same ShowcaseDonut) stays as it is. The
+ * logos follow the same shares as the bars, so they travel with the slices and fade in or out as a
+ * slice crosses the threshold. A lit token dims the others' logos, as it dims their slices.
+ */
+function SliceLogos({ mix, activeId }: { mix: Mix; activeId: string | null }) {
+  const logos = sliceLogos(mix, RING);
+  return (
+    <div aria-hidden="true" className="hero-logos-in pointer-events-none absolute inset-0">
+      {logos.map((logo) => (
+        <span
+          key={logo.id}
+          className="absolute flex aspect-square w-[13%] sm:w-[11%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-graphite/70 p-[1.5%] shadow-md shadow-black/40 transition-opacity duration-200"
+          style={{
+            left: `${logo.left}%`,
+            top: `${logo.top}%`,
+            opacity: activeId !== null && activeId !== logo.id ? logo.opacity * 0.25 : logo.opacity,
+          }}
+        >
+          <TokenIcon symbol={logo.symbol} size={32} className="h-full w-full rounded-full" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function MixBars({ preset, mix, title }: { preset: DemoPreset; mix: Mix; title: string }) {
   return (
     <div className={`${WORLD_PANEL} p-4 sm:p-5`}>
@@ -183,6 +212,7 @@ function HeroDonut({
           </div>
         )}
       />
+      <SliceLogos mix={mix} activeId={activeId} />
       <TargetMarks preset={preset} />
     </div>
   );

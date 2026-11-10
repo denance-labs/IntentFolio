@@ -86,12 +86,12 @@ export function NewPortfolioDraftSimulation({
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-800 bg-surface px-4 py-3" aria-labelledby="draft-sim-title">
-      <h3 id="draft-sim-title" className="text-[11px] font-semibold uppercase tracking-wide text-cyan-300">
+      <h3 id="draft-sim-title" className="text-[11px] font-semibold uppercase tracking-wide text-accent">
         {t.draftSimTitle}
       </h3>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
         <span aria-hidden="true">{t.draftSimWith}</span>
-        <div className="flex h-11 w-32 items-center rounded-xl border border-slate-700 bg-slate-950 px-3 transition focus-within:border-cyan-300 sm:h-9">
+        <div className="flex h-11 w-32 items-center rounded-xl border border-slate-700 bg-slate-950 px-3 transition focus-within:border-accent sm:h-9">
           <span aria-hidden="true" className="mr-1 text-slate-400">$</span>
           <input
             ref={inputRef}

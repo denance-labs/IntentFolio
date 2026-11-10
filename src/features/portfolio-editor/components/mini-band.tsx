@@ -16,9 +16,10 @@ import type { BandState } from "../types";
 // D-525: the edit table's bar (range shown) carries the same arrowhead, at the band's nearest
 // edge where the connector ends — the portfolio moves into the band, not to the exact target.
 
-const NOW_DOT = "h-2.5 w-2.5 rounded-full bg-slate-50 ring-1 ring-[#0b1220]";
-const TARGET_LINE = "w-0.5 rounded-full bg-[#67e8f9]";
-const RANGE = "rounded-sm bg-cyan-300/25";
+const NOW_DOT = "h-2.5 w-2.5 rounded-full bg-slate-100 ring-1 ring-slate-950";
+// D-571: the target in copper and the band in bone, as /learn's band diagram draws them.
+const TARGET_LINE = "w-0.5 rounded-full bg-target";
+const RANGE = "rounded-sm bg-slate-100/20";
 const ARROW_MIN_GAP = 5;
 
 type MiniBandProps = {

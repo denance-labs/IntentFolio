@@ -88,7 +88,7 @@ export function WalletHoldingsSection({
         {/* The connected account as a pill, its dot saying it is live: the section only renders
             with the wallet actually plugged in (`liveConnection`). */}
         <p
-          className="flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-cyan-900/40 py-0.5 pl-2 pr-2.5 text-xs font-semibold text-cyan-300 ring-1 ring-inset ring-cyan-700/60"
+          className="flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-accent/10 py-0.5 pl-2 pr-2.5 text-xs font-semibold text-accent ring-1 ring-inset ring-accent/10"
           title={accountId}
         >
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 ring-[3px] ring-emerald-400/20" aria-hidden="true" />
@@ -112,7 +112,7 @@ export function WalletHoldingsSection({
                 <button
                   type="button"
                   onClick={() => onSelect(entry)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-700/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/60 active:bg-slate-700"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-700/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 active:bg-slate-700"
                 >
                   {hasTokenIcon(group.ticker) ? (
                     <div

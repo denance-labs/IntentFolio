@@ -1,6 +1,6 @@
 "use client";
 
-import { WORLD_LABEL } from "@/features/landing/lib/world";
+import { WORLD_LABEL } from "@/features/world/world";
 import { LEARN_LINK } from "../lib/styles";
 
 type LearnIndexProps = {

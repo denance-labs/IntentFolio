@@ -1419,10 +1419,10 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   );
 
   return (
-    <div data-app-theme="" className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
+    <div data-app-theme="" className="flex min-h-screen flex-col bg-slate-950 font-world text-slate-100">
       <a
         href="#main-content"
-        className="fixed left-4 top-4 z-[100] -translate-y-20 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black opacity-0 transition-[transform,opacity] duration-150 focus:translate-y-0 focus:opacity-100 focus:outline-none"
+        className="fixed left-4 top-4 z-[100] -translate-y-20 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink opacity-0 transition-[transform,opacity] duration-150 focus:translate-y-0 focus:opacity-100 focus:outline-none"
       >
         {t.skipToMain}
       </a>

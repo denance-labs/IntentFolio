@@ -267,7 +267,7 @@ export function ConfirmChangesModal({
 
         {summary.targetChanges.length > 0 ? (
           <section aria-labelledby="confirm-update-heading">
-            <h3 id="confirm-update-heading" className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-300">
+            <h3 id="confirm-update-heading" className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
               {t.confirmUpdateHeading}
             </h3>
             <ul className="divide-y divide-slate-800 rounded-2xl border border-slate-800 bg-slate-900">
@@ -359,7 +359,7 @@ export function ConfirmChangesModal({
         <p
           role="status"
           aria-live="polite"
-          className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/5 px-3 py-2 text-[12px] leading-tight text-cyan-100"
+          className="mt-4 flex min-h-[2.5rem] items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-[12px] leading-tight text-accent"
         >
           {/* D-314: the outcome is not "still working" — no spinner on it. */}
           {realStage === "settled" ? (
@@ -423,7 +423,7 @@ export function ConfirmChangesModal({
           type="button"
           onClick={onCancel}
           disabled={isSigning}
-          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+          className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           {unconfirmed ? t.confirmClose : t.cancel}
         </button>
@@ -438,7 +438,7 @@ export function ConfirmChangesModal({
             aria-describedby={
               relayPaused || vaultBlock || tradeWaitSecs !== null ? "confirm-changes-relay-paused" : undefined
             }
-            className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {isSigning
               ? inFlightButtonLabel(realStage, t)

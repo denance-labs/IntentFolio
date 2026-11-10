@@ -23,7 +23,7 @@ import { draftHasToken } from "../lib/new-portfolio-draft-editing";
 import { shellTranslations } from "../lib/translations";
 
 const SECONDARY_BUTTON =
-  "rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60";
+  "rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 // The picker's list: every depositable token, alphabetical (two "ETH" differ by name), with
 // the ones not offerable (outside the catalog, D-396, or not withdrawable yet, D-389) last —
@@ -88,7 +88,7 @@ export function DraftTokenPickerContent({
         onChange={(e) => setSearch(e.target.value)}
         placeholder={te.searchToken}
         aria-label={te.searchToken}
-        className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
+        className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-accent"
       />
       {atMax ? (
         <p className="mt-2 text-xs text-amber-200">{te.appTooManyTokens.replace("{max}", String(APP_MAX_TOKENS_PER_PORTFOLIO))}</p>
@@ -114,7 +114,7 @@ export function DraftTokenPickerContent({
                 // D-534, as in a portfolio's "Add tokens": a token in the draft reads apart from the
                 // rest, not only its button. The border is always there, so the row keeps its height.
                 className={`flex items-center gap-3 rounded-xl border px-2.5 py-2 transition-colors ${
-                  inDraft ? "border-cyan-300/50 bg-cyan-300/[0.08]" : "border-transparent"
+                  inDraft ? "border-accent/50 bg-accent/[0.08]" : "border-transparent"
                 } ${outOfCatalog || blockedHere ? "opacity-50" : ""}`}
               >
                 <TokenAvatar
@@ -144,10 +144,10 @@ export function DraftTokenPickerContent({
                     aria-label={`${te.addTokensAddAction} ${tk.symbol} — ${tk.name}`}
                     disabled={unavailable}
                     onClick={() => (inDraft ? onRemove(tk.id) : onAdd(tk.id))}
-                    className={`inline-flex min-h-[2.75rem] w-24 shrink-0 items-center justify-center gap-1 rounded-xl border px-2.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:py-1.5 ${
+                    className={`inline-flex min-h-[2.75rem] w-24 shrink-0 items-center justify-center gap-1 rounded-xl border px-2.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:py-1.5 ${
                       inDraft
-                        ? "border-cyan-300 bg-cyan-300 text-black hover:bg-cyan-200"
-                        : "border-cyan-300/30 text-cyan-200 hover:bg-cyan-300/10"
+                        ? "border-accent bg-accent text-accent-ink hover:bg-accent/90"
+                        : "border-accent/30 text-accent hover:bg-accent/10"
                     }`}
                   >
                     {inDraft ? (
