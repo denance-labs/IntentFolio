@@ -27,7 +27,7 @@ const SUPPORTED_WALLETS = [
   { id: "phantom", name: "Phantom" },
   { id: "meteor", name: "Meteor" },
   { id: "tonkeeper", name: "Tonkeeper" },
-  { id: "freighter", name: "Freighter" },
+  { id: "varial", name: "Varial" },
   { id: "tronlink", name: "TronLink" },
 ] as const;
 

@@ -11,7 +11,7 @@ type Tick = { address: string; network: string; error?: unknown };
 
 /**
  * Stands in for `WatchWalletChanges` so each of its measured quirks can be reproduced on
- * demand. Everything asserted below was read off @stellar/freighter-api 6.0.1's bundle — the
+ * demand. Everything asserted below was read off @stellar/freighter-api 6.0.1 (same API in @stellar/varial-sdk 7.0.0)'s bundle — the
  * behaviour is undocumented, so these tests are what pins it.
  */
 function fakeWatcher() {

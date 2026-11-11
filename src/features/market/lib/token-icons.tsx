@@ -320,7 +320,7 @@ type WalletIconId =
   | "walletconnect"
   | "meteor"
   | "tonkeeper"
-  | "freighter"
+  | "varial"
   | "tronlink";
 
 const WALLET_WEB3_MAP: Partial<Record<WalletIconId, Web3IconComponent>> = {
@@ -334,7 +334,7 @@ const WALLET_WEB3_MAP: Partial<Record<WalletIconId, Web3IconComponent>> = {
 const LOCAL_WALLET_PNG_MAP: Partial<Record<WalletIconId, { src: string; alt: string }>> = {
   meteor: { src: "/meteor-icon.png", alt: "Meteor Wallet" },
   tonkeeper: { src: "/wallet-icons/tonkeeper.png", alt: "Tonkeeper" },
-  freighter: { src: "/wallet-icons/freighter.png", alt: "Freighter" },
+  varial: { src: "/wallet-icons/varial.png", alt: "Varial" },
   tronlink: { src: "/wallet-icons/tronlink.png", alt: "TronLink" },
 };
 

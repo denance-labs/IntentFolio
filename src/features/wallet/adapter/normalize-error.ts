@@ -2,8 +2,8 @@ const CANCEL_KEYWORDS = ["cancel", "reject", "denied", "user closed"];
 // Wallet is not usable right now (locked, disconnected, extension missing): an
 // actionable state the user can recover from by unlocking/reconnecting, not a bug.
 // Matched against the messages the login adapters throw on their hard prechecks
-// ("Wallet not connected", "TronLink not available", "Freighter wallet not found",
-// "Wallet does not support signMessage", "Freighter returned null signature").
+// ("Wallet not connected", "TronLink not available", "Varial wallet not found",
+// "Wallet does not support signMessage", "Varial returned null signature").
 const UNAVAILABLE_KEYWORDS = [
   "not connected",
   "not available",

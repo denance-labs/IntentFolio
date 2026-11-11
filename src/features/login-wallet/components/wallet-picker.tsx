@@ -265,8 +265,8 @@ export function WalletPicker({ lang = "en", titleId = "wallet-picker-title" }: P
               {isNearMismatch ? t.networkMismatch : t.errorTitle}
             </p>
             {/* The adapter's own message, which this banner used to discard.
-                Every family writes a specific one — "Freighter wallet not found. Install
-                Freighter and reload the page.", "TronLink not available", "Wallet does not
+                Every family writes a specific one — "Varial wallet not found. Install
+                Varial and reload the page.", "TronLink not available", "Wallet does not
                 support signMessage" — and rendering only the generic title collapsed all of
                 them into "Connection error". Found in a browser during 4.5's pre-flight,
                 where it would have made every distinct failure of a real-money run look

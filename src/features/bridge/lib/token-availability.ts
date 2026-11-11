@@ -160,12 +160,17 @@ export function isInCatalog(tokenId: string): boolean {
 // `btc.omft.near`, and a portfolio that holds one can still sell it towards its other targets.
 // An explicit list like the two above, so a token comes back only by a deliberate edit once a
 // re-measurement shows a buy route (D-491 step 3).
+//
+// stNEAR is here for a different reason (D-554, operator decision 2026-11-11): it does quote, but
+// almost nobody swaps it, so a target in it would leave the portfolio far from its mix. Same
+// treatment: no new target, still receivable, holdable, sellable and withdrawable.
 export const NO_BUY_ROUTE_TOKEN_IDS: ReadonlySet<string> = new Set([
   "nep141:btc.omft.near",                                                    // BTC
   "nep141:mpdao-token.near",                                                 // mpDAO
   "nep141:token.rhealab.near",                                               // RHEA
   "nep141:token.sweat",                                                      // SWEAT
   "nep141:arb-0xca7dec8550f43a5e46e3dfb95801f64280e75b27.omft.near",         // SWEAT (ARB)
+  "nep141:meta-pool.near",                                                   // stNEAR (D-554: low activity)
 ]);
 
 // NOT RECEIVED (D-491). Of the five above, three are not received either: SWEAT and SWEAT(ARB)

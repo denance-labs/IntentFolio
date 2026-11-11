@@ -238,9 +238,9 @@ describe("portfolio offer", () => {
 
 // D-491: measured with no buy route ⇒ not a target, but still receivable and withdrawable.
 describe("no buy route", () => {
-  it("is exactly BTC, mpDAO, RHEA, SWEAT and SWEAT(ARB)", () => {
+  it("is exactly BTC, mpDAO, RHEA, SWEAT, SWEAT(ARB) and stNEAR (D-554)", () => {
     const symbols = [...NO_BUY_ROUTE_TOKEN_IDS].map((id) => getTokenById(id)?.symbol).sort();
-    expect(symbols).toEqual(["BTC", "RHEA", "SWEAT", "SWEAT(ARB)", "mpDAO"]);
+    expect(symbols).toEqual(["BTC", "RHEA", "SWEAT", "SWEAT(ARB)", "mpDAO", "stNEAR"]);
   });
 
   it("is not offered as a target but stays withdrawable", () => {

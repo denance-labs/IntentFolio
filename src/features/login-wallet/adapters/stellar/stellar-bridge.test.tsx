@@ -31,7 +31,7 @@ const freighter = {
   watcherStopped: 0,
 };
 
-vi.mock("@stellar/freighter-api", () => ({
+vi.mock("@stellar/varial-sdk", () => ({
   isConnected: async () => {
     freighter.isConnectedCalls += 1;
     return { isConnected: freighter.installed };
@@ -289,7 +289,7 @@ describe("StellarAdapterBridge network warning", () => {
 });
 
 describe("StellarAdapterBridge connect errors", () => {
-  it("names Freighter, and stays classifiable as recoverable", async () => {
+  it("names Varial, and stays classifiable as recoverable", async () => {
     freighter.installed = false;
     renderBridge();
     await waitFor(() => expect(captured.connect).not.toBeNull(), SETTLE);
@@ -299,7 +299,7 @@ describe("StellarAdapterBridge connect errors", () => {
         await captured.connect!();
       }),
       // "not found" is the substring `normalizeWalletError` matches on.
-    ).rejects.toThrow(/Freighter wallet not found\. Install Freighter and reload the page\./);
+    ).rejects.toThrow(/Varial wallet not found\. Install Varial and reload the page\./);
   });
 });
 

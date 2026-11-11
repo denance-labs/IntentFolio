@@ -1,15 +1,15 @@
-// Freighter account/network tracking (D-220).
+// Varial (formerly Freighter) account/network tracking (D-220).
 //
 // Why this file exists. Of the six login families, five get account switches for free from a
 // reactive SDK hook (wagmi, near-connect-hooks, @solana/wallet-adapter-react,
 // @tonconnect/ui-react) and their `liveConnection` stays fresh on its own. Tron had no library
-// under it and was given a listener in block 4.2. Stellar is the last one: `@stellar/freighter-api`
+// under it and was given a listener in block 4.2. Stellar is the last one: `@stellar/varial-sdk`
 // is request/response, so `liveConnection` could only ever hold whatever the mount read — and
 // `assertWalletMatchesAccount` (portfolio-context.tsx, D-218) compares exactly that value, so a
 // stale one makes the guard compare the session against itself and it can never fail.
 //
 // `WatchWalletChanges` is Freighter's answer to this, but it is NOT an event emitter and the
-// difference matters at every call site below. Measured against @stellar/freighter-api 6.0.1
+// difference matters at every call site below. Measured against @stellar/freighter-api 6.0.1 (same API in @stellar/varial-sdk 7.0.0)
 // (build/index.min.js), because none of it is documented:
 //
 //   1. It is a POLL — a recursive setTimeout, 3 s by default — over `REQUEST_PUBLIC_KEY` and
@@ -27,7 +27,7 @@
 //
 // This module absorbs all four so the bridge sees one thing: a real, non-empty address.
 
-import { WatchWalletChanges } from "@stellar/freighter-api";
+import { WatchWalletChanges } from "@stellar/varial-sdk";
 
 /** What the bridge receives — already filtered, always a usable address. */
 export type FreighterWalletChange = {

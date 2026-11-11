@@ -6,7 +6,7 @@ import {
   isConnected as freighterIsConnected,
   requestAccess,
   signMessage as freighterSignMessage,
-} from "@stellar/freighter-api";
+} from "@stellar/varial-sdk";
 import type { LoginWalletAdapter, LoginWalletState } from "../../types";
 import { useRegisterLoginWalletAdapter } from "../../context/login-wallet-context";
 import { buildStellarSignature } from "./stellar-sign";
@@ -32,9 +32,9 @@ function deriveState(
 }
 
 /**
- * Headless bridge: calls Freighter extension APIs, builds a LoginWalletAdapter,
+ * Headless bridge: calls the Varial (formerly Freighter) extension APIs, builds a LoginWalletAdapter,
  * and registers it with the neutral LoginWalletContext.
- * Freighter is request-based (no session); restore relies on D-131 self-persist.
+ * Varial is request-based (no session); restore relies on D-131 self-persist.
  * On mount, attempts a silent getAddress() to detect a previously-granted access, then keeps
  * following the extension through `stellar-watch.ts` — without that, `liveConnection` could
  * only ever hold the mount's reading, and the D-218 guard that consumes it would be comparing
@@ -45,8 +45,8 @@ export function StellarAdapterBridge() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [localError, setLocalError] = useState<LocalError>(null);
   const [network, setNetwork] = useState<string | null>(null);
-  // Set when the user disconnects inside the app. Freighter has no disconnect of its own, so
-  // the poll keeps returning the address it still considers allowed — without this, a session
+  // Set when the user disconnects inside the app. Varial's own `disconnect()` (new in
+  // @stellar/varial-sdk 7.0.0) is not wired yet, so the poll keeps returning the address it still considers allowed — without this, a session
   // the user just ended would come back on its own within 3 s.
   const dismissedRef = useRef(false);
   const hasSession = address !== null;
@@ -116,13 +116,13 @@ export function StellarAdapterBridge() {
     dismissedRef.current = false;
     try {
       const { isConnected } = await freighterIsConnected();
-      // Names the wallet rather than the chain, and says the reload part out loud. Freighter's
-      // `isConnected` only ever answers for Freighter — no other Stellar wallet can satisfy
+      // Names the wallet rather than the chain, and says the reload part out loud. Varial's
+      // `isConnected` only ever answers for Varial — no other Stellar wallet can satisfy
       // this check — so "a Stellar wallet" would be both vaguer and less true. Keeps the
       // literal "not found", which `normalizeWalletError` matches to classify this as
       // recoverable-unavailable rather than a bug.
       if (!isConnected) {
-        throw new Error("Freighter wallet not found. Install Freighter and reload the page.");
+        throw new Error("Varial wallet not found. Install Varial and reload the page.");
       }
       const result = await requestAccess();
       if (result.error) throw new Error(result.error.message);
@@ -137,7 +137,7 @@ export function StellarAdapterBridge() {
   }, []);
 
   const disconnect = useCallback(async () => {
-    // Freighter has no SDK disconnect — clear local state only, and tell the watcher not to
+    // Varial's SDK `disconnect()` is not used yet (D-550) — clear local state only, and tell the watcher not to
     // re-establish what the user just ended.
     dismissedRef.current = true;
     setAddress(null);
@@ -151,7 +151,7 @@ export function StellarAdapterBridge() {
       // derived state `error` with no connection, so the app showed a signed-out user (D-433).
       const result = await freighterSignMessage(message, { address });
       if (result.error) throw new Error(result.error.message);
-      if (result.signedMessage === null) throw new Error("Freighter returned null signature");
+      if (result.signedMessage === null) throw new Error("Varial returned null signature");
       // signedMessage may be Buffer (legacy) or string (base64) — normalise to string.
       const signature =
         typeof result.signedMessage === "string"

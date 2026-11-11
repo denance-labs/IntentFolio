@@ -47,7 +47,7 @@ describe("WalletPicker error surfacing (D-120)", () => {
 // every distinct failure of a real-money run — collapsed into the same four words.
 describe("WalletPicker error detail", () => {
   it("renders the adapter's own message under the translated title", () => {
-    const detail = "Freighter wallet not found. Install Freighter and reload the page.";
+    const detail = "Varial wallet not found. Install Varial and reload the page.";
     mocks.value = base({ status: "error", error: detail });
     const { container } = render(<WalletPicker lang="en" />);
     const alert = container.querySelector('[role="alert"]');

@@ -9,7 +9,7 @@ import { WithdrawRelayRejectedError } from "./withdraw-errors";
 //   TON Connect            `UserRejectsError` — but the SDK never sets `name` and a minified build
 //                          mangles the class, so only "User rejects the action in the wallet." survives
 //   TronLink               often rejects with a bare string: "Confirmation declined by user"
-//   Freighter              "User declined access"
+//   Varial (ex-Freighter)  "User declined access"
 const REFUSAL_TEXT =
   /user (rejected|rejects|declined|denied|cancel)|declined by (the )?user|rejected by (the )?user/i;
 
