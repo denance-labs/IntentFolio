@@ -55,6 +55,20 @@ function stubDb(rowCount: number | Error = 1) {
 }
 
 describe("validateCreateBody", () => {
+  // D-580: the solver's ops DB takes `omni` since its migration 011.
+  it("accepts a direct ZEC withdrawal on the omni route", () => {
+    expect(
+      validateCreateBody({
+        ...direct,
+        tokenId: "nep141:zec.omft.near",
+        amount: "500000",
+        chainId: "zec:mainnet",
+        route: "omni",
+        destinationAddress: "t1T5yEngwgBC6VSSHhTQKtr7pKtX3CSokSX",
+      })
+    ).toMatchObject({ ok: true });
+  });
+
   it("accepts a direct withdrawal and a conversion as the sink builds them", () => {
     expect(validateCreateBody(direct)).toEqual({ ok: true, value: direct });
     const { route: _route, ...noRoute } = conversion;

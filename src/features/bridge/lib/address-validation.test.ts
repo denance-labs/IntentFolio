@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Address as TonAddress } from "@ton/core";
 import { validateAddress, detectWrongChain, normalizeAddress } from "./address-validation";
+import bs58 from "bs58";
+import { sha256 } from "viem";
 import { decodeSegwitAddress } from "./bech32";
 
 describe("validateAddress — EVM chains", () => {
@@ -458,6 +460,80 @@ describe("validateAddress — Dogecoin (D-278)", () => {
   });
 });
 
+// D-579. Real mainnet addresses, taken from recent Zcash outputs on 2026-11-11 (Blockchair's
+// `zcash/outputs`, one P2PKH and one P2SH query).
+const ZEC_T1 = "t1KbKkQ7WisJF52sSepMjYokQJbkJCJ1i3C";
+const ZEC_T1_B = "t1MKn34KBa8Xh4g8qU8psibBXvURafphVn7";
+const ZEC_T3 = "t3PhSoyT2TiwCFrWWSezMunsanvVbxXXZAw";
+
+/** Base58check-encodes `version` + `hash` — to build addresses no explorer shows (testnet). */
+function base58Check(version: number[], hash: Uint8Array): string {
+  const payload = new Uint8Array([...version, ...hash]);
+  const check = sha256(sha256(payload, "bytes"), "bytes").slice(0, 4);
+  return bs58.encode(new Uint8Array([...payload, ...check]));
+}
+
+describe("validateAddress — Zcash (D-579)", () => {
+  it("accepts real transparent addresses, both kinds", () => {
+    for (const a of [ZEC_T1, ZEC_T1_B, ZEC_T3]) {
+      expect(validateAddress(a, "zec:mainnet"), a).toEqual({ valid: true });
+    }
+  });
+
+  it("reads the version as two bytes: t1 is 0x1CB8 and t3 is 0x1CBD", () => {
+    expect([...bs58.decode(ZEC_T1).slice(0, 2)]).toEqual([0x1c, 0xb8]);
+    expect([...bs58.decode(ZEC_T3).slice(0, 2)]).toEqual([0x1c, 0xbd]);
+    expect(bs58.decode(ZEC_T1)).toHaveLength(26);
+  });
+
+  it("refuses the right shape on the wrong network (testnet tm… and t2…)", () => {
+    const hash = bs58.decode(ZEC_T1).slice(2, 22);
+    const tm = base58Check([0x1d, 0x25], hash);
+    const t2 = base58Check([0x1c, 0xba], hash);
+    expect(tm.startsWith("tm")).toBe(true);
+    expect(t2.startsWith("t2")).toBe(true);
+    expect(validateAddress(tm, "zec:mainnet")).toEqual({ valid: false, errorKey: "addressInvalid" });
+    expect(validateAddress(t2, "zec:mainnet")).toEqual({ valid: false, errorKey: "addressInvalid" });
+    // And the same hash under the real prefix passes, so it is the prefix that is refused.
+    expect(validateAddress(base58Check([0x1c, 0xb8], hash), "zec:mainnet").valid).toBe(true);
+  });
+
+  it("calls a broken checksum a checksum error", () => {
+    const typo = ZEC_T1.slice(0, -1) + (ZEC_T1.endsWith("C") ? "D" : "C");
+    expect(validateAddress(typo, "zec:mainnet")).toEqual({ valid: false, errorKey: "addressChecksumError" });
+  });
+
+  it("rejects every single-character substitution of real addresses", () => {
+    expect(acceptedMutations(ZEC_T1, "zec:mainnet", BASE58, 0)).toBe(0);
+    expect(acceptedMutations(ZEC_T3, "zec:mainnet", BASE58, 0)).toBe(0);
+  });
+
+  it("says 'transparent only' for shielded, unified and TEX addresses", () => {
+    for (const a of [
+      "zs1z7rejlpsa98s2rrrfkwmaxu53e4ue0ulcrw0h4x5g8jl04tak0d3mm47vdtahatqrlkngh9sly", // Sapling
+      "u1qpatys4zruk99pg59gcscrt7y6akvl9vrhcfyhm9yxvxz7h87q6n8cgrzzpe9zru68uq39uhmlpp5uefxu0su5uqyqfe5zp3tycn0ecl", // unified
+      "U1QPATYS4ZRUK99PG59GCSCRT7Y6AKVL9VRHCFYHM9YXVXZ7H87Q6N8CGRZZPE9ZRU68UQ39UHMLPP5UEFXU0SU5UQYQFE5ZP3TYCN0ECL", // unified, QR case
+      "tex1s2rt77ggv6q989lr49rkgzmh5slsksa9khdgte", // ZIP-320
+      "zcU1Cd6zYyZCd2VJF8yKgmzjxdiiU1rgTTjEwoN1CGUWCziPkUTXUjXmX7TMqdMNsTfuiGN1jQoVN4kGxUR4sAPN4XZ7pxb", // Sprout
+    ]) {
+      expect(validateAddress(a, "zec:mainnet"), a).toEqual({ valid: false, errorKey: "addressZcashTransparentOnly" });
+    }
+  });
+
+  it("refuses the base58 addresses of Bitcoin and its forks", () => {
+    for (const a of [BTC_P2PKH, BTC_P2SH, LTC_P2PKH, DOGE_P2PKH]) {
+      expect(validateAddress(a, "zec:mainnet").valid, a).toBe(false);
+    }
+  });
+
+  it("is not accepted by the Bitcoin-family validators either", () => {
+    for (const chainId of ["btc:mainnet", "ltc:mainnet", "doge:mainnet"]) {
+      expect(validateAddress(ZEC_T1, chainId).valid, chainId).toBe(false);
+      expect(validateAddress(ZEC_T3, chainId).valid, chainId).toBe(false);
+    }
+  });
+});
+
 describe("detectWrongChain", () => {
   it("returns EVM when EVM address used on NEAR chain", () => {
     expect(
@@ -539,6 +615,16 @@ describe("detectWrongChain", () => {
     ] as const) {
       expect(detectWrongChain(a, chainId), a).toBeNull();
     }
+  });
+
+  it("returns Zcash for a transparent address elsewhere, and the owner of a Bitcoin one on Zcash", () => {
+    expect(detectWrongChain(ZEC_T1, "btc:mainnet")).toBe("Zcash");
+    expect(detectWrongChain(ZEC_T3, "sol:mainnet")).toBe("Zcash");
+    expect(detectWrongChain(ZEC_T1.slice(0, -1) + "D", "ltc:mainnet")).toBe("Zcash");
+    expect(detectWrongChain(ZEC_T1, "zec:mainnet")).toBeNull();
+    expect(detectWrongChain(ZEC_T3, "zec:mainnet")).toBeNull();
+    expect(detectWrongChain(BTC_P2PKH, "zec:mainnet")).toBe("Bitcoin");
+    expect(detectWrongChain(DOGE_P2PKH, "zec:mainnet")).toBe("Dogecoin");
   });
 
   it("does not read a Solana address as a legacy base58 one", () => {

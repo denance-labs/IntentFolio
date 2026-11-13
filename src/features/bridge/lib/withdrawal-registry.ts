@@ -19,6 +19,9 @@
 //   "near-native" – NEP-141 token that lives on NEAR; ft_withdraw intent → NEAR account.
 //   "near-unwrap" – NEAR itself; `native_withdraw` intent → unwraps wNEAR and sends NATIVE
 //                   NEAR to a NEAR account. No bridge and no token contract in the loop.
+//   "omni"        – NEP-141 token migrated from PoA to the Omni Bridge, sent STRAIGHT to Omni:
+//                   ft_withdraw intent → `omni.bridge.near` with the destination in `msg`. Its
+//                   fee is signed and only live (omni-bridge.ts). ZEC only (D-580).
 //
 // Fee fields are in the token's own base units (same precision as the token decimals).
 // Use getWithdrawalEstimate(nearTokenId, dummyAddress, chain) to get a live fee for
@@ -32,7 +35,7 @@ import {
   VAULT_CONTRACT_ID,
 } from "@/features/wallet/config/network";
 
-export type BridgeRoute = "omft" | "hot-omni" | "near-native" | "near-unwrap";
+export type BridgeRoute = "omft" | "hot-omni" | "near-native" | "near-unwrap" | "omni";
 
 export type WithdrawalEntry = {
   chainId: string;
@@ -288,8 +291,13 @@ export const withdrawalRegistry: Record<string, WithdrawalEntry> = {
 
   // ── Privacy ────────────────────────────────────────────────────────────────
   "nep141:zec.omft.near": {
+    // D-580: straight to the Omni Bridge, not PoA's legacy relay (which still works but charges
+    // 0.00047 on top). The fee is signed and only ever live (omni-bridge.ts); these two figures
+    // are the screen's starting point and the envelope's offline backstop, read from
+    // `/api/v2/transfer-fee` on 2026-11-12: gas ceiling 22000 + protocol fee 10000, and
+    // `min_amount` 100000 on the GROSS — expressed here as fee + minimum net (32000 + 68000).
     chainId: "zec:mainnet", nearTokenId: "zec.omft.near",
-    withdrawalFeeRaw: "0", minWithdrawalRaw: "1", bridgeRoute: "omft",
+    withdrawalFeeRaw: "32000", minWithdrawalRaw: "68000", bridgeRoute: "omni",
   },
 
   // ── Web3 / Ecosystem ───────────────────────────────────────────────────────

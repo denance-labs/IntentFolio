@@ -9,6 +9,7 @@ import {
   isPortfolioOfferable,
   isReceivable,
   isTokenAvailable,
+  WITHDRAWAL_PENDING_TOKEN_IDS,
 } from "./token-availability";
 import { validateAddress } from "./address-validation";
 import { withdrawalRegistry, isWithdrawable } from "./withdrawal-registry";
@@ -22,12 +23,12 @@ describe("day-1 allowlist", () => {
   // The numbers the operator locked. They are asserted rather than described because the
   // whole point of the block is that the enabled set is a decision, not a side effect: a
   // row that changes side has to change this line too.
-  it("enables 39 of the 56 withdrawal rows, leaving 17 not available yet", () => {
+  it("enables 40 of the 56 withdrawal rows, leaving 16 not available yet", () => {
     expect(Object.keys(withdrawalRegistry)).toHaveLength(56);
-    expect(DAY_ONE_TOKEN_IDS.size).toBe(39);
+    expect(DAY_ONE_TOKEN_IDS.size).toBe(40);
   });
 
-  it("splits 12 near-native / 21 omft / 5 hot-omni / 1 near-unwrap", () => {
+  it("splits 12 near-native / 21 omft / 1 omni / 5 hot-omni / 1 near-unwrap", () => {
     const byRoute: Record<string, number> = {};
     for (const id of DAY_ONE_TOKEN_IDS) {
       const route = routeOf(id) ?? "unknown";
@@ -36,6 +37,7 @@ describe("day-1 allowlist", () => {
     expect(byRoute).toEqual({
       "near-native": 12,
       omft: 21,
+      omni: 1,
       "hot-omni": 5,
       "near-unwrap": 1,
     });
@@ -59,8 +61,9 @@ describe("day-1 allowlist", () => {
   // the row itself was removed (D-195). Deferring it was never enough: "Not available yet" is a UI
   // state, and the safety of the destination-tag hole rested on the withdrawal flag being off
   // globally. Turning that flag on for the team origin is what forced the row out.
-  // BTC, DOGE and LTC left this list with their validators (D-278, 017-4b).
-  it("defers exactly the 7 omft rows with no address validator", () => {
+  // BTC, DOGE and LTC left this list with their validators (D-278, 017-4b). ZEC left it for the
+  // `omni` route (D-580) — see the next test.
+  it("defers exactly the 6 omft rows with no address validator", () => {
     const deferred = Object.keys(withdrawalRegistry)
       .filter((id) => routeOf(id) === "omft" && !isTokenAvailable(id))
       .map((id) => withdrawalRegistry[id].chainId)
@@ -69,8 +72,16 @@ describe("day-1 allowlist", () => {
       "aptos:mainnet", "aptos:mainnet", "aptos:mainnet",
       "cardano:mainnet",
       "sui:mainnet", "sui:mainnet",
-      "zec:mainnet",
     ]);
+  });
+
+  // D-580: ZEC withdraws straight through the Omni Bridge, the only `omni` row. Opened by the
+  // operator on 2026-11-13; nothing is left pending its withdrawal.
+  it("has ZEC as the only omni row, open, with nothing left pending", () => {
+    const omni = Object.keys(withdrawalRegistry).filter((id) => routeOf(id) === "omni");
+    expect(omni).toEqual(["nep141:zec.omft.near"]);
+    expect(isTokenAvailable("nep141:zec.omft.near")).toBe(true);
+    expect(WITHDRAWAL_PENDING_TOKEN_IDS.size).toBe(0);
   });
 
   // The pair has to be off at BOTH ends. Removing only the withdrawal row would make XRP a
@@ -147,7 +158,8 @@ describe("deposit/withdrawal invariant", () => {
           (t) =>
             (t.assetName ?? t.symbol) === group.assetName &&
             withdrawalRegistry[t.id]?.chainId === chainId &&
-            isTokenAvailable(t.id)
+            // ZEC is received before its withdrawal opens (D-579): it can always leave sold.
+            (isTokenAvailable(t.id) || WITHDRAWAL_PENDING_TOKEN_IDS.has(t.id))
         );
         if (!live) offending.push(`${group.assetName} offers ${chainId} with no live pair`);
       }
@@ -218,15 +230,31 @@ describe("curated catalog", () => {
 
 // D-389: a portfolio is offered what Receive is — in the catalog AND withdrawable today.
 describe("portfolio offer", () => {
-  it("blocks the 14 catalog tokens that cannot be withdrawn yet, ZEC among them", () => {
+  it("blocks the 13 catalog tokens that cannot be withdrawn yet", () => {
     const blocked = depositableTokens
       .filter((t) => isInCatalog(t.id) && !isPortfolioOfferable(t.id) && !NO_BUY_ROUTE_TOKEN_IDS.has(t.id))
       .map((t) => t.symbol)
       .sort();
     expect(blocked).toEqual([
       "USDC(APT)", "USDC(AVAX)", "USDC(BSC)", "USDC(OP)", "USDC(POL)", "USDC(STELLAR)", "USDC(SUI)",
-      "USDT(APT)", "USDT(AVAX)", "USDT(BSC)", "USDT(OP)", "USDT(POL)", "USDT(TON)", "ZEC",
+      "USDT(APT)", "USDT(AVAX)", "USDT(BSC)", "USDT(OP)", "USDT(POL)", "USDT(TON)",
     ]);
+  });
+
+  // D-579 (operator, 2026-11-11): into portfolios first, out to Zcash in a second step.
+  it("offers ZEC to Receive, as a target, and to withdraw (D-579, opened by D-580)", () => {
+    expect(isReceivable("nep141:zec.omft.near")).toBe(true);
+    expect(isPortfolioOfferable("nep141:zec.omft.near")).toBe(true);
+    expect(isTokenAvailable("nep141:zec.omft.near")).toBe(true);
+  });
+
+  // Empty since ZEC opened (D-580); the invariant stays for the next token that uses the set.
+  it("never holds a token that is already withdrawable as withdrawal-pending", () => {
+    for (const id of WITHDRAWAL_PENDING_TOKEN_IDS) {
+      expect(isTokenAvailable(id), id).toBe(false);
+      expect(isWithdrawable(id), id).toBe(true);
+      expect(NO_BUY_ROUTE_TOKEN_IDS.has(id), id).toBe(false);
+    }
   });
 
   it("offers what Receive offers, minus the tokens with no buy route, plus the stocks", () => {

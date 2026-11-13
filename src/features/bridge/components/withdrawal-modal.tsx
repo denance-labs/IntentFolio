@@ -30,6 +30,7 @@ import {
   type HotGasRequirement,
 } from "../lib/hot-fee";
 import { gasPurchaseTargetRaw } from "../lib/gas-purchase";
+import type { OmniFeeDetail } from "../lib/omni-bridge";
 import type {
   BuyGasSeam,
   GasPurchaseQuote,
@@ -85,10 +86,12 @@ import {
 import { ConversionNotSignableError, wantsRequote } from "../lib/conversion-envelope";
 
 // D-387 (c): chains whose addresses another chain's pass for, checksum included: a Bitcoin
-// Cash legacy address (1… / 3…) is a valid Bitcoin one, a DigiByte D… a valid Dogecoin one.
+// Cash legacy address (1… / 3…) is a valid Bitcoin one, a DigiByte D… a valid Dogecoin one, and
+// a Zclassic t1… / t3… (a Zcash fork that kept the same version prefixes) a valid Zcash one (D-579).
 const LOOKALIKE_ADDRESS_CHAIN: Record<string, string> = {
   "btc:mainnet": "Bitcoin Cash",
   "doge:mainnet": "DigiByte",
+  "zec:mainnet": "Zclassic",
 };
 
 const LS_LAST_USED_WITHDRAWAL_TOKEN = "last-used-withdrawal-token";
@@ -206,6 +209,11 @@ export type WithdrawConfirmParams = {
    * needs it — undefined for every other route. See `hotFee` in `RunRealWithdrawParams`.
    */
   hotFee?: HotFeeDetail;
+  /**
+   * The live Omni Bridge quote step 4 showed (`omni` route, D-580) — undefined for every other
+   * route. Signed like `hotFee`: see `omniFee` in `RunRealWithdrawParams`.
+   */
+  omniFee?: OmniFeeDetail;
   /**
    * D-392: the quote step 4 showed, for a Converting Withdrawal — signed exactly as is
    * (`runConversionWithdraw`). Undefined for a direct one, and its presence is what tells the
@@ -486,7 +494,8 @@ export function WithdrawalModal({
     tokenId: string,
     chainId: string,
     hotFee: HotFeeDetail | undefined,
-    conversionQuote?: ConversionQuote
+    conversionQuote?: ConversionQuote,
+    omniFee?: OmniFeeDetail
   ) {
     // Two clicks can both reach here: the confirm handler awaits a fee re-check first, and
     // nothing has disabled the button yet at that point. Without this, each would build its
@@ -504,6 +513,7 @@ export function WithdrawalModal({
         memo: withdrawMemo || undefined,
         destinationVerified,
         hotFee,
+        omniFee,
         conversionQuote,
       });
     } catch (e) {
@@ -666,7 +676,9 @@ export function WithdrawalModal({
               onBuyGas={onBuyGas}
               submitting={submitting}
               errorText={submitError}
-              onConfirm={(hotFee) => handleConfirm(selectedTokenId, selectedChainId, hotFee)}
+              onConfirm={(hotFee, omniFee) =>
+                handleConfirm(selectedTokenId, selectedChainId, hotFee, undefined, omniFee)
+              }
             />
           )}
         </div>
@@ -693,6 +705,7 @@ function getAddressPlaceholder(chainId: string): string {
   if (chainId === "btc:mainnet") return "bc1… / 1… / 3…";
   if (chainId === "ltc:mainnet") return "ltc1… / L… / M…";
   if (chainId === "doge:mainnet") return "D…";
+  if (chainId === "zec:mainnet") return "t1… / t3…";
   return "";
 }
 
@@ -830,11 +843,16 @@ function WithdrawStep4({
   onBuyGas?: BuyGasSeam;
   submitting: boolean;
   errorText: string | null;
-  onConfirm: (hotFee?: HotFeeDetail) => void;
+  onConfirm: (hotFee?: HotFeeDetail, omniFee?: OmniFeeDetail) => void;
 }) {
   const token = getTokenById(tokenId);
   const entry = getWithdrawalEntry(tokenId, chainId);
   const isHotOmni = entry?.bridgeRoute === "hot-omni";
+  // D-580: the other route whose fee is SIGNED (the Zcash gas ceiling rides in the intent's
+  // `msg`). It shares every rule `hot-omni` has for that — no registry fallback, a quote kept
+  // young off the click, an age check on it — and none of HOT's gas purchase.
+  const isOmni = entry?.bridgeRoute === "omni";
+  const signsFee = isHotOmni || isOmni;
   // The token's own chain, and whether this withdrawal leaves for NEAR instead (D-384).
   const ownChainId = withdrawalDestinations(tokenId)[0] ?? chainId;
   const arrivesAsNearToken = chainId === NEAR_DESTINATION_CHAIN_ID && ownChainId !== chainId;
@@ -870,14 +888,24 @@ function WithdrawStep4({
   // `hot-omni` only (4.3.5): a failed live quote has no registry number to fall back to
   // (hot-fee.ts's header) — `omft` keeps showing the registry's snapshot through `quote`
   // itself, so it never needs this.
+  // Also `omni`'s "no live quote" (D-580): the same block, for the same reason.
   const [hotFeeBlocked, setHotFeeBlocked] = useState(false);
+  // `omni` only: the bridge answered and cannot pay this amount out (`insufficient_utxo`).
+  // Blocks like `hotFeeBlocked`, with its own sentence — waiting a moment is not the fix.
+  const [omniNoPayout, setOmniNoPayout] = useState(false);
+  // The gross the `omni` quote is asked for: the fee ceiling grows with the amount
+  // (omni-bridge.ts). Undefined on every other route, so it never re-runs their fee effect.
+  // Guarded because `toBaseUnits` throws on a non-finite or negative qty, and this runs in render.
+  const omniAmountRaw =
+    isOmni && Number.isFinite(qty) && qty > 0 ? toBaseUnits(qty, decimals) : undefined;
   const confirmRef = useRef<HTMLButtonElement>(null);
   // D-309: the attempt disabled the confirm button, which had the focus. Nothing was sent, so
   // the focus goes back to it for the retry.
   useEffect(() => {
     if (!submitting && errorText) confirmRef.current?.focus();
   }, [submitting, errorText]);
-  // When `quote` was obtained. `hot-omni` only reads it — see QUOTE_FRESH_MS.
+  // When `quote` was obtained. Only the signed-fee routes (`hot-omni`, `omni`) read it — see
+  // QUOTE_FRESH_MS.
   const [quotedAt, setQuotedAt] = useState<number | null>(null);
   // D-251. One state and not three booleans: "we are pricing it", "there is no price" and
   // "here is the price" are mutually exclusive, and a screen that can render two of them at
@@ -935,12 +963,14 @@ function WithdrawStep4({
       setQuote(staticWithdrawalFee(tokenId, chainId));
       setLoadingFee(false);
       setHotFeeBlocked(false);
+      setOmniNoPayout(false);
       setQuotedAt(null);
       return;
     }
     const controller = new AbortController();
     setLoadingFee(true);
     setHotFeeBlocked(false);
+    setOmniNoPayout(false);
 
     const ask = (isFirst: boolean) =>
       fetchWithdrawalFee({
@@ -948,9 +978,10 @@ function WithdrawStep4({
         chainId,
         destinationAddress: address,
         nativeBalanceRaw,
+        amountRaw: omniAmountRaw,
         signal: controller.signal,
       })
-        .then(({ quote: fresh, hotRequirement }) => {
+        .then(({ quote: fresh, hotRequirement, omniInsufficientUtxo }) => {
           if (controller.signal.aborted) return;
           // 🔴 D-274. The gas requirement this cycle computed, stamped with the destination it
           // was computed FOR. `loadGasOffer` reads it instead of asking again, so the purchase
@@ -966,7 +997,13 @@ function WithdrawStep4({
             setQuote(fresh);
             setQuotedAt(Date.now());
             setHotFeeBlocked(false);
-          } else if (isFirst && isHotOmni) {
+            setOmniNoPayout(false);
+          } else if (omniInsufficientUtxo) {
+            // A definite "no" from the bridge, on any tick: the quote in hand must not be
+            // signed, since this amount can no longer be paid out.
+            setOmniNoPayout(true);
+            setHotFeeBlocked(true);
+          } else if (isFirst && signsFee) {
             // Only the FIRST failure means there is nothing to show. A refresh that fails
             // leaves the quote in hand to age out on its own, and the click refuses it then —
             // blocking on a single flaky tick would be noise, not safety.
@@ -978,9 +1015,9 @@ function WithdrawStep4({
         });
 
     ask(true);
-    if (!isHotOmni) return () => controller.abort();
+    if (!signsFee) return () => controller.abort();
 
-    // `hot-omni` only: keep the quote young here, outside the user-activation window, so the
+    // `hot-omni` and `omni`: keep the quote young here, outside the user-activation window, so the
     // confirm click never has to go to the network. See FEE_REFRESH_INTERVAL_MS.
     const timer = setInterval(() => void ask(false), FEE_REFRESH_INTERVAL_MS);
     return () => {
@@ -991,7 +1028,7 @@ function WithdrawStep4({
     // arrives in the balance. That makes the balance itself the completion signal for a gas
     // purchase — no polling loop, no status endpoint, no second source of truth about whether
     // the swap landed. The quote flips to `native-balance` and the button unblocks by itself.
-  }, [wantsLive, tokenId, chainId, address, isHotOmni, nativeBalanceRaw]);
+  }, [wantsLive, tokenId, chainId, address, isHotOmni, signsFee, nativeBalanceRaw, omniAmountRaw]);
 
   /**
    * Prices the way out of a blocked screen: what it costs to buy the gas the relayer needs,
@@ -1165,7 +1202,9 @@ function WithdrawStep4({
    * can sit on screen, look confirmable, and be refused on click. Pre-existing, no money
    * moves, and tracked rather than fixed inside this block — see D-267.
    */
-  const hotFeeUnquoted = isHotOmni && (quote?.source !== "live" || !quote.hot);
+  const hotFeeUnquoted =
+    (isHotOmni && (quote?.source !== "live" || !quote.hot)) ||
+    (isOmni && (quote?.source !== "live" || !quote.omni));
   const feeUnknown = hotFeeBlocked || hotFeeUnquoted;
   // Known AND zero. `Free` is reserved for a fee we actually have and that is nothing.
   const isFree = !feeUnknown && feeInToken === 0 && gasFee === null;
@@ -1175,7 +1214,12 @@ function WithdrawStep4({
   // to be told is the wrong place to find out — and until 5.4 the screen said "you will
   // receive 0" with the button still live. Mirrors the envelope's floor against the quote
   // actually on screen, which for `omft` is the live one.
-  const minRaw = minimumWithdrawalRaw(tokenId, quote?.feeRaw, chainId);
+  // `omni` also has the bridge's own live floor on the GROSS (`min_amount`), which the envelope
+  // enforces; the screen takes whichever is higher so it refuses what the envelope would.
+  const feeFloorRaw = minimumWithdrawalRaw(tokenId, quote?.feeRaw, chainId);
+  const omniFloorRaw = quote?.omni?.minAmountRaw;
+  const minRaw =
+    feeFloorRaw && omniFloorRaw && BigInt(omniFloorRaw) > BigInt(feeFloorRaw) ? omniFloorRaw : feeFloorRaw;
   const minQty = minRaw ? Number(minRaw) / Math.pow(10, decimals) : 0;
   const belowFloor = !loadingFee && minQty > 0 && qty < minQty;
 
@@ -1264,10 +1308,10 @@ function WithdrawStep4({
     // Second click on the same, now-visible higher fee: this IS the re-confirmation.
     if (feeIncreased) {
       setFeeIncreased(false);
-      onConfirm(quote?.hot);
+      onConfirm(quote?.hot, quote?.omni);
       return;
     }
-    if (isHotOmni) {
+    if (signsFee) {
       // No network call inside the click. The refresh timer owns freshness; all this does is
       // refuse to sign something the timer has not managed to keep current.
       //
@@ -1276,16 +1320,17 @@ function WithdrawStep4({
       // is the object signed (`quote`, not a re-fetch), which closes that gap outright instead
       // of catching it after the fact. `omft` keeps P2 as built and wet-tested in phase 5.
       const age = quotedAt === null ? Number.POSITIVE_INFINITY : Date.now() - quotedAt;
-      if (quote?.source !== "live" || !quote.hot || age > QUOTE_FRESH_MS) {
+      const signed = isOmni ? quote?.omni : quote?.hot;
+      if (quote?.source !== "live" || !signed || age > QUOTE_FRESH_MS) {
         setHotFeeBlocked(true);
         return;
       }
-      onConfirm(quote.hot);
+      onConfirm(quote.hot, quote.omni);
       return;
     }
     if (wantsLive) {
       setRechecking(true);
-      // `omft` only — `hot-omni` returned above — so there is no `hotRequirement` to keep here:
+      // `omft` only — `hot-omni` and `omni` returned above — so there is no `hotRequirement` to keep here:
       // this route has no gas purchase and nothing that would read one. `withTimeout` resolves
       // `null` when the budget runs out, which is why the unwrap is optional.
       const rechecked = await withTimeout(
@@ -1303,11 +1348,11 @@ function WithdrawStep4({
       }
       if (fresh && fresh.source === "live") {
         setQuote(fresh);
-        onConfirm(fresh.hot);
+        onConfirm(fresh.hot, fresh.omni);
         return;
       }
     }
-    onConfirm(quote?.hot);
+    onConfirm(quote?.hot, quote?.omni);
   }
 
   return (
@@ -1371,6 +1416,9 @@ function WithdrawStep4({
                   `${formatCrypto(gasFee.amount)} ${gasFee.ticker}`
                 : isFree
                 ? t.freeLabel
+                : isOmni
+                ? // A ceiling, not a price: the real Zcash fee is chosen after signing (D-580).
+                  t.feeUpTo.replace("{amount}", `${formatCrypto(feeInToken)} ${ticker}`)
                 : `${formatCrypto(feeInToken)} ${ticker}`
             }
             sub={
@@ -1393,7 +1441,7 @@ function WithdrawStep4({
           )}
           <div className="border-t border-slate-700" role="separator" />
           <DetailRow
-            label={t.youWillReceiveLabel}
+            label={isOmni ? t.youWillReceiveAtLeastLabel : t.youWillReceiveLabel}
             value={feeUnknown ? "—" : `${formatCrypto(netQty)} ${ticker}`}
             sub={feeUnknown ? undefined : formatUsd(netUsd)}
             highlight
@@ -1431,7 +1479,11 @@ function WithdrawStep4({
           So when the purchase path can name the real obstacle, it says that instead. */}
       {hotFeeBlocked && !loadingFee && gasState.kind !== "ready" && (
         <p role="alert" className="rounded-xl bg-red-950/40 px-3 py-2.5 text-xs text-red-300">
-          {gasState.kind === "loading" ? t.feeLoading : t.feeUnavailable}
+          {omniNoPayout
+            ? t.feeNoPayout.replace("{chain}", chainMeta?.displayName ?? chainId)
+            : gasState.kind === "loading"
+            ? t.feeLoading
+            : t.feeUnavailable}
         </p>
       )}
 

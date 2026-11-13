@@ -45,6 +45,7 @@ import {
 } from "./withdraw-poll";
 import type { HotDeliveryDeps } from "./hot-delivery";
 import type { HotFeeDetail } from "./hot-fee";
+import type { OmniDeliveryDeps, OmniFeeDetail } from "./omni-bridge";
 import { WithdrawError, type WithdrawFundsState } from "./withdraw-errors";
 import { recordPendingWithdraw, updateWithdrawRecord } from "./withdraw-record-sink";
 import { nonceToBase64 } from "./withdraw-publication-check";
@@ -118,6 +119,11 @@ export type RunRealWithdrawParams = {
    * showed, not one fetched again here.
    */
   hotFee?: HotFeeDetail;
+  /**
+   * REQUIRED on `omni`, meaningless elsewhere — forwarded unchanged, for the reason `hotFee`
+   * is: its gas ceiling is signed. See `BuildWithdrawParams.omniFee`.
+   */
+  omniFee?: OmniFeeDetail;
   /** Signs in the login family's own scheme and assembles the MultiPayload. */
   signer: VaultSigner;
   onStage?: (stage: RealWithdrawStage) => void;
@@ -151,6 +157,8 @@ export type RunRealWithdrawParams = {
   waitForDelivery?: DeliveryWaiter;
   /** The `hot-omni` delivery seam (4.3.4). Same contract: no test may reach the network. */
   hotDelivery?: HotDeliveryDeps;
+  /** The `omni` delivery seam (omni-bridge.ts). */
+  omniDelivery?: OmniDeliveryDeps;
   /**
    * Extra deadlines on the two waits.
    *
@@ -255,6 +263,7 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
     destinationAddress: p.destinationAddress,
     destinationMemo: p.destinationMemo,
     hotFee: p.hotFee,
+    omniFee: p.omniFee,
     ...p.envelope,
   });
 
@@ -410,6 +419,9 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
       signal: p.signal,
       waitForDelivery: p.waitForDelivery,
       hotDelivery: p.hotDelivery,
+      destinationAddress: p.destinationAddress,
+      amountRaw: request.amount,
+      omniDelivery: p.omniDelivery,
     });
   } catch (e) {
     // Past the settlement EVERY failure is `left-balance`, and this is the one catch that

@@ -132,9 +132,9 @@ describe("validateNewPortfolioDraft", () => {
 
     it("reading a stored draft: every offerable token at once passes, 33 does not (the vault's cap)", () => {
       const offerable = depositableTokens.filter((t) => isPortfolioOfferable(t.id)).map((t) => t.id);
-      expect(offerable).toHaveLength(28);
-      // 27 × 3.25 + 12.25 = 100.00
-      const all = offerable.map((id, i) => row(id, i === 27 ? 12.25 : 3.25));
+      expect(offerable).toHaveLength(29);
+      // 28 × 3.25 + 9 = 100.00
+      const all = offerable.map((id, i) => row(id, i === 28 ? 9 : 3.25));
       expect(validateNewPortfolioDraft(withRows(...all), [], MAX_TOKENS_PER_PORTFOLIO).ok).toBe(true);
       const ids = depositableTokens.slice(0, 33).map((t) => t.id);
       const rows33 = ids.map((id, i) => row(id, i === 32 ? 0.8 : 3.1));
@@ -144,13 +144,18 @@ describe("validateNewPortfolioDraft", () => {
       });
     });
 
-    it("refuses ZEC, in the catalog but not withdrawable yet (D-389)", () => {
-      const zec = "nep141:zec.omft.near";
-      expect(validateNewPortfolioDraft(withRows(row(BTC, 50), row(zec, 50)), [])).toEqual({
+    it("refuses USDC(SUI), in the catalog but not withdrawable yet (D-389)", () => {
+      const usdcSui = "nep141:sui-c1b81ecaf27933252d31a963bc5e9458f13c18ce.omft.near";
+      expect(validateNewPortfolioDraft(withRows(row(BTC, 50), row(usdcSui, 50)), [])).toEqual({
         ok: false,
         reason: "unknown-token",
-        tokenId: zec,
+        tokenId: usdcSui,
       });
+    });
+
+    // D-579: ZEC was the example above until Zcash got its validator.
+    it("accepts ZEC now that it can be withdrawn", () => {
+      expect(validateNewPortfolioDraft(withRows(row(BTC, 50), row("nep141:zec.omft.near", 50)), []).ok).toBe(true);
     });
 
     it("refuses a token outside the curated catalog (D-396), which the picker does not offer", () => {

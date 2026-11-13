@@ -10,6 +10,7 @@ import { useDialogFocus } from "@/features/portfolio-editor/hooks/use-dialog-foc
 import { useLoginWallet } from "@/features/login-wallet";
 import { useSendTransactionAs } from "@/features/vault/context/real-allocate-context";
 import { getDepositAddress } from "../lib/bridge-client";
+import { expectOmniDeposit, OMNI_CREDITED_DEPOSIT_CHAIN_IDS } from "../lib/omni-deposit-watch";
 import { chainRegistry } from "../lib/chain-registry";
 import {
   depositGroupKeyFor,
@@ -857,6 +858,9 @@ function DepositStep({
       .then((result) => {
         setAddress(result.address);
         setMemo(result.memo);
+        // D-580: the bridge never lists this deposit, so the dashboard watches the account's
+        // history for it instead — from now, for an hour (omni-deposit-watch.ts).
+        if (OMNI_CREDITED_DEPOSIT_CHAIN_IDS.has(chainId)) expectOmniDeposit(intentsAccountId);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
@@ -879,6 +883,9 @@ function DepositStep({
       .then((result) => {
         setAddress(result.address);
         setMemo(result.memo);
+        // D-580: the bridge never lists this deposit, so the dashboard watches the account's
+        // history for it instead — from now, for an hour (omni-deposit-watch.ts).
+        if (OMNI_CREDITED_DEPOSIT_CHAIN_IDS.has(chainId)) expectOmniDeposit(intentsAccountId);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));

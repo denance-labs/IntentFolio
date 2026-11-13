@@ -14,6 +14,8 @@
 //   hot-omni    — HOT's bridge, which has no waiter; hot-delivery.ts assembles one.
 //   near-native — no second wait at all: the settlement IS the delivery, because the funds
 //                 never leave NEAR.
+//   omni        — the Omni Bridge's transfer API, keyed on the settlement transaction
+//                 (omni-bridge.ts, D-580).
 //
 // Modelling all three as returned variants rather than as skipped or swapped calls keeps the
 // caller from having to know which routes cross which bridge — the switch lives here, once.
@@ -27,6 +29,7 @@
 import { poaBridge, solverRelay, IntentSettlementError } from "@defuse-protocol/internal-utils";
 import { getWithdrawalEntry, type BridgeRoute } from "./withdrawal-registry";
 import { waitForHotDelivery, type HotDeliveryDeps } from "./hot-delivery";
+import { waitForOmniDelivery, type OmniDeliveryDeps } from "./omni-bridge";
 import {
   WithdrawDeliveryUnconfirmedError,
   WithdrawError,
@@ -168,6 +171,15 @@ export type WaitForWithdrawDeliveryParams = {
   waitForDelivery?: DeliveryWaiter;
   /** The `hot-omni` seam. Unused by the other two routes, injected for the same reason. */
   hotDelivery?: HotDeliveryDeps;
+  /**
+   * REQUIRED on `omni`: the bridge answers with every transfer the settlement transaction
+   * created, and ours is the one paying this address.
+   */
+  destinationAddress?: string;
+  /** `omni`: the signed gross, so two same-address transfers in one tx are told apart. */
+  amountRaw?: string;
+  /** The `omni` seam, injected for the same reason as the other two. */
+  omniDelivery?: OmniDeliveryDeps;
 };
 
 /**
@@ -206,6 +218,22 @@ export async function waitForWithdrawDelivery(
   const assetId = `nep141:${entry.nearTokenId}`;
   const deadline = deadlineSignal(p.timeoutMs, p.signal);
   try {
+    if (entry.bridgeRoute === "omni") {
+      if (!p.destinationAddress) {
+        throw new Error(`An omni delivery wait needs the destination address (${p.txHash})`);
+      }
+      const omni = await waitForOmniDelivery({
+        txHash: p.txHash,
+        tokenAccountId: entry.nearTokenId,
+        chainId: entry.chainId,
+        destinationAddress: p.destinationAddress,
+        amountRaw: p.amountRaw,
+        signal: deadline.signal,
+        deps: p.omniDelivery,
+      });
+      return { kind: "bridge", destinationTxHash: omni.destinationTxHash, chain: entry.chainId };
+    }
+
     if (entry.bridgeRoute === "hot-omni") {
       const hot = await waitForHotDelivery({
         txHash: p.txHash,

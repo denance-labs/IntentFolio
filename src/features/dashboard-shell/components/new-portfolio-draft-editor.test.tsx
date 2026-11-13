@@ -555,13 +555,23 @@ describe.each(["en", "es"] as const)("NewPortfolioDraftEditor (%s)", (lang) => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
-  it("shows ZEC, in the catalog but not withdrawable yet (D-389), as not available", () => {
+  // (ZEC was this example until D-579 gave Zcash a validator; now it is offered.)
+  it("shows USDC(SUI), in the catalog but not withdrawable yet (D-389), as not available", () => {
+    renderEditor({ presetId: "balanced" });
+    fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
+    fireEvent.change(screen.getByLabelText(te.searchToken), { target: { value: "usdc(sui)" } });
+    const usdcSui = screen.getByRole("listitem");
+    expect(usdcSui.textContent).toContain(te.addTokensNotAvailableYet);
+    expect(within(usdcSui).queryByRole("button")).toBeNull();
+  });
+
+  it("offers ZEC as a target (D-579)", () => {
     renderEditor({ presetId: "balanced" });
     fireEvent.click(screen.getByRole("button", { name: t.draftAddToken }));
     fireEvent.change(screen.getByLabelText(te.searchToken), { target: { value: "zec" } });
     const zec = screen.getByRole("listitem");
-    expect(zec.textContent).toContain(te.addTokensNotAvailableYet);
-    expect(within(zec).queryByRole("button")).toBeNull();
+    expect(zec.textContent).not.toContain(te.addTokensNotAvailableYet);
+    expect(within(zec).queryByRole("button")).not.toBeNull();
   });
 
   it("removing a row re-spreads its % and moves focus to a neighbour's remove", () => {

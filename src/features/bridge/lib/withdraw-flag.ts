@@ -70,6 +70,11 @@ export function isRealWithdrawalRoute(params: {
       return true;
     case "hot-omni":
       return hotReceiverEncodable(entry.chainId) && hotFeeSupported(params.tokenId);
+    // D-580: one token (ZEC), an address validator that refuses what the bridge cannot pay
+    // (`validateZcash`), a live fee the screen blocks without, and the submit-time check reading
+    // the recipient back out of the signed `msg`.
+    case "omni":
+      return true;
     default:
       return false;
   }

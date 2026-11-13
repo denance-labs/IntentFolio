@@ -31,6 +31,7 @@ import {
   type HotGasRequirement,
 } from "./hot-fee";
 import { getWithdrawalEntry } from "./withdrawal-registry";
+import { fetchOmniWithdrawalFee, omniFeeTotalRaw, type OmniFeeDetail } from "./omni-bridge";
 
 export type WithdrawalFeeQuote = {
   /** Base units of the token being withdrawn — same precision as the registry's fee. */
@@ -51,6 +52,12 @@ export type WithdrawalFeeQuote = {
    * signal that the withdrawal cannot be built at all (there is no static stand-in).
    */
   hot?: HotFeeDetail;
+  /**
+   * `omni` only, and only from a live quote (omni-bridge.ts). Rides here for the same reason as
+   * `hot`: its gas ceiling is SIGNED, so the envelope must be built from the object on screen.
+   * `feeRaw` is its total (ceiling + protocol fee) — the most the withdrawal can cost.
+   */
+  omni?: OmniFeeDetail;
 };
 
 /** The registry's snapshot. Always available, never blocks, never throws for a known token. */
@@ -73,7 +80,7 @@ export function staticWithdrawalFee(
 export function supportsLiveWithdrawalFee(tokenId: string, chainId?: string): boolean {
   const entry = getWithdrawalEntry(tokenId, chainId);
   if (!entry) return false;
-  if (entry.bridgeRoute === "omft") return true;
+  if (entry.bridgeRoute === "omft" || entry.bridgeRoute === "omni") return true;
   if (entry.bridgeRoute === "hot-omni") return hotFeeSupported(tokenId);
   return false;
 }
@@ -117,9 +124,16 @@ export type FetchWithdrawalFeeParams = {
    * withdrawal for it — see `nativeBalanceRaw` in `hot-fee.ts` for why it is advisory.
    */
   nativeBalanceRaw?: string;
+  /**
+   * `omni` only, and REQUIRED there: the gross amount about to be signed, in base units. The
+   * bridge's gas ceiling grows with it (omni-bridge.ts), so a quote without it cannot be had.
+   */
+  amountRaw?: string;
   signal?: AbortSignal;
   /** Injected in tests; nothing here may reach the network in a unit test. */
   estimate?: typeof poaBridge.httpClient.getWithdrawalEstimate;
+  /** Injected in tests; `omni` only. */
+  omniFetch?: typeof fetch;
   /** Injected in tests; `hot-omni` only — see `hot-fee.ts`. */
   hotFeeDeps?: HotFeeDeps;
 };
@@ -144,6 +158,12 @@ export type WithdrawalFeeResult = {
    * no purchase can be sized and none must be offered.
    */
   hotRequirement?: HotGasRequirement | null;
+  /**
+   * `omni` only: the bridge answered, and said it cannot pay out this amount right now
+   * (`insufficient_utxo`). `quote` is `null` with it. Separate from a failed lookup because
+   * "try again in a moment" is not what the user should be told.
+   */
+  omniInsufficientUtxo?: boolean;
 };
 
 /**
@@ -173,6 +193,23 @@ export async function fetchWithdrawalFee(
       quote: live ? { feeRaw: live.feeRaw, source: "live", hot: live.hot } : null,
       hotRequirement: requirement,
     };
+  }
+
+  if (entry.bridgeRoute === "omni") {
+    // No fallback, as on `hot-omni`: the registry figure is never signed.
+    if (!p.amountRaw) return { quote: null };
+    const outcome = await fetchOmniWithdrawalFee({
+      tokenAccountId: entry.nearTokenId,
+      chainId: entry.chainId,
+      destinationAddress: p.destinationAddress,
+      amountRaw: p.amountRaw,
+      signal: p.signal,
+      fetchImpl: p.omniFetch,
+    });
+    if (outcome.kind === "ok") {
+      return { quote: { feeRaw: omniFeeTotalRaw(outcome.fee), source: "live", omni: outcome.fee } };
+    }
+    return { quote: null, omniInsufficientUtxo: outcome.kind === "insufficient-utxo" };
   }
 
   const fallback: WithdrawalFeeQuote = { feeRaw: entry.withdrawalFeeRaw, source: "registry" };

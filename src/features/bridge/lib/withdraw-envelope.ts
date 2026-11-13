@@ -20,7 +20,9 @@
 // OPPOSITE meanings — the token contract vs. the user. A shared builder would misroute one
 // of the two silently. This is not a hypothetical: it is the first thing reading the SDK
 // revealed. `hot-omni` is a third shape entirely (`mt_withdraw`, sometimes preceded by a
-// `token_diff`) and lives in `hot-envelope.ts`; this file owns the guards and the signing.
+// `token_diff`) and lives in `hot-envelope.ts`; `omni` is `ft_withdraw` a third time, with the
+// BRIDGE as `receiver_id` and the user inside a JSON `msg` (omni-bridge.ts). This file owns the
+// guards and the signing.
 
 import { messageFactory, config } from "@defuse-protocol/internal-utils";
 import type { Intent } from "@defuse-protocol/contract-types";
@@ -29,6 +31,12 @@ import { getTokenById } from "@/features/market/lib/token-registry";
 import { capToHeld, toBaseUnits } from "@/features/vault/lib/base-units";
 import { buildHotWithdrawIntents, hotTokenFeeRaw } from "./hot-envelope";
 import type { HotFeeDetail } from "./hot-fee";
+import {
+  buildOmniWithdrawIntent,
+  omniFeeTotalRaw,
+  omniRecipient,
+  type OmniFeeDetail,
+} from "./omni-bridge";
 import {
   getWithdrawalEntry,
   unreceivableNearDestination,
@@ -45,7 +53,7 @@ export const WITHDRAW_MIN_GAS = "17050000000000";
 /** Default envelope lifetime, matching the vault paths (008.plan Phase 0). */
 export const WITHDRAW_DEADLINE_SECS = 600;
 
-/** Every route the registry declares. All three are buildable as of block 4.3.2. */
+/** Every route the registry declares. All are buildable (`omni` since D-580). */
 export type SupportedWithdrawRoute = BridgeRoute;
 
 export type BuildWithdrawParams = {
@@ -89,6 +97,14 @@ export type BuildWithdrawParams = {
    * Absent on `hot-omni` is therefore a throw, not a fallback.
    */
   hotFee?: HotFeeDetail;
+  /**
+   * REQUIRED on `omni`, meaningless elsewhere: the live quote from `omni-bridge.ts`, exactly as
+   * the screen displayed it. A parameter for the same reason as `hotFee` — its `gasFeeRaw` is
+   * SIGNED (`MaxGasFee`), so it must be the figure the user saw, not one fetched again here.
+   */
+  omniFee?: OmniFeeDetail;
+  /** Injectable so tests are deterministic; `omni` only. Defaults to a random UUID, as upstream. */
+  omniExternalId?: string;
 };
 
 export type WithdrawSignRequest = {
@@ -137,6 +153,21 @@ function requireHotFee(fee: HotFeeDetail | undefined, tokenId: string): HotFeeDe
     throw new Error(
       `Withdrawal of ${tokenId} needs a live HOT fee quote (hot-fee.ts): the signed intent ` +
         `carries a block number and a fee swap that the registry snapshot cannot supply`
+    );
+  }
+  return fee;
+}
+
+/**
+ * An `omni` envelope without a live quote cannot be built: `MaxGasFee` is signed, and whether
+ * the bridge has the coins to pay out (`insufficient_utxo`) is only known live. Same reasoning as
+ * `requireHotFee`.
+ */
+function requireOmniFee(fee: OmniFeeDetail | undefined, tokenId: string): OmniFeeDetail {
+  if (!fee) {
+    throw new Error(
+      `Withdrawal of ${tokenId} needs a live Omni Bridge fee quote (omni-bridge.ts): the signed ` +
+        `intent carries the network fee ceiling, which the registry snapshot cannot supply`
     );
   }
   return fee;
@@ -262,6 +293,8 @@ function buildDirectIntent(
       return buildNativeWithdrawIntent(p);
     case "hot-omni":
       throw new Error("hot-omni withdrawals are built by buildHotWithdrawIntents");
+    case "omni":
+      throw new Error("omni withdrawals are built by buildOmniWithdrawIntent");
   }
 }
 
@@ -301,8 +334,37 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
   // to and the live quote IS the number the guards below must use (008.plan §4.3.1).
   const hotFee =
     entry.bridgeRoute === "hot-omni" ? requireHotFee(p.hotFee, p.tokenId) : null;
-  const feeRaw = hotFee ? BigInt(hotTokenFeeRaw(hotFee)) : BigInt(entry.withdrawalFeeRaw);
+  // `omni` is like `hot-omni` here: the fee is signed, so the live quote is the figure the
+  // guards below use, and the gross must clear the CEILING (the most the bridge may take).
+  const omniFee = entry.bridgeRoute === "omni" ? requireOmniFee(p.omniFee, p.tokenId) : null;
+  const feeRaw = hotFee
+    ? BigInt(hotTokenFeeRaw(hotFee))
+    : omniFee
+    ? BigInt(omniFeeTotalRaw(omniFee))
+    : BigInt(entry.withdrawalFeeRaw);
   const amountRaw = BigInt(amount);
+
+  if (omniFee) {
+    // The ceiling grows with the amount (omni-bridge.ts header), so a quote asked for less than
+    // what is signed may be too low a `MaxGasFee` for the transaction the bridge has to build.
+    // Signing LESS than quoted is fine — the ceiling for a smaller amount is never higher. It
+    // can be MORE only when `capToHeld` snaps up to the balance (within 1e-12 of it), which on
+    // 8 decimals needs ≥ 10,000 ZEC — and then this refuses before anything is signed.
+    if (amountRaw > BigInt(omniFee.quotedForRaw)) {
+      throw new Error(
+        `Withdrawal of ${amount} base units exceeds the ${omniFee.quotedForRaw} the Omni Bridge ` +
+          `fee was quoted for: the signed network fee ceiling may not cover it`
+      );
+    }
+    // `validateWithdrawal` upstream: net + ceiling + protocol fee ≥ `min_amount`, which on our
+    // gross convention is the gross itself.
+    if (amountRaw < BigInt(omniFee.minAmountRaw)) {
+      throw new Error(
+        `Withdrawal of ${amount} base units is below the Omni Bridge minimum ` +
+          `${omniFee.minAmountRaw} for ${token.symbol}`
+      );
+    }
+  }
 
   // Upstream: `if (amount <= fee) throw new FeeExceedsAmountError(...)`. Without this the
   // withdrawal settles perfectly and delivers NOTHING — the bridge keeps the whole amount as
@@ -356,6 +418,13 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
         `sending one would be dropped, not delivered`
     );
   }
+  // Nor does the Omni Bridge: its payload has a recipient and nothing to attach a tag to.
+  if (omniFee && p.destinationMemo != null && p.destinationMemo !== "") {
+    throw new Error(
+      `The Omni Bridge does not carry a destination memo on withdrawal (token ${p.tokenId}); ` +
+        `sending one would be dropped, not delivered`
+    );
+  }
 
   // The screen validates the address for the chain it shows, but the chain can change after
   // that check (D-384 made it a toggle), and a NEAR name signed into a bridge memo burns the
@@ -376,6 +445,11 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
     );
   }
 
+  const recipient = omniFee ? omniRecipient(entry.chainId, p.destinationAddress) : null;
+  if (omniFee && !recipient) {
+    throw new Error(`The Omni Bridge has no destination prefix for ${entry.chainId}`);
+  }
+
   const intents: Intent[] = hotFee
     ? buildHotWithdrawIntents({
         tokenId: p.tokenId,
@@ -384,6 +458,16 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
         destinationAddress: p.destinationAddress,
         fee: hotFee,
       }).intents
+    : omniFee && recipient
+    ? [
+        buildOmniWithdrawIntent({
+          tokenAccountId: entry.nearTokenId,
+          amount,
+          recipient,
+          fee: omniFee,
+          externalId: p.omniExternalId ?? crypto.randomUUID(),
+        }),
+      ]
     : [
         buildDirectIntent(entry.bridgeRoute, {
           tokenAccountId: entry.nearTokenId,

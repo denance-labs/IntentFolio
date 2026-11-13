@@ -567,12 +567,13 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit) — the curated catal
 
   // D-389: in the catalog but not withdrawable yet — same label, and no field even with a
   // balance to allocate, because it cannot be added at all.
-  it("marks ZEC as not available, with no field, even when held", () => {
-    renderEdit({ lang, real: false, available: new Map([["near", 5], ["nep141:zec.omft.near", 10]]) });
-    const zec = rowOf("ZEC");
-    expect(zec.textContent).toContain(t.addTokensNotAvailableYet);
-    expect(within(zec).queryByRole("button")).toBeNull();
-    expect(within(zec).queryByRole("spinbutton")).toBeNull();
+  // (ZEC was this example until D-579 gave Zcash a validator.)
+  it("marks USDC(SUI) as not available, with no field, even when held", () => {
+    renderEdit({ lang, real: false, available: new Map([["near", 5], ["nep141:sui-c1b81ecaf27933252d31a963bc5e9458f13c18ce.omft.near", 10]]) });
+    const usdcSui = rowOf("USDC(SUI)");
+    expect(usdcSui.textContent).toContain(t.addTokensNotAvailableYet);
+    expect(within(usdcSui).queryByRole("button")).toBeNull();
+    expect(within(usdcSui).queryByRole("spinbutton")).toBeNull();
   });
 
   it("does not take a held balance of it into the portfolio, and lists it last", () => {

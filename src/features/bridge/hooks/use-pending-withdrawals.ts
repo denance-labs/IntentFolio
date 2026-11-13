@@ -89,6 +89,10 @@ type ResumableDelivery = {
   /** With `tokenId`, names the route: an `omft` token can also have gone to NEAR (D-384). */
   chainId: string;
   txHash: string;
+  /** Needed by the `omni` wait only: the bridge answers per settlement, ours is by recipient. */
+  destinationAddress: string;
+  /** Likewise `omni` only: the signed gross, base units (`WithdrawRescueRecord.amount`). */
+  amountRaw: string;
 };
 
 function describeError(e: unknown): string {
@@ -241,6 +245,8 @@ function listResumableDeliveries(): ResumableDelivery[] {
       route: record.route,
       chainId: record.chainId,
       txHash: record.txHash,
+      destinationAddress: record.destinationAddress,
+      amountRaw: record.amount,
     });
   }
   return resumable;
@@ -299,6 +305,9 @@ type ResumablePublication = PublicationToCheck & {
   tokenId: string;
   route: SupportedWithdrawRoute;
   chainId: string;
+  /** Handed to the delivery wait once settled — see `ResumableDelivery`. */
+  destinationAddress: string;
+  amountRaw: string;
 };
 
 function isUnresolvedPublish(record: WithdrawRescueRecord): boolean {
@@ -335,6 +344,8 @@ function listResumablePublications(): ResumablePublication[] {
       tokenId: record.tokenId,
       route: record.route,
       chainId: record.chainId,
+      destinationAddress: record.destinationAddress,
+      amountRaw: record.amount,
     });
   }
   return resumable;
@@ -507,6 +518,9 @@ export function usePendingWithdrawals({
           route: item.route,
           chainId: item.chainId,
           txHash: item.txHash,
+          // `omni` picks its transfer out of the settlement's by recipient (omni-bridge.ts).
+          destinationAddress: item.destinationAddress,
+          amountRaw: item.amountRaw,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -609,6 +623,8 @@ export function usePendingWithdrawals({
               route: item.route,
               chainId: item.chainId,
               txHash: verdict.txHash,
+              destinationAddress: item.destinationAddress,
+              amountRaw: item.amountRaw,
             });
           } else if (verdict.kind === "executed") {
             if (settlesOnNear(item)) {

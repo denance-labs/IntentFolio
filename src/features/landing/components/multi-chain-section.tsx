@@ -19,6 +19,8 @@ const ASSETS = [
   { symbol: "BTC", name: "Bitcoin" },
   { symbol: "ETH", name: "Ethereum" },
   { symbol: "SOL", name: "Solana" },
+  // D-580: received, held and withdrawn to Zcash, tested with real money (2026-11-13).
+  { symbol: "ZEC", name: "Zcash" },
   { symbol: "NEAR", name: "NEAR" },
   { symbol: "USDC", name: "USD Coin" },
   { symbol: "USDT", name: "Tether" },
@@ -33,6 +35,7 @@ const NETWORKS = [
   { chainId: "eth:42161", name: "Arbitrum" },
   { chainId: "sol:mainnet", name: "Solana" },
   { chainId: "btc:mainnet", name: "Bitcoin" },
+  { chainId: "zec:mainnet", name: "Zcash" },
   { chainId: "tron:mainnet", name: "Tron" },
 ] as const;
 
@@ -64,14 +67,12 @@ export function MultiChainSection() {
           <div className="my-7 h-px bg-bone/10" />
 
           <p className={`${WORLD_LABEL} text-center`}>{t.networksLabel}</p>
-          {/* Seven named networks on phones: 4 + 3, with the short row centred — an 8-column grid
-              where each logo spans 2 and the fifth starts at column 2. From `sm` up, one flex row. */}
+          {/* Eight named networks on phones: two rows of 4 — an 8-column grid where each logo spans 2
+              (with seven, the fifth started at column 2 to centre the short row; Zcash, D-580, filled
+              it). From `sm` up, one flex row. */}
           <ul className="mt-4 grid grid-cols-8 justify-items-center gap-y-4 sm:flex sm:flex-wrap sm:items-center sm:justify-center sm:gap-5">
-            {NETWORKS.map((network, i) => (
-              <li
-                key={network.chainId}
-                className={`col-span-2 flex min-w-14 flex-col items-center gap-1.5 ${i === 4 ? "col-start-2" : ""}`}
-              >
+            {NETWORKS.map((network) => (
+              <li key={network.chainId} className="col-span-2 flex min-w-14 flex-col items-center gap-1.5">
                 <span aria-hidden="true">
                   <ChainIcon chainId={network.chainId} variant="background" size={36} />
                 </span>

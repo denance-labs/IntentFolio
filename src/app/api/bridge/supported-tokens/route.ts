@@ -14,6 +14,16 @@ const registryAssetName = new Map(tokenRegistry.map((t) => [t.id, t.assetName ??
 // Cache the per-chain token catalog server-side. Changes rarely; same for all users.
 export const revalidate = 300;
 
+/**
+ * Minimums PoA states but does not enforce, by intents token id. ZEC (D-580): PoA lists 0.01, but
+ * the deposit is credited by the Omni Bridge's Zcash connector, whose own minimum is 0.001
+ * (`zcash-connector.bridge.near` `get_config`: `min_deposit_amount` 100000, read 2026-11-13), and
+ * a 0.002 ZEC deposit was credited in full on chain (`2ijfsQ53…`, `verify_deposit_details`).
+ */
+const MIN_DEPOSIT_OVERRIDE_RAW: Record<string, string> = {
+  "nep141:zec.omft.near": "100000",
+};
+
 // The bridge returns min_deposit_amount in base units (e.g. ETH min "100000000000"
 // with decimals 18 == 1e-7 ETH). Convert to a human-readable decimal string so the
 // Receive modal shows "0.0000001 ETH" instead of a raw hundred-billion integer.
@@ -55,7 +65,8 @@ export async function GET() {
       if (!minDeposit[key]) minDeposit[key] = {};
       // On a shared asset+chain slot, show the registry token's minimum, not whichever came last.
       if (known || minDeposit[key][chainId] === undefined) {
-        minDeposit[key][chainId] = formatBaseUnits(min_deposit_amount, decimals);
+        const minRaw = MIN_DEPOSIT_OVERRIDE_RAW[token.intents_token_id] ?? min_deposit_amount;
+        minDeposit[key][chainId] = formatBaseUnits(minRaw, decimals);
       }
     }
   }

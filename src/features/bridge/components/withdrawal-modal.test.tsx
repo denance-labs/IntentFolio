@@ -2659,3 +2659,222 @@ describe("WithdrawalModal — uppercase bech32 from a QR code (D-387 b)", () => 
     expect(screen.getByText(/^Bitcoin Cash addresses can look the same as Bitcoin ones/)).toBeTruthy();
   });
 });
+
+// D-579: Zcash, transparent addresses only. Open since D-580 (`omni` route); the address tests
+// below still pass `isAvailable` from when the withdrawal was pending, which changes nothing now.
+describe("WithdrawalModal — Zcash (D-579)", () => {
+  const ZEC = "nep141:zec.omft.near";
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+  // A real mainnet t1 (Blockchair `zcash/outputs`, 2026-11-11), as in address-validation.test.ts.
+  const ZEC_T1 = "t1KbKkQ7WisJF52sSepMjYokQJbkJCJ1i3C";
+
+  function openZec() {
+    mockBalance.mockReturnValue(new Map([[ZEC, 0.05]]));
+    mockPrices.mockReturnValue({ prices: { [ZEC]: { usdPrice: 1000 } } });
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "47000", source: "live" }));
+    renderModal({ isAvailable: () => true });
+    pickSingleNetworkToken("ZEC");
+  }
+
+  // Opened by D-580: the row is selectable with the shipped allowlist (no `isAvailable` override).
+  it("offers ZEC to withdraw", () => {
+    mockBalance.mockReturnValue(new Map([[ZEC, 0.05]]));
+    mockPrices.mockReturnValue({ prices: { [ZEC]: { usdPrice: 1000 } } });
+    renderModal();
+    const row = screen.getAllByRole("button").find((b) => b.textContent?.includes("ZEC"));
+    expect(row?.textContent).not.toContain("Not available yet");
+  });
+
+  function typeAddress(value: string) {
+    fireEvent.change(screen.getByLabelText("Destination address"), { target: { value } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "0.02" } });
+  }
+
+  const continueDisabled = () =>
+    (screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled;
+
+  it("hints the transparent form and warns about Zclassic look-alikes", () => {
+    openZec();
+    expect(screen.getByLabelText("Destination address").getAttribute("placeholder")).toBe("t1… / t3…");
+    expect(screen.getByText(/^Zclassic addresses can look the same as Zcash ones/)).toBeTruthy();
+  });
+
+  it("lets a transparent address through", () => {
+    openZec();
+    typeAddress(ZEC_T1);
+    expect(continueDisabled()).toBe(false);
+  });
+
+  it("refuses a unified address with the transparent-only message", () => {
+    openZec();
+    typeAddress("u1qpatys4zruk99pg59gcscrt7y6akvl9vrhcfyhm9yxvxz7h87q6n8cgrzzpe9zru68uq39uhmlpp5uefxu0su5uqyqfe5zp3tycn0ecl");
+    expect(screen.getByText(/^Only transparent Zcash addresses/)).toBeTruthy();
+    expect(continueDisabled()).toBe(true);
+  });
+
+  it("refuses a one-character typo as a checksum error", () => {
+    openZec();
+    typeAddress(ZEC_T1.slice(0, -1) + "D");
+    expect(screen.getByText(/^Invalid checksum/)).toBeTruthy();
+    expect(continueDisabled()).toBe(true);
+  });
+});
+
+// ── D-580: ZEC leaves straight through the Omni Bridge (`omni` route) ───────────
+// Its fee is SIGNED (the Zcash gas ceiling rides in the intent), so it follows `hot-omni`'s
+// rules: no registry fallback, a block without a live quote, and the quote on screen is the one
+// signed. What it adds: the quote depends on the amount, the fee is a ceiling ("Up to"), what
+// arrives is a floor ("at least"), and the bridge can answer "not this amount right now".
+const ZEC = "nep141:zec.omft.near";
+const T1 = "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K";
+const omniQuote = {
+  feeRaw: "32000",
+  source: "live" as const,
+  omni: { gasFeeRaw: "22000", protocolFeeRaw: "10000", minAmountRaw: "100000", quotedForRaw: "500000" },
+};
+
+async function reachStep4Zec(props: Partial<React.ComponentProps<typeof WithdrawalModal>> = {}) {
+  mockBalance.mockReturnValue(new Map([[ZEC, 1]]));
+  mockPrices.mockReturnValue({ prices: { [ZEC]: { usdPrice: 500 } } });
+  renderModal({ isAvailable: () => true, isRealRoute: () => true, ...props });
+  pickSingleNetworkToken("ZEC");
+  fireEvent.change(screen.getByLabelText("Destination address"), { target: { value: T1 } });
+  fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "0.005" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await act(async () => {});
+}
+
+describe("WithdrawalModal — ZEC through the Omni Bridge (D-580)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+    localStorage.clear();
+  });
+
+  it("asks the fee for the gross amount, states it as a ceiling and the net as a floor", async () => {
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await reachStep4Zec();
+    expect(mockFee.mock.calls[0][0]).toMatchObject({ tokenId: ZEC, amountRaw: "500000" });
+    expect(screen.getByText(/^Up to 0\.00032 ZEC$/)).toBeTruthy();
+    expect(screen.getByText("You'll receive at least")).toBeTruthy();
+    expect(screen.getByText("0.00468 ZEC")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(false);
+  });
+
+  it("signs the quote on screen, handing over the Omni detail and no HOT one", async () => {
+    const onConfirmed = vi.fn();
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await reachStep4Zec({ onConfirmed });
+    const callsAfterMount = mockFee.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    });
+    expect(mockFee.mock.calls.length).toBe(callsAfterMount);
+    expect(onConfirmed).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenId: ZEC, omniFee: omniQuote.omni, hotFee: undefined })
+    );
+  });
+
+  it("blocks with no figures when the live quote cannot be had", async () => {
+    mockFee.mockResolvedValue({ quote: null, omniInsufficientUtxo: false });
+    await reachStep4Zec();
+    expect(screen.queryByText(/0\.00032/)).toBeNull();
+    expect(screen.getAllByText("—").length).toBe(2);
+    expect(screen.getByText(/couldn't get the current network fee/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("says the amount cannot be sent right now when the bridge is short of coins", async () => {
+    mockFee.mockResolvedValue({ quote: null, omniInsufficientUtxo: true });
+    await reachStep4Zec();
+    expect(screen.getByText(/can't be sent to Zcash right now/)).toBeTruthy();
+    expect(screen.queryByText(/couldn't get the current network fee/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("keeps the quote young on a timer, and refuses one that aged out", async () => {
+    vi.useFakeTimers();
+    const onConfirmed = vi.fn();
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await reachStep4Zec({ onConfirmed });
+    expect(mockFee).toHaveBeenCalledTimes(1);
+    mockFee.mockResolvedValue({ quote: null, omniInsufficientUtxo: false });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(mockFee.mock.calls.length).toBeGreaterThan(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    });
+    expect(onConfirmed).not.toHaveBeenCalled();
+    expect(screen.getByText(/couldn't get the current network fee/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  // The main safety rule: a "no" from the bridge on ANY tick must stop the quote in hand from
+  // being signed — not only on the first one.
+  it("blocks a quote already on screen when a refresh says the bridge cannot pay out", async () => {
+    vi.useFakeTimers();
+    const onConfirmed = vi.fn();
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await reachStep4Zec({ onConfirmed });
+    mockFee.mockResolvedValue({ quote: null, omniInsufficientUtxo: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getByText(/can't be sent to Zcash right now/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    });
+    expect(onConfirmed).not.toHaveBeenCalled();
+
+    // …and a later good quote lifts it.
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.queryByText(/can't be sent to Zcash right now/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(false);
+  });
+
+  it("states no registry fee when the route is not live (D-263's rule, on omni)", async () => {
+    mockFee.mockResolvedValue(feeResult(omniQuote));
+    await reachStep4Zec({ isRealRoute: () => false });
+    expect(mockFee).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Up to 0\.00032/)).toBeNull();
+    expect(screen.getByText(/can't price this withdrawal right now/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("refuses an amount under the bridge's live minimum, not only the registry's", async () => {
+    mockFee.mockResolvedValue(
+      feeResult({ ...omniQuote, omni: { ...omniQuote.omni, minAmountRaw: "600000" } })
+    );
+    await reachStep4Zec();
+    expect(screen.getByText(/Withdraw at least 0\.00600000 ZEC/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+});

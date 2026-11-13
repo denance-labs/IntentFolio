@@ -44,6 +44,7 @@ import { intentsBalancesQueryKey } from "@/features/wallet/hooks/use-intents-bal
 import { runGasPurchase, GasPurchaseError } from "@/features/bridge/lib/gas-purchase-run";
 import type { GasPurchaseQuote } from "@/features/bridge/lib/gas-purchase";
 import type { HotFeeDetail } from "@/features/bridge/lib/hot-fee";
+import type { OmniFeeDetail } from "@/features/bridge/lib/omni-bridge";
 import { WithdrawError } from "@/features/bridge/lib/withdraw-errors";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
 import { announceOperation } from "@/features/vault/hooks/use-real-portfolio-history";
@@ -52,6 +53,8 @@ import { tokenRegistry, assetIdForNearTokenId, getTokenById, getTokenByNearToken
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import type { WalletDepositCredit } from "@/features/bridge/lib/near-wallet-deposit";
 import { markDepositNotified } from "@/features/bridge/lib/credited-deposits-store";
+import { useOmniDepositWatch } from "@/features/bridge/hooks/use-omni-deposit-watch";
+import type { OmniCreditedDeposit } from "@/features/bridge/lib/omni-deposit-watch";
 import {
   AmountExceedsBalanceError,
   capToHeld,
@@ -480,6 +483,21 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
     [creditDeposit]
   );
 
+  const handleOmniCredited = useCallback(
+    (deposit: OmniCreditedDeposit) => {
+      const token = getTokenById(deposit.tokenId);
+      if (!token) return;
+      creditDeposit({
+        assetId: deposit.tokenId,
+        qty: fromBaseUnits(BigInt(deposit.amountRaw), token.decimals),
+        chain: deposit.chainId,
+        txHash: deposit.txHash,
+        assetLabel: token.assetName ?? token.symbol,
+      });
+    },
+    [creditDeposit]
+  );
+
   const handleWalletDepositCredited = useCallback(
     (credit: WalletDepositCredit) => {
       const token = getTokenById(credit.tokenId);
@@ -584,7 +602,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       /** The modal already ran the `near-native` pre-flight on step 3, off the click path. */
       destinationVerified: boolean,
       /** The live HOT quote the confirm screen showed, exactly as `run-real-withdraw.ts` needs it. */
-      hotFee: HotFeeDetail | undefined
+      hotFee: HotFeeDetail | undefined,
+      /** The live Omni Bridge quote (`omni` route, D-580), likewise. */
+      omniFee: OmniFeeDetail | undefined
     ): Promise<void> => {
       const token = tokenRegistry.find((tk) => tk.id === tokenId) ?? null;
       const symbol = token?.symbol ?? tokenId;
@@ -620,6 +640,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         destinationMemo: memo,
         destinationAlreadyVerified: destinationVerified,
         hotFee,
+        omniFee,
         signer: signer.signer,
         onRecordId: (recordId) => {
           rowId = recordId;
@@ -946,6 +967,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       memo,
       destinationVerified,
       hotFee,
+      omniFee,
       conversionQuote,
     }: WithdrawConfirmParams) => {
       if (conversionQuote) {
@@ -989,7 +1011,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           memo,
           liveSigner,
           destinationVerified,
-          hotFee
+          hotFee,
+          omniFee
         );
       }
 
@@ -1286,6 +1309,12 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
   const { deposits } = useRecentDeposits({
     intentsAccountId: loginConnected ? intentsAccountId : "",
     onCredited: handleCredited,
+  });
+
+  // D-580: the deposits PoA never lists (ZEC, credited by the Omni Bridge), from the history.
+  useOmniDepositWatch({
+    intentsAccountId: loginConnected ? intentsAccountId : "",
+    onCredited: handleOmniCredited,
   });
 
   // `leavesDraftTab`: false for the draft's own tab, whose unsaved edits stay where they are.

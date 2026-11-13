@@ -253,7 +253,8 @@ describe("ReceiveModal — deferred pairs (008 MVP allowlist)", () => {
     const labels = rowLabels();
     // XRP was in this list until D-195 took it out of the registry entirely (2026-08-20).
     // It is no longer deferred here — it is absent, which the next test fixes.
-    for (const deferred of ["ADA", "SUI", "APT", "ZEC"]) {
+    // ZEC left this list with its validator (D-579).
+    for (const deferred of ["ADA", "SUI", "APT"]) {
       expect(labels.indexOf(deferred), deferred).toBeGreaterThan(labels.indexOf("BTC"));
     }
   });

@@ -37,6 +37,9 @@ export const WITHDRAW_WIRE_ROUTES: readonly SupportedWithdrawRoute[] = [
   "hot-omni",
   "near-native",
   "near-unwrap",
+  // D-580: migration 011 (solver repo) added it to the CHECK, and the solver's resolver judges it
+  // against the Omni API; the builder's output was bound in its spec (`omni-zec-zcash`, 2026-11-13).
+  "omni",
 ];
 
 /**

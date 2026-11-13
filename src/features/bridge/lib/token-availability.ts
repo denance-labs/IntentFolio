@@ -1,5 +1,5 @@
 // Day-1 scope of the team testing MVP (008.plan §"Alcance del MVP de testeo del equipo",
-// LOCKED 2026-08-12). 39 of the 56 `withdrawalRegistry` rows are enabled; the other 17 are
+// LOCKED 2026-08-12). 40 of the 56 `withdrawalRegistry` rows are enabled; the other 16 are
 // shown as "Not available yet" and cannot be selected. (35 of 56 at the lock; XRP left the registry
 // with D-195, and BTC/DOGE/LTC came in with their validators, D-278.)
 //
@@ -11,10 +11,12 @@
 //   - `near-unwrap` (1, NEAR itself) — in, for the same reason: it lands in a NEAR account.
 //     Added 2026-08-20 with the route (D-176). Before it existed NEAR was deposit-only, and
 //     the paragraph below about stranded tokens applied to our own flagship asset.
-//   - `omft` (21 of 28) — in only where `validateAddress` has a real validator for the
+//   - `omft` (21 of 27) — in only where `validateAddress` has a real validator for the
 //     destination chain, which is what makes a typo detectable before an irreversible
-//     transfer. That leaves out the 7 rows on chains with no validator (Aptos, Cardano,
-//     Sui, Zcash).
+//     transfer. That leaves out the 6 rows on chains with no validator (Aptos, Cardano, Sui).
+//   - `omni` (1, ZEC) — in since 2026-11-13 (D-580): straight to the Omni Bridge, to a
+//     transparent Zcash address `validateZcash` checks. Opened by the operator before its own
+//     real-money withdrawal, which runs right after publishing (D-579's rule, changed).
 //
 //     BTC, DOGE and LTC were briefly enabled here (2026-08-12) on the assumption that D-278
 //     would land first; it did not, and shipping them would have meant forwarding a typo to
@@ -92,6 +94,9 @@ export const DAY_ONE_TOKEN_IDS: ReadonlySet<string> = new Set([
   "nep141:btc.omft.near",                                                    // BTC
   "nep141:doge.omft.near",                                                   // DOGE
   "nep141:ltc.omft.near",                                                    // LTC
+
+  // ── omni (1) — ZEC straight to the Omni Bridge, to a t1/t3 address (D-580) ──
+  "nep141:zec.omft.near",                                                    // ZEC
 
   // ── hot-omni (5) — natives only; they pay gas in kind, so no purchase ────────
   "nep245:v2_1.omni.hot.tg:137_11111111111111111111",                        // POL
@@ -192,10 +197,22 @@ export const NO_SELL_ROUTE_TOKEN_IDS: ReadonlySet<string> = new Set([
   "nep141:arb-0xca7dec8550f43a5e46e3dfb95801f64280e75b27.omft.near",         // SWEAT (ARB)
 ]);
 
-// In the catalog is not enough to go into a portfolio: 14 catalog tokens (ZEC, the Sui/Aptos
-// stables and the non-native hot-omni stables) cannot be withdrawn yet, so a portfolio that
-// bought one would strand it (D-389). The portfolio gets the set Receive offers, minus the
-// tokens it could never buy (D-491).
+// WITHDRAWAL PENDING (D-579, operator decision 2026-11-11): a token received, held, bought and sold
+// while its withdrawal stays "Not available yet" (it is not in `DAY_ONE_TOKEN_IDS`). EMPTY since
+// 2026-11-13: ZEC, the one token it was made for, opened with the `omni` route (D-580). Kept as the
+// mechanism for the next token that needs the same two stages.
+//
+// This is the one exception to D-389 below, and why it is safe: D-389 kept unwithdrawable tokens
+// out of portfolios because a portfolio that bought one would strand it. ZEC has a sell route
+// (1Click quotes it towards USDC(NEAR) at $20 and $1,000, measured 2026-11-11), so a holder can
+// always leave it as USDC. Opening the withdrawal means moving the id to `DAY_ONE_TOKEN_IDS` and
+// out of this set.
+export const WITHDRAWAL_PENDING_TOKEN_IDS: ReadonlySet<string> = new Set<string>([]);
+
+// In the catalog is not enough to go into a portfolio: 13 catalog tokens (the Sui/Aptos stables
+// and the non-native hot-omni stables) cannot be withdrawn yet, so a portfolio that bought one
+// would strand it (D-389). The portfolio gets the set Receive offers, minus the tokens it could
+// never buy (D-491).
 /** Whether IntentFolio offers this token as a portfolio target (D-396, D-389, D-491). */
 export function isPortfolioOfferable(tokenId: string): boolean {
   // A stock has no withdrawal route: the way out is selling it inside the Funding Account (plan 039).
@@ -203,7 +220,14 @@ export function isPortfolioOfferable(tokenId: string): boolean {
   return isReceivable(tokenId) && !NO_BUY_ROUTE_TOKEN_IDS.has(tokenId);
 }
 
-/** Whether Receive offers this (asset, chain) pair: withdrawable today, in the catalog, not cut (D-491). */
+/**
+ * Whether Receive offers this (asset, chain) pair: withdrawable today (or pending its withdrawal
+ * with a sell route, D-579), in the catalog, not cut (D-491).
+ */
 export function isReceivable(tokenId: string): boolean {
-  return isTokenAvailable(tokenId) && isInCatalog(tokenId) && !NOT_RECEIVED_TOKEN_IDS.has(tokenId);
+  return (
+    (isTokenAvailable(tokenId) || WITHDRAWAL_PENDING_TOKEN_IDS.has(tokenId)) &&
+    isInCatalog(tokenId) &&
+    !NOT_RECEIVED_TOKEN_IDS.has(tokenId)
+  );
 }

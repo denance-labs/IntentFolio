@@ -33,6 +33,7 @@ import {
   type WithdrawSignRequest,
 } from "./withdraw-envelope";
 import { encodeHotReceiver } from "./hot-envelope";
+import { omniRecipient, readOmniRecipient } from "./omni-bridge";
 import {
   assertSolanaDestinationUsable,
   defaultSolanaDestinationProbe,
@@ -399,6 +400,27 @@ function assertEnvelopePaysDestination(
     const paid = readHotReceiver(findMtWithdraw(request.intents)?.msg);
     const expected = encodeHotReceiver(chainId, destinationAddress);
     if (paid !== expected) {
+      throw new Error(
+        `Withdrawal destination mismatch: the envelope pays ${JSON.stringify(paid)} but the ` +
+          `caller asked to send to ${JSON.stringify(expected)} (${destinationAddress})`
+      );
+    }
+    return;
+  }
+
+  if (route === "omni") {
+    // The bridge is `receiver_id`; the user is `msg.recipient`, spelled `<prefix>:<address>`.
+    // Compared in that spelling, built by the same function the builder used. Omni has no
+    // memo field, so one here would be dropped — refused, as on HOT.
+    if (destinationMemo != null && destinationMemo !== "") {
+      throw new Error(
+        `The Omni Bridge does not carry a destination memo on withdrawal; the caller passed ` +
+          `${JSON.stringify(destinationMemo)}, which would be dropped rather than delivered`
+      );
+    }
+    const paid = request.intents.length === 1 ? readOmniRecipient(request.intents[0]) : null;
+    const expected = omniRecipient(chainId, destinationAddress);
+    if (paid === null || paid !== expected) {
       throw new Error(
         `Withdrawal destination mismatch: the envelope pays ${JSON.stringify(paid)} but the ` +
           `caller asked to send to ${JSON.stringify(expected)} (${destinationAddress})`

@@ -103,6 +103,7 @@ export const bridgeTranslations = {
     addressInvalid: "Invalid address format",
     addressChecksumWarning: "Address has no checksum — double-check before sending",
     addressChecksumError: "Invalid checksum — this address may contain a typo",
+    addressZcashTransparentOnly: "Only transparent Zcash addresses (t1… or t3…) can receive withdrawals",
     addressWrongChain: "This looks like a {chain} address.",
     backToStart: "Back to start",
     amountLabel: "Amount",
@@ -169,6 +170,10 @@ export const bridgeTranslations = {
     withdrawNetworkLabel: "Network",
     networkFeeLabel: "Network fee",
     youWillReceiveLabel: "You'll receive",
+    // D-580: the Zcash network fee is chosen after signing, so the screen states its ceiling
+    // and the least that arrives (operator-approved copy, 2026-11-12).
+    youWillReceiveAtLeastLabel: "You'll receive at least",
+    feeUpTo: "Up to {amount}",
     irreversibleBanner: "Withdrawals are irreversible. Verify the address and network before confirming.",
     confirmWithdrawalButton: "Confirm withdrawal",
     freeLabel: "Free",
@@ -192,6 +197,8 @@ export const bridgeTranslations = {
     // wallet, which is the one action that certainly does nothing when the flag is off.
     // A sentence that is true in every case beats advice that is wrong in the common one.
     feeUnquoted: "We can't price this withdrawal right now, so it can't be confirmed.",
+    // D-580: Omni's `insufficient_utxo` — the network side cannot pay this amount out right now.
+    feeNoPayout: "This amount can't be sent to {chain} right now. Try a smaller amount, or try again later.",
     // D-251: the fee leaves a DIFFERENT balance than the withdrawal, so the amount below is
     // not reduced by it. Says which token pays without naming gas, relayers or bridges.
     feeFromGasBalance: "Paid from your {symbol} balance, not deducted from this withdrawal",
@@ -347,6 +354,7 @@ export const bridgeTranslations = {
     addressInvalid: "Formato de dirección inválido",
     addressChecksumWarning: "La dirección no tiene checksum — verifica antes de enviar",
     addressChecksumError: "Checksum inválido — la dirección puede tener un error",
+    addressZcashTransparentOnly: "Sólo las direcciones transparentes de Zcash (t1… o t3…) pueden recibir retiros",
     addressWrongChain: "Esto parece una dirección de {chain}.",
     backToStart: "Volver al inicio",
     amountLabel: "Monto",
@@ -405,6 +413,8 @@ export const bridgeTranslations = {
     withdrawNetworkLabel: "Red",
     networkFeeLabel: "Comisión de red",
     youWillReceiveLabel: "Recibirás",
+    youWillReceiveAtLeastLabel: "Recibirás al menos",
+    feeUpTo: "Hasta {amount}",
     irreversibleBanner: "Los retiros son irreversibles. Verifica la dirección y la red antes de confirmar.",
     confirmWithdrawalButton: "Confirmar retiro",
     freeLabel: "Sin costo",
@@ -413,6 +423,7 @@ export const bridgeTranslations = {
     feeIncreasedNotice: "La comisión de red subió mientras revisabas. Mira el monto nuevo y confirma de nuevo.",
     feeUnavailable: "No pudimos obtener la comisión de red actual. Prueba de nuevo en un momento.",
     feeUnquoted: "No podemos cotizar este retiro ahora mismo, así que no se puede confirmar.",
+    feeNoPayout: "Este monto no se puede enviar a {chain} ahora mismo. Prueba con un monto menor o vuelve a intentarlo más tarde.",
     feeFromGasBalance: "Se paga con tu saldo de {symbol}, no se descuenta de este retiro",
     confirmWithdrawalAgainButton: "Revisar y confirmar",
     withdrawSigningButton: "Confirma en tu wallet…",

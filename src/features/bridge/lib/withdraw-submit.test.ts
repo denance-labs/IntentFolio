@@ -1067,3 +1067,77 @@ describe("nearDestinationIsContract", () => {
     warn.mockRestore();
   });
 });
+
+// D-580: ZEC straight to the Omni Bridge. The user's address lives in the JSON `msg`, so the
+// destination check has to read it there — the `omft` memo comparison would refuse every one.
+describe("submitWithdraw — omni (ZEC → Zcash)", () => {
+  const ZEC = "nep141:zec.omft.near";
+  const T1 = "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K";
+  const omniFee = {
+    gasFeeRaw: "22000",
+    protocolFeeRaw: "10000",
+    minAmountRaw: "100000",
+    quotedForRaw: "500000",
+  };
+  const zecRequest = (destinationAddress = T1) =>
+    buildWithdrawSignRequest({
+      signerId: SIGNER_ID,
+      tokenId: ZEC,
+      chainId: "zec:mainnet",
+      qty: 0.005,
+      heldRaw: BigInt(10) ** BigInt(12),
+      destinationAddress,
+      deadlineSecs: DEADLINE_SECS,
+      nonce: NONCE,
+      omniFee,
+    });
+
+  it("signs and publishes with no quote hash and no NEAR pre-flight", async () => {
+    const h = harness();
+    const result = await submitWithdraw({
+      request: zecRequest(),
+      tokenId: ZEC,
+      chainId: "zec:mainnet",
+      destinationAddress: T1,
+      signer: h.signer,
+      publish: h.publish,
+      probe: h.probe,
+    });
+    expect(result).toEqual({ intentHash: "0xIntentHash", route: "omni" });
+    expect(h.calls).toEqual(["sign", "publish"]);
+    expect(vi.mocked(h.publish).mock.calls[0][0]).toMatchObject({ quote_hashes: [] });
+  });
+
+  it("refuses when the msg pays a different Zcash address than the one asked", async () => {
+    const h = harness();
+    await expect(
+      submitWithdraw({
+        request: zecRequest("t3Vz22vK5z2LcKEdg16Yv4FFneEL1zg9ojd"),
+        tokenId: ZEC,
+        chainId: "zec:mainnet",
+        destinationAddress: T1,
+        signer: h.signer,
+        publish: h.publish,
+        probe: h.probe,
+      })
+    ).rejects.toThrow(/destination mismatch/i);
+    expect(h.signer.signEnvelope).not.toHaveBeenCalled();
+  });
+
+  it("refuses a destination memo, which Omni would drop", async () => {
+    const h = harness();
+    await expect(
+      submitWithdraw({
+        request: zecRequest(),
+        tokenId: ZEC,
+        chainId: "zec:mainnet",
+        destinationAddress: T1,
+        destinationMemo: "42",
+        signer: h.signer,
+        publish: h.publish,
+        probe: h.probe,
+      })
+    ).rejects.toThrow(/does not carry a destination memo/);
+    expect(h.signer.signEnvelope).not.toHaveBeenCalled();
+  });
+});

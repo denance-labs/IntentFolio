@@ -6,7 +6,7 @@ import { decodeBech32, decodeSegwitAddress } from "./bech32";
 
 export type AddressValidationResult = {
   valid: boolean;
-  errorKey?: "addressInvalid" | "addressChecksumError";
+  errorKey?: "addressInvalid" | "addressChecksumError" | "addressZcashTransparentOnly";
   warningKey?: "addressChecksumWarning";
 };
 
@@ -170,33 +170,57 @@ function validateTon(address: string): AddressValidationResult {
   return { valid: true };
 }
 
+/** Length of a base58check version prefix: one byte for Bitcoin and its forks, two for Zcash. */
+type VersionBytes = 1 | 2;
+
 /**
- * Base58check (the legacy address format of Bitcoin and its forks): 25 bytes — a version
- * byte, a 20-byte hash, and 4 bytes that must equal `sha256(sha256(first 21))[0..4]`. The
- * version byte says both the chain and the kind of script, which is why it is checked
- * against an explicit list rather than read off the first character.
+ * The bytes of a base58 string with the right outer shape for base58check, or null. 25..35
+ * characters covers both the 25-byte (1-byte version) and the 26-byte (2-byte version) forms.
+ */
+function decodeBase58CheckShaped(address: string): Uint8Array | null {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{25,35}$/.test(address)) return null;
+  try {
+    return bs58.decode(address);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The version prefix of a decoded base58check payload with a 20-byte hash, read big-endian, or
+ * null if the length does not match a `versionBytes`-byte prefix. Checksum NOT verified.
+ */
+function base58CheckVersionOf(decoded: Uint8Array, versionBytes: VersionBytes): number | null {
+  if (decoded.length !== versionBytes + 20 + 4) return null;
+  return versionBytes === 1 ? decoded[0] : (decoded[0] << 8) | decoded[1];
+}
+
+/**
+ * Base58check (the legacy address format of Bitcoin and its forks, and Zcash's transparent
+ * one): a version prefix, a 20-byte hash, and 4 bytes that must equal
+ * `sha256(sha256(prefix + hash))[0..4]`. The prefix is one byte on Bitcoin and its forks (25
+ * bytes in all) and two on Zcash (26). It says both the chain and the kind of script, which is
+ * why it is checked against an explicit list rather than read off the first character.
  *
  * Same split of errors as Tron's: a right-shaped address whose check digits are wrong is a
  * typo ("re-copy it"), anything else is simply not an address of this chain.
  */
-function validateBase58Check(address: string, versions: readonly number[]): AddressValidationResult {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{25,35}$/.test(address)) {
-    return { valid: false, errorKey: "addressInvalid" };
-  }
-  let decoded: Uint8Array;
-  try {
-    decoded = bs58.decode(address);
-  } catch {
-    return { valid: false, errorKey: "addressInvalid" };
-  }
-  if (decoded.length !== 25) return { valid: false, errorKey: "addressInvalid" };
+function validateBase58Check(
+  address: string,
+  versions: readonly number[],
+  versionBytes: VersionBytes = 1
+): AddressValidationResult {
+  const decoded = decodeBase58CheckShaped(address);
+  if (!decoded) return { valid: false, errorKey: "addressInvalid" };
+  const version = base58CheckVersionOf(decoded, versionBytes);
   // Version before checksum (D-387 d): a mistyped address of ANOTHER chain is not this chain's
   // address, whatever its check digits say — "re-copy it" would send the user to re-copy the
   // wrong thing.
-  if (!versions.includes(decoded[0])) return { valid: false, errorKey: "addressInvalid" };
-  const expected = sha256(sha256(decoded.slice(0, 21), "bytes"), "bytes").slice(0, 4);
+  if (version === null || !versions.includes(version)) return { valid: false, errorKey: "addressInvalid" };
+  const payloadLength = versionBytes + 20;
+  const expected = sha256(sha256(decoded.slice(0, payloadLength), "bytes"), "bytes").slice(0, 4);
   for (let i = 0; i < 4; i++) {
-    if (decoded[21 + i] !== expected[i]) return { valid: false, errorKey: "addressChecksumError" };
+    if (decoded[payloadLength + i] !== expected[i]) return { valid: false, errorKey: "addressChecksumError" };
   }
   return { valid: true };
 }
@@ -273,6 +297,42 @@ function validateDoge(address: string): AddressValidationResult {
   return validateBase58Check(address, [0x1e, 0x16]);
 }
 
+// Zcash's transparent version prefixes (zcash/src/chainparams.cpp, mainnet
+// `base58Prefixes`): `t1…` P2PKH is 0x1CB8 and `t3…` P2SH is 0x1CBD.
+const ZCASH_T1 = 0x1cb8;
+const ZCASH_T3 = 0x1cbd;
+
+// Zcash addresses the bridge cannot pay: Sapling `zs1…` and unified `u1…` (both bech32/bech32m,
+// so either case), the legacy Sprout `zc…`, and the ZIP-320 `tex1…` form. NEAR Intents' address
+// docs (chain-address-support) list Zcash as "transparent only", `t1`/`t3`.
+const ZCASH_NOT_TRANSPARENT = /^(?:zs1|u1|tex1|zc)/i;
+
+/**
+ * Zcash (D-579): transparent addresses only — `t1…` (P2PKH) and `t3…` (P2SH), base58check with
+ * a TWO-byte version prefix, so 26 bytes rather than Bitcoin's 25.
+ *
+ * The two bytes are checked together, not read off the `t1`/`t3` spelling: testnet `tm…`
+ * (0x1D25) and `t2…` (0x1CBA) are the right shape and the wrong network, and nothing would
+ * deliver a mainnet withdrawal to them.
+ *
+ * A shielded or unified address gets its own message rather than "invalid format": it IS a
+ * valid Zcash address, and what the user needs to hear is which kind to paste instead.
+ *
+ * The transparent check matches upstream (`intents-sdk@0.96.0` `lib/validateAddress.js:234`:
+ * 26 bytes, the same two prefixes, the double-sha256 checksum).
+ *
+ * ⚠️ STRICTER THAN UPSTREAM, ON PURPOSE: that same SDK also accepts `tex1…` and unified `u1…`
+ * addresses with an Orchard or transparent receiver, while NEAR Intents' address docs say
+ * "transparent only". Until a withdrawal to one of them has been made with real money, the
+ * documented set is the one that is sent to (D-579).
+ *
+ * Attribution: see ATTRIBUTIONS.md #12.
+ */
+function validateZcash(address: string): AddressValidationResult {
+  if (ZCASH_NOT_TRANSPARENT.test(address)) return { valid: false, errorKey: "addressZcashTransparentOnly" };
+  return validateBase58Check(address, [ZCASH_T1, ZCASH_T3], 2);
+}
+
 export function validateAddress(address: string, chainId: string): AddressValidationResult {
   if (!address.trim()) return { valid: false };
 
@@ -285,6 +345,7 @@ export function validateAddress(address: string, chainId: string): AddressValida
   if (chainId === "btc:mainnet") return validateBtc(address);
   if (chainId === "ltc:mainnet") return validateLtc(address);
   if (chainId === "doge:mainnet") return validateDoge(address);
+  if (chainId === "zec:mainnet") return validateZcash(address);
 
   // Fail CLOSED. A chain with no validator above cannot have its destination checked at all,
   // and a withdrawal is irreversible: accepting "any non-empty string" (what this returned
@@ -315,28 +376,34 @@ export function normalizeAddress(address: string, chainId: string): string {
 }
 
 /**
- * The base58check version bytes `validateBtc`, `validateLtc` and `validateDoge` accept, with
- * the chain each belongs to.
+ * The base58check version prefixes `validateBtc`, `validateLtc`, `validateDoge` and
+ * `validateZcash` accept, with the chain each belongs to.
  */
-const BASE58CHECK_OWNERS: ReadonlyArray<{ chainId: string; name: string; versions: readonly number[] }> = [
-  { chainId: "btc:mainnet", name: "Bitcoin", versions: [0x00, 0x05] },
-  { chainId: "ltc:mainnet", name: "Litecoin", versions: [0x30, 0x32] },
-  { chainId: "doge:mainnet", name: "Dogecoin", versions: [0x1e, 0x16] },
+const BASE58CHECK_OWNERS: ReadonlyArray<{
+  chainId: string;
+  name: string;
+  versions: readonly number[];
+  versionBytes: VersionBytes;
+}> = [
+  { chainId: "btc:mainnet", name: "Bitcoin", versions: [0x00, 0x05], versionBytes: 1 },
+  { chainId: "ltc:mainnet", name: "Litecoin", versions: [0x30, 0x32], versionBytes: 1 },
+  { chainId: "doge:mainnet", name: "Dogecoin", versions: [0x1e, 0x16], versionBytes: 1 },
+  { chainId: "zec:mainnet", name: "Zcash", versions: [ZCASH_T1, ZCASH_T3], versionBytes: 2 },
 ];
 
 /**
- * The version byte of a 25-byte base58check payload, checksum NOT verified (D-387 d): like the
- * other shape tests in `detectWrongChain`, a mistyped address still says which chain it is.
- * The 25 bytes are what keep this off Solana's shape, which decodes to 32.
+ * The chain whose base58check version prefix `address` carries, checksum NOT verified (D-387
+ * d): like the other shape tests in `detectWrongChain`, a mistyped address still says which
+ * chain it is. The decoded length (25 or 26 bytes) is what keeps this off Solana's shape, which
+ * decodes to 32, and keeps the one- and two-byte prefixes from being read as each other.
  */
-function base58CheckVersion(address: string): number | null {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{25,35}$/.test(address)) return null;
-  try {
-    const decoded = bs58.decode(address);
-    return decoded.length === 25 ? decoded[0] : null;
-  } catch {
-    return null;
-  }
+function base58CheckOwner(address: string): (typeof BASE58CHECK_OWNERS)[number] | undefined {
+  const decoded = decodeBase58CheckShaped(address);
+  if (!decoded) return undefined;
+  return BASE58CHECK_OWNERS.find((o) => {
+    const version = base58CheckVersionOf(decoded, o.versionBytes);
+    return version !== null && o.versions.includes(version);
+  });
 }
 
 // Returns the suspected chain display name if the address shape belongs to a different chain.
@@ -371,8 +438,7 @@ export function detectWrongChain(address: string, chainId: string): string | nul
   if (chainId !== "ltc:mainnet" && /^ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{8,}$/.test(address)) {
     return "Litecoin";
   }
-  const version = base58CheckVersion(address);
-  const owner = version === null ? undefined : BASE58CHECK_OWNERS.find((o) => o.versions.includes(version));
+  const owner = base58CheckOwner(address);
   if (owner && owner.chainId !== chainId) return owner.name;
 
   return null;
