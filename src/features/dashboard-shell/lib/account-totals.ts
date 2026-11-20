@@ -1,7 +1,6 @@
 import type { Portfolio } from "../context/portfolio-context";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import type { TokenPriceMap } from "@/features/market/types";
-import type { DepositStatusEntry } from "@/features/bridge";
 import type { PendingUnallocationRecord } from "@/features/intents-account/mock-contract/types";
 
 export type AccountTotals = {
@@ -64,8 +63,9 @@ export function computeAccountTotals(generalUsd: number, portfoliosUsd: number):
 /**
  * Whether money the user moved may be missing from the totals right now (D-299 / D3). One
  * note covers every such case instead of a rule per operation: an Allocate in transit
- * (including an orphan awaiting rescue), a portfolio withdrawal on its way back to the
- * General Balance, a deposit not yet credited.
+ * (including an orphan awaiting rescue) and a portfolio withdrawal on its way back to the
+ * General Balance. Deposits are not here since PoA's Bridge API closed (D-584): Receive's
+ * deposits only show once credited, from the history.
  *
  * A withdrawal to an external wallet is deliberately NOT here: until it executes the funds
  * are still in the General Balance, and once it executes they have left IntentFolio — the
@@ -74,16 +74,13 @@ export function computeAccountTotals(generalUsd: number, portfoliosUsd: number):
  */
 export function hasMovementsInProgress({
   pendingAllocates,
-  deposits,
   unallocations,
 }: {
   pendingAllocates: number;
-  deposits: readonly DepositStatusEntry[];
   unallocations: readonly PendingUnallocationRecord[];
 }): boolean {
   return (
     pendingAllocates > 0 ||
-    deposits.some((d) => d.status === "PENDING") ||
     unallocations.some((u) => u.status === "PENDING")
   );
 }

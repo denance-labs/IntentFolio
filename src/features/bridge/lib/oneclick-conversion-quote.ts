@@ -17,10 +17,11 @@
 // units and already deducted from `amountOut`; Conversion Cost 0–5 bps (USDC/USDT on Aptos ~21).
 //
 // ⚠️ ONE FIELD IN THE ECHO WAS NOT SENT: `quoteRequest.appFees`, 1Click's own fee on a keyless
-// call (recipient `5880ad2b…`, in bps). Measured: 1 on 114 of 122 quotes, 20 on the five Aptos-USDC
-// routes — which is their ~21 bps — and none on nBTC → Bitcoin. It is not compared like the rest:
-// it is already inside `amountOut`, and G5 bounds the amounts whatever the fee line says. Reading
-// it as a list to approve would make every new fee schedule an outage instead of a cost (D-424).
+// call (recipient `5880ad2b…`, in bps). Measured in October: 1 on 114 of 122 quotes, 20 on the five
+// Aptos-USDC routes — which is their ~21 bps — and none on nBTC → Bitcoin. Measured 2026-11-19: `[]`
+// on every quote, with or without a partner key (plan 047). Either way it is not compared like the
+// rest: the fee is already inside `amountOut`, and G5 bounds the amounts whatever the fee line says.
+// Reading it as a list to approve would make every new fee schedule an outage instead of a cost (D-424).
 
 import { getTokenById } from "@/features/market/lib/token-registry";
 import {

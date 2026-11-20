@@ -588,8 +588,8 @@ describe("quoteConversion — G5: the ceiling without prices", () => {
       ["Bitcoin", NBTC_TO_BITCOIN, "btc:mainnet", "3000"],
       // Registry: USDC on Ethereum 300000; measured 300000.
       ["Ethereum", USDC_STELLAR_TO_ETHEREUM, "eth:1", "600000"],
-      // Registry: USDT on Tron 1000000; measured 917954.
-      ["Tron", USDT_NEAR_TO_TRON, "tron:mainnet", "2000000"],
+      // Registry: USDT on Tron 1530000 (D-584, the empty-address fee); measured 917954.
+      ["Tron", USDT_NEAR_TO_TRON, "tron:mainnet", "3060000"],
     ] as const)("%s: %s passes, one more is refused", async (_n, recorded, chainId, ceiling) => {
       const r = recorded as Recorded;
       // Lower amountOut by as much as the fee rises: the loss (fee excluded) stays exactly what
@@ -791,9 +791,9 @@ describe("quoteConversion — G5: the ceiling without prices", () => {
     });
 
     it("keeps the regular ceiling's refusal on chains with no token account to open", async () => {
-      // Tron's regular ceiling is 2 000 000; no account allowance there.
+      // Tron's regular ceiling is 3 060 000 (twice the registry's 1.53, D-584); no account allowance there.
       expectUnavailable(
-        await run(USDT_NEAR_TO_TRON, "tron:mainnet", withFee(BigInt(2000001))),
+        await run(USDT_NEAR_TO_TRON, "tron:mainnet", withFee(BigInt(3060001))),
         /Network Fee above its ceiling/
       );
     });

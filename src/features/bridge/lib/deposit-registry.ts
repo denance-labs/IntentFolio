@@ -136,8 +136,12 @@ export function orderDepositGroups(
  * one token it was built from.
  */
 export function depositTokenIdFor(assetName: string, chainId: string): string | null {
-  const token = depositableTokens.find(
+  const matches = depositableTokens.filter(
     (t) => (t.assetName ?? t.symbol) === assetName && withdrawalRegistry[t.id]?.chainId === chainId
   );
+  // Two tokens share a pair only where an id was replaced (D-581: the HOT ids of BNB Chain,
+  // Polygon and Avalanche next to their Omni ids). A deposit lands as the live one, so the one
+  // Receive offers wins; registry order decides only when neither is offered.
+  const token = matches.find((t) => isReceivable(t.id)) ?? matches[0];
   return token?.id ?? null;
 }

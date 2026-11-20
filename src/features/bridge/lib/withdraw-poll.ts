@@ -8,26 +8,29 @@
 //                is out of the balance, so nothing that fails here may be reported as
 //                "your withdrawal failed".
 //
-// The second wait is a different mechanism per route, and block 4.3.4 made that three:
+// The second wait is a different mechanism per route:
 //
-//   omft        — the PoA bridge's own waiter, keyed on the asset id.
+//   omft        — NO wait any more (D-584): the PoA Bridge API that answered it closed on
+//                 2026-11-11, while the bridge itself keeps delivering (measured). Settling on
+//                 NEAR hands the funds to the bridge, and that hand-off is all that can be known.
 //   hot-omni    — HOT's bridge, which has no waiter; hot-delivery.ts assembles one.
 //   near-native — no second wait at all: the settlement IS the delivery, because the funds
 //                 never leave NEAR.
 //   omni        — the Omni Bridge's transfer API, keyed on the settlement transaction
 //                 (omni-bridge.ts, D-580).
 //
-// Modelling all three as returned variants rather than as skipped or swapped calls keeps the
-// caller from having to know which routes cross which bridge — the switch lives here, once.
+// Modelling every route as a returned variant rather than as skipped or swapped calls keeps
+// the caller from having to know which routes cross which bridge — the switch lives here, once.
 //
-// Both SDK waiters run on real timers with their own internal budgets and no injectable
-// clock, so they are injected wholesale instead of being wrapped — that is what makes the
+// The settlement waiter runs on real timers with its own internal budget and no injectable
+// clock, so it is injected wholesale instead of being wrapped — that is what makes the
 // timeout paths testable without waiting minutes or touching the network.
 //
-// Attribution: see ATTRIBUTIONS.md #10 (PoA) and #11 (HOT).
+// Attribution: see ATTRIBUTIONS.md #11 (HOT).
 
-import { poaBridge, solverRelay, IntentSettlementError } from "@defuse-protocol/internal-utils";
+import { IntentSettlementError } from "@defuse-protocol/internal-utils";
 import { getWithdrawalEntry, type BridgeRoute } from "./withdrawal-registry";
+import { ownRelayPublication } from "./own-relay-publish";
 import { waitForHotDelivery, type HotDeliveryDeps } from "./hot-delivery";
 import { waitForOmniDelivery, type OmniDeliveryDeps } from "./omni-bridge";
 import {
@@ -44,18 +47,17 @@ export type SettlementWaiter = (params: {
   onTxHashKnown?: (txHash: string) => void;
 }) => Promise<{ txHash: string; intentHash: string }>;
 
-/** `poaBridge.waitForWithdrawalCompletion`, likewise. Its `signal` is mandatory upstream. */
-export type DeliveryWaiter = (params: {
-  txHash: string;
-  withdrawalCriteria: { assetId: string };
-  signal: AbortSignal;
-}) => Promise<{ destinationTxHash: string; chain: string }>;
-
 export type WithdrawSettlement = { txHash: string; intentHash: string };
 
 export type WithdrawDelivery =
-  /** Crossed the PoA bridge and landed on the destination chain. */
+  /** Crossed the Omni Bridge and landed on the destination chain. */
   | { kind: "bridge"; destinationTxHash: string; chain: string }
+  /**
+   * `omft`: handed to the PoA bridge, which nobody can watch any more (D-584). NOT a delivery
+   * and NOT an unconfirmed one: the funds left the balance and nothing will ever say more, so
+   * the withdrawal closes as "Sent" instead of waiting for an answer that cannot come.
+   */
+  | { kind: "bridge-handoff"; chain: string }
   /** `near-native`: settling on NEAR already delivered it. No bridge, nothing to wait for. */
   | { kind: "near-settlement" }
   /**
@@ -100,11 +102,12 @@ function deadlineSignal(timeoutMs: number | undefined, outer: AbortSignal | unde
   };
 }
 
-const defaultSettlementWaiter: SettlementWaiter = (params) =>
-  solverRelay.waitForIntentSettlement(params);
-
-const defaultDeliveryWaiter: DeliveryWaiter = (params) =>
-  poaBridge.waitForWithdrawalCompletion(params);
+/**
+ * Resolves the settlement the own relay already executed (own-relay-publish.ts, D-589). The
+ * previous default followed the solver relay's `get_status`, which answers 403 to everyone:
+ * `solverRelay.waitForIntentSettlement(params)`; going back is this line and the publisher's.
+ */
+const defaultSettlementWaiter: SettlementWaiter = ownRelayPublication.waitForSettlement;
 
 export type WaitForWithdrawSettlementParams = {
   intentHash: string;
@@ -168,8 +171,7 @@ export type WaitForWithdrawDeliveryParams = {
   txHash: string;
   timeoutMs?: number;
   signal?: AbortSignal;
-  waitForDelivery?: DeliveryWaiter;
-  /** The `hot-omni` seam. Unused by the other two routes, injected for the same reason. */
+  /** The `hot-omni` seam. Unused by the other routes, injected for the same reason. */
   hotDelivery?: HotDeliveryDeps;
   /**
    * REQUIRED on `omni`: the bridge answers with every transfer the settlement transaction
@@ -210,9 +212,11 @@ export async function waitForWithdrawDelivery(
   if (entry.bridgeRoute === "near-native" || entry.bridgeRoute === "near-unwrap") {
     return { kind: "near-settlement" };
   }
+  // Nothing to wait for and nothing that could fail: the settlement already happened, and the
+  // one API that could follow the bridge from here is closed (D-584).
+  if (entry.bridgeRoute === "omft") return { kind: "bridge-handoff", chain: entry.chainId };
 
-  // `assetId` is only the PoA bridge's matching key, but it is also what the unconfirmed
-  // error reports for BOTH bridged routes, so it is built before the split. On HOT it names
+  // `assetId` is what the unconfirmed error reports for both watched bridges. On HOT it names
   // the NEP-245 contract rather than a per-token one — which is exactly right for an operator
   // re-checking by hand, since that is the contract the withdrawal burned from.
   const assetId = `nep141:${entry.nearTokenId}`;
@@ -234,34 +238,20 @@ export async function waitForWithdrawDelivery(
       return { kind: "bridge", destinationTxHash: omni.destinationTxHash, chain: entry.chainId };
     }
 
-    if (entry.bridgeRoute === "hot-omni") {
-      const hot = await waitForHotDelivery({
-        txHash: p.txHash,
-        chainId: entry.chainId,
-        signal: deadline.signal,
-        deps: p.hotDelivery,
-      });
-      return {
-        kind: "hot-bridge",
-        destinationTxHash: hot.destinationTxHash,
-        chain: entry.chainId,
-        nonce: hot.nonce,
-      };
+    if (entry.bridgeRoute !== "hot-omni") {
+      throw new Error(`No delivery wait for route "${entry.bridgeRoute}" (${p.tokenId})`);
     }
-
-    // The bridge matches on `nep141:${near_token_id}` (findMatchingWithdrawal upstream), so
-    // the criteria are rebuilt from the registry's own contract id rather than from the
-    // caller's token id, which is the same string only as long as nobody re-keys the registry.
-    const wait = p.waitForDelivery ?? defaultDeliveryWaiter;
-    const completion = await wait({
+    const hot = await waitForHotDelivery({
       txHash: p.txHash,
-      withdrawalCriteria: { assetId },
+      chainId: entry.chainId,
       signal: deadline.signal,
+      deps: p.hotDelivery,
     });
     return {
-      kind: "bridge",
-      destinationTxHash: completion.destinationTxHash,
-      chain: completion.chain,
+      kind: "hot-bridge",
+      destinationTxHash: hot.destinationTxHash,
+      chain: entry.chainId,
+      nonce: hot.nonce,
     };
   } catch (e) {
     // A cancellation is already the right report: it says `left-balance`, and it says WHY.

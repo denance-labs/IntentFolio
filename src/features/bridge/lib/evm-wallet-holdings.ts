@@ -20,6 +20,10 @@ export type EvmWalletToken = {
  * `DAY_ONE_TOKEN_IDS`: a token added to the registry later does not start reading a contract by
  * being typed into a table. `evm-wallet-holdings.test.ts` fails when a receivable EVM token is
  * missing here, and checks each contract against the address inside its `omft` id.
+ *
+ * Not here yet: the six stables of BNB Chain, Polygon and Avalanche (D-581, `one-click`). Receive
+ * takes them through the deposit address; reading them from the wallet needs those three chains
+ * in `evm-rpc.ts` and the deposit sender, which is D-583.
  */
 export const EVM_WALLET_TOKENS: readonly EvmWalletToken[] = [
   // Ethereum

@@ -18,9 +18,10 @@ export const WITHDRAW_RECORDS_ENDPOINT = "/api/ops/withdraw-records";
  *
  * The browser store's vocabulary minus `dismissed`: hiding a record is the user's display
  * preference and says nothing about where the money is, so it never leaves the browser
- * (ADR-0025 §4). Every value here is a HINT — the solver resolves each record on its own.
+ * (ADR-0025 §4). Also minus `sent` (D-584): it is the browser's label for an `omft` withdrawal
+ * that settled on NEAR, and travels as `settled` — which is exactly what is known. Every value here is a HINT — the solver resolves each record on its own.
  */
-export type WithdrawWireStatus = Exclude<WithdrawRecordStatus, "dismissed">;
+export type WithdrawWireStatus = Exclude<WithdrawRecordStatus, "dismissed" | "sent">;
 
 export const WITHDRAW_WIRE_STATUSES: readonly WithdrawWireStatus[] = [
   "publishing",

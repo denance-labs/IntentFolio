@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   real: true,
   universal: true,
   gate: true,
+  /** The direct live path (`isRealWithdrawalRoute`). Off: the suite is about conversions. */
+  realRoute: false,
   signer: { chain: "near", signer: { signEnvelope: () => {} } } as unknown,
   withdrawProps: null as null | Record<string, unknown>,
 }));
@@ -57,7 +59,6 @@ vi.mock("@/features/bridge", () => ({
     state.withdrawProps = props;
     return null;
   },
-  useRecentDeposits: () => ({ deposits: [] }),
   usePendingWithdrawals: () => [],
   dismissWithdrawal: () => false,
 }));
@@ -68,7 +69,7 @@ vi.mock("@/features/bridge/lib/withdraw-flag", () => ({
   get UNIVERSAL_WITHDRAWAL_ENABLED() {
     return state.universal;
   },
-  isRealWithdrawalRoute: () => false,
+  isRealWithdrawalRoute: () => state.realRoute,
   isConversionRoute: vi.fn(() => state.gate),
 }));
 vi.mock("@/features/bridge/lib/run-real-withdraw", async (importOriginal) => ({
@@ -111,7 +112,7 @@ vi.mock("./create-portfolio-flow", () => ({ CreatePortfolioFlow: () => null }));
 
 import { DashboardShell } from "./dashboard-shell";
 import { mockContract } from "@/features/intents-account/mock-contract";
-import { readHeldOnVerifier } from "@/features/bridge/lib/run-real-withdraw";
+import { readHeldOnVerifier, runRealWithdraw } from "@/features/bridge/lib/run-real-withdraw";
 import { runConversionWithdraw } from "@/features/bridge/lib/run-conversion-withdraw";
 import { quoteConversion } from "@/features/bridge/lib/oneclick-conversion-quote";
 import { ensureCanOperate } from "@/features/login-wallet";
@@ -172,6 +173,7 @@ beforeEach(() => {
   state.real = true;
   state.universal = true;
   state.gate = true;
+  state.realRoute = false;
   state.signer = { chain: "near", signer: { signEnvelope: () => {} } };
   state.withdrawProps = null;
 });
@@ -264,6 +266,25 @@ describe("DashboardShell — the conversion money door", () => {
     expect(row).toMatchObject({ deliveryTokenId: QUOTE.deliveryTokenId, depositAddress: QUOTE.depositAddress, isReal: true });
   });
 
+  // The Converting row shows the NEAR settlement hash while 1Click converts (operator, 2026-11-19).
+  it("a settled conversion keeps its NEAR hash on the Converting row", async () => {
+    mockRun.mockImplementation(
+      async (p: { onRecordId: (id: string) => void; onStage: (s: string) => void; onSettled: (h: string) => void }) => {
+        p.onRecordId("rec-s");
+        p.onStage("publishing");
+        p.onSettled("NEARTX");
+        p.onStage("converting");
+        return new Promise(() => {}); // still converting
+      }
+    );
+    const { onConfirmed } = renderShell();
+    await act(async () => {
+      await onConfirmed(confirmParams());
+    });
+    const row = mockContract.getTrackedWithdrawals(ACCOUNT).find((w) => w.intentId === "rec-s");
+    expect(row).toMatchObject({ status: "SETTLED", txHash: "NEARTX" });
+  });
+
   it("a refund closes the row as REFUNDED and says the money is back", async () => {
     mockRun.mockImplementation(async (p: { onRecordId: (id: string) => void; onStage: (s: string) => void }) => {
       p.onRecordId("rec-2");
@@ -349,5 +370,41 @@ describe("DashboardShell — a conversion that does not finish", () => {
       await expect(onConfirmed(confirmParams())).rejects.toBeInstanceOf(ConversionNotSignableError);
     });
     expect(screen.queryByText(notCompleted)).toBeNull();
+  });
+});
+
+// D-584: the direct path for an `omft` token. Settled and handed to a bridge nobody can watch: the
+// row closes as SENT and the toast says it can take a few minutes — never "delivered".
+describe("DashboardShell — an omft withdrawal handed to the bridge", () => {
+  const BTC = "nep141:btc.omft.near";
+  const mockDirect = runRealWithdraw as ReturnType<typeof vi.fn>;
+
+  it("closes the row as SENT with the hand-off toast, and never says delivered", async () => {
+    state.gate = false;
+    state.realRoute = true;
+    mockDirect.mockImplementation(async (p: { onRecordId: (id: string) => void; onStage: (s: string) => void }) => {
+      p.onRecordId("rec-btc");
+      p.onStage("publishing");
+      return {
+        recordId: "rec-btc",
+        intentHash: "h",
+        txHash: "NEARTX",
+        route: "omft",
+        amount: "10000",
+        delivery: { kind: "bridge-handoff", chain: "btc:mainnet" },
+      };
+    });
+    const { onConfirmed } = renderShell();
+    await act(async () => {
+      await onConfirmed(
+        confirmParams({ tokenId: BTC, qty: 0.0001, chainId: "btc:mainnet", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", conversionQuote: undefined })
+      );
+    });
+
+    expect(mockDirect).toHaveBeenCalledOnce();
+    const row = mockContract.getTrackedWithdrawals(ACCOUNT).find((w) => w.intentId === "rec-btc");
+    expect(row).toMatchObject({ status: "SENT", txHash: "NEARTX" });
+    expect(screen.getByText(/can take a few minutes to arrive/)).toBeTruthy();
+    expect(screen.queryByText(/Withdrawal delivered/)).toBeNull();
   });
 });

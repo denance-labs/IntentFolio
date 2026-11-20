@@ -20,7 +20,10 @@
 
 import { INTENTS_CONTRACT_ID, VAULT_CONTRACT_ID } from "@/features/wallet/config/network";
 
-/** ② Allocate goes to the Verifier; ③ Unallocate's commit goes to the vault. */
+/**
+ * ② Allocate goes to the Verifier, and so do withdrawals and 1Click transfers since the solver
+ * relay stopped answering (D-589); ③ Unallocate's commit goes to the vault.
+ */
 export type RelayTarget = "verifier" | "vault";
 
 // 300 Tgas for both, matching the contract's own integration test. Each call fans out into
@@ -56,6 +59,13 @@ export type RelayRequestBody = {
   /** The already-signed MultiPayload. The relayer never signs anything on the user's behalf. */
   payload: unknown;
 };
+
+/**
+ * The `would-fail` refusal of a signed operation this process already sent (relay-service.ts,
+ * `recordSend`). Unlike every other refusal it does NOT prove nothing ran: the first copy may
+ * have landed. A client that reads refusals as "untouched" must single this one out.
+ */
+export const RELAY_ALREADY_SENT_ERROR = "this signed operation was already sent";
 
 export type RelayErrorCode =
   | "bad-request"

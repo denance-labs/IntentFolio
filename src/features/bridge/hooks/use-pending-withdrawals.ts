@@ -30,6 +30,9 @@ import type { WithdrawVerdictAnswer } from "../lib/withdraw-records-types";
 // Applies ONLY to mock withdrawals. A real one (`isReal`) has an observed status coming from
 // `runRealWithdraw`, and overwriting it on a timer would invent a settlement that may not
 // have happened — see the guard in the scheduling effect.
+/** How often an open, visible tab asks the solver again for verdicts on its open records. */
+export const VERDICT_REREAD_MS = 5 * 60_000;
+
 const MOCK_PROGRESSION: Array<{ delay: number; status: Exclude<WithdrawalStatusKind, "PENDING" | "FAILED"> }> = [
   { delay:  30_000, status: "TX_BROADCASTED" },
   { delay:  60_000, status: "SETTLED" },
@@ -64,6 +67,7 @@ const RESCUE_TO_TRACKED: Record<string, WithdrawalStatusKind> = {
   settled: "SETTLED",
   // The RESOLVED states. Reachable only through `closedUnseen` — see `hydrateFromRescueStore`.
   delivered: "DELIVERED",
+  sent: "SENT",
   failed: "FAILED",
   refunded: "REFUNDED",
 };
@@ -252,6 +256,24 @@ function listResumableDeliveries(): ResumableDelivery[] {
   return resumable;
 }
 
+/**
+ * D-584: the `omft` records an earlier build closed as "executed, settlement tx unknown" — settled
+ * with no transaction. `listResumableDeliveries` needs that transaction, so without this they
+ * stayed "Not confirmed" for good; settled is all an `omft` withdrawal can ever show, so they
+ * close as sent like the rest.
+ */
+function listStrandedHandOffIds(): string[] {
+  let records: WithdrawRescueRecord[];
+  try {
+    records = listUnresolvedWithdrawRecords();
+  } catch {
+    return [];
+  }
+  return records
+    .filter((r) => r.kind !== "conversion" && r.status === "settled" && !r.txHash && handsOffToPoa(r))
+    .map((r) => r.id);
+}
+
 /** An open Converting Withdrawal. Everything a `/v0/status` re-check needs. */
 type ResumableConversion = {
   id: string;
@@ -371,6 +393,15 @@ function settlesOnNear(record: { tokenId: string; chainId: string; route: Suppor
 }
 
 /**
+ * `omft` (D-584): settling on NEAR hands the funds to the PoA bridge, and nothing can follow them
+ * past that. Same drift guard as `settlesOnNear`.
+ */
+function handsOffToPoa(record: { tokenId: string; chainId: string; route: SupportedWithdrawRoute }): boolean {
+  const route = getWithdrawalEntry(record.tokenId, record.chainId)?.bridgeRoute;
+  return route === record.route && route === "omft";
+}
+
+/**
  * D-463 (023-B) — «Hide» on a row no re-check could close. The durable record goes first: if it
  * refuses (too young, already resolved, storage failing) the row stays, so the screen never hides
  * what the next reload would bring back. Returns whether the row was hidden.
@@ -474,8 +505,9 @@ export function usePendingWithdrawals({
     }
 
     // Recomputed on EVERY run of this effect, deliberately — see `listResumableDeliveries`.
+    // No early return when it is empty: the verdict re-read below still has to listen, because a
+    // record opened later in this tab can only be closed by a verdict once its own wait gives up.
     const openIds = listOpenRecordIds();
-    if (openIds.length === 0) return;
 
     // D-259, the half that needs the chain: re-open the delivery wait for every settled
     // record that never got an answer. Aborted on unmount so a closed dashboard stops
@@ -524,6 +556,15 @@ export function usePendingWithdrawals({
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
+
+        // `omft` (D-584): nothing can follow the bridge any more, so the record closes as sent.
+        // No `onDelivered`: its toast says "delivered", which this is not. It also closes the
+        // `omft` records the closed API left "Not confirmed" before this existed.
+        if (delivery.kind === "bridge-handoff") {
+          updateWithdrawRecord(item.id, { status: "sent" });
+          mockContract.setWithdrawalStatus(item.id, "SENT");
+          return;
+        }
 
         // HOT can confirm a delivery it cannot name (`destinationTxHash: null`), and
         // `near-settlement` has no destination transaction at all. Delivery is still
@@ -632,6 +673,11 @@ export function usePendingWithdrawals({
               if (!resolveUnansweredPublish(item.id, { status: "delivered" })) return;
               mockContract.setWithdrawalStatus(item.id, "DELIVERED");
               announceClosed(item.id, onDeliveredRef);
+            } else if (handsOffToPoa(item)) {
+              // D-584: executed on NEAR is all an `omft` withdrawal can ever show, with or without
+              // its transaction — the same "sent" the live path closes it with.
+              if (!resolveUnansweredPublish(item.id, { status: "sent" })) return;
+              mockContract.setWithdrawalStatus(item.id, "SENT");
             } else {
               // Out of the balance, but the bridge wait is keyed on the settlement transaction the
               // relay no longer names. `settled` is what is known; the error says what is not, so
@@ -782,25 +828,56 @@ export function usePendingWithdrawals({
       console.log(`[withdraw] ${id} closed by the solver's verdict: ${verdict}`);
     };
 
-    void (async () => {
+    /** Reads the solver's verdicts for `ids` and closes every record one answers. */
+    const applyVerdicts = async (ids: string[]) => {
       let verdicts: Record<string, WithdrawVerdictAnswer> = {};
       try {
-        verdicts = await readVerdicts(openIds);
+        verdicts = await readVerdicts(ids);
       } catch {
         /* the default read never throws; an injected one might — same as no verdict */
       }
       if (controller.signal.aborted) return;
-      for (const id of openIds) {
+      for (const id of ids) {
         const answer = verdicts[id.toLowerCase()];
         if (answer) closeWithVerdict(id, answer);
       }
-      // Listed AFTER the verdicts, so a record they closed is not re-checked.
-      resumeDeliveries(listResumableDeliveries());
-      resumePublications(listResumablePublications());
-      resumeConversions(listResumableConversions());
-    })();
+    };
+
+    if (openIds.length > 0) {
+      void (async () => {
+        await applyVerdicts(openIds);
+        if (controller.signal.aborted) return;
+        // Listed AFTER the verdicts, so a record they closed is not re-checked.
+        for (const id of listStrandedHandOffIds()) {
+          updateWithdrawRecord(id, { status: "sent" });
+          mockContract.setWithdrawalStatus(id, "SENT");
+        }
+        resumeDeliveries(listResumableDeliveries());
+        resumePublications(listResumablePublications());
+        resumeConversions(listResumableConversions());
+      })();
+    }
+
+    // The solver judges a record hours after this page stopped watching it, so a tab left open
+    // would keep the old label until a reload. Re-read on return to the tab and every few
+    // minutes while it is visible. Verdicts only: the resumes above are not restarted, and
+    // `closeWithServerVerdict` ignores a record that is no longer open.
+    let rereading = false;
+    const rereadVerdicts = () => {
+      if (rereading || document.visibilityState !== "visible") return;
+      const ids = listOpenRecordIds();
+      if (ids.length === 0) return;
+      rereading = true;
+      void applyVerdicts(ids).finally(() => {
+        rereading = false;
+      });
+    };
+    const rereadTimer = window.setInterval(rereadVerdicts, VERDICT_REREAD_MS);
+    document.addEventListener("visibilitychange", rereadVerdicts);
 
     return () => {
+      window.clearInterval(rereadTimer);
+      document.removeEventListener("visibilitychange", rereadVerdicts);
       controller.abort();
       // These waits are dead. Forgetting them is what lets a later mount reopen them.
       inFlight.clear();

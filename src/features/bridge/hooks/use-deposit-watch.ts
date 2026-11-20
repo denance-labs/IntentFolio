@@ -1,28 +1,22 @@
 "use client";
 
-// Announces deposits the Omni Bridge credits directly (ZEC), which the PoA poller never sees.
-// See omni-deposit-watch.ts for why the source is the account history and why it only runs
-// while Receive has marked a deposit as expected.
+// Announces a deposit made through Receive once the account's history shows it. See
+// deposit-watch.ts for why the source is the history and why it only runs while Receive has marked
+// a deposit as expected.
 
 import { useEffect, useRef } from "react";
 import { loadNotifiedDeposits, markDepositNotified } from "../lib/credited-deposits-store";
-import {
-  omniDepositExpectedSince,
-  pickNewOmniDeposits,
-  type HistoryEventLike,
-  type OmniCreditedDeposit,
-} from "../lib/omni-deposit-watch";
+import { depositExpectedSince, fetchHistoryEvents, pickNewDeposits, type CreditedDeposit } from "../lib/deposit-watch";
 
-/** Same cadence as the PoA poller (use-recent-deposits.ts). */
 const POLL_INTERVAL_MS = 15_000;
 
-export function useOmniDepositWatch({
+export function useDepositWatch({
   intentsAccountId,
   onCredited,
   fetchImpl,
 }: {
   intentsAccountId: string;
-  onCredited: (deposit: OmniCreditedDeposit) => void;
+  onCredited: (deposit: CreditedDeposit) => void;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
 }): void {
@@ -31,7 +25,6 @@ export function useOmniDepositWatch({
 
   useEffect(() => {
     if (!intentsAccountId) return;
-    const doFetch = fetchImpl ?? fetch;
     // Seeded from the durable store so a reload never re-announces (D-265).
     const announced = loadNotifiedDeposits(intentsAccountId);
     let cancelled = false;
@@ -40,18 +33,13 @@ export function useOmniDepositWatch({
     const tick = async () => {
       if (inFlight || cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      const since = omniDepositExpectedSince(intentsAccountId);
+      const since = depositExpectedSince(intentsAccountId);
       if (since === null) return;
       inFlight = true;
       try {
-        const res = await doFetch(
-          `/api/history/account?account=${encodeURIComponent(intentsAccountId)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok || cancelled) return;
-        const body = (await res.json()) as { events?: HistoryEventLike[] };
-        if (cancelled || !Array.isArray(body.events)) return;
-        for (const deposit of pickNewOmniDeposits(body.events, since, announced)) {
+        const events = await fetchHistoryEvents(intentsAccountId, fetchImpl ?? fetch);
+        if (cancelled || events === null) return;
+        for (const deposit of pickNewDeposits(events, since, announced)) {
           announced.add(deposit.key);
           markDepositNotified(intentsAccountId, deposit.key);
           onCreditedRef.current(deposit);

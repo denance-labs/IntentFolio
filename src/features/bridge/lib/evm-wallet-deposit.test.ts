@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { decodeFunctionData, erc20Abi, UserRejectedRequestError, type Hex } from "viem";
 import { EvmChainSwitchError, EvmChainSwitchTimeoutError } from "@/features/login-wallet/lib/evm-send-errors";
-import { getDepositStatus, type DepositStatusEntry } from "./bridge-client";
+import type { CreditedDeposit } from "./deposit-watch";
 import {
   BRIDGE_WATCH_ATTEMPTS,
   buildEvmDepositTransaction,
@@ -15,8 +15,6 @@ import {
   spendableForDeposit,
   type RunEvmWalletDepositInput,
 } from "./evm-wallet-deposit";
-
-vi.mock("./bridge-client", () => ({ getDepositStatus: vi.fn() }));
 
 const big = (v: string) => BigInt(v);
 const OWNER = "0x7A11Ce0000000000000000000000000000000a53";
@@ -218,19 +216,13 @@ describe("classifyEvmSendError", () => {
 describe("runEvmWalletDeposit", () => {
   const tx = buildEvmDepositTransaction({ token: USDC_BASE, depositAddress: DEPOSIT, amount: big("5000000") });
 
-  function entry(status: DepositStatusEntry["status"], txHash: string = HASH): DepositStatusEntry {
-    return {
-      tx_hash: txHash,
-      chain: "eth:8453",
-      defuse_asset_identifier: "eth:8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-      near_token_id: "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
-      decimals: 6,
-      amount: 5000000,
-      account_id: OWNER.toLowerCase(),
-      address: DEPOSIT,
-      status,
-    };
+  const BASE_USDC = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+  /** A deposit of the token as the history shows it; `amount` is what 1Click credited. */
+  function credit(txHash: string, amountRaw = "4994880"): CreditedDeposit {
+    return { key: `${txHash}:eth:8453`, tokenId: BASE_USDC, chainId: "eth:8453", amountRaw, txHash, ts: 0 };
   }
+  const OLD = credit("OlderCreditTx", "1000000");
+  const NEW = credit("CreditTx");
 
   function input(overrides: Partial<RunEvmWalletDepositInput> = {}): RunEvmWalletDepositInput {
     return {
@@ -240,20 +232,21 @@ describe("runEvmWalletDeposit", () => {
       intentsAccountId: OWNER.toLowerCase(),
       send: vi.fn(async () => HASH),
       waitForReceipt: vi.fn(async () => ({ kind: "success" as const, txHash: HASH })),
-      findDeposit: vi.fn(async () => entry("COMPLETED")),
+      findDeposits: vi.fn().mockResolvedValueOnce([OLD]).mockResolvedValue([NEW, OLD]),
       sleep: vi.fn(async () => {}),
       ...overrides,
     };
   }
 
-  it("sends exactly the built transaction, then credits once the bridge lists it completed", async () => {
+  it("sends exactly the built transaction, then credits what the history shows arrived after the confirmation", async () => {
     const onSent = vi.fn();
     const onConfirmed = vi.fn();
     const run = input({ onSent, onConfirmed });
-    expect(await runEvmWalletDeposit(run)).toEqual({ kind: "credited", txHash: HASH, amount: big("5000000") });
+    // The amount is the history's (1Click kept its fee), not the 5 USDC signed.
+    expect(await runEvmWalletDeposit(run)).toEqual({ kind: "credited", txHash: HASH, amount: big("4994880") });
     expect(run.send).toHaveBeenCalledWith(tx);
     expect(run.waitForReceipt).toHaveBeenCalledWith("eth:8453", HASH);
-    expect(run.findDeposit).toHaveBeenCalledWith(OWNER.toLowerCase(), HASH);
+    expect(run.findDeposits).toHaveBeenCalledWith(OWNER.toLowerCase(), BASE_USDC);
     expect(onSent).toHaveBeenCalledWith(HASH);
     expect(onConfirmed).toHaveBeenCalledWith(HASH);
   });
@@ -270,61 +263,33 @@ describe("runEvmWalletDeposit", () => {
     expect(run.waitForReceipt).not.toHaveBeenCalled();
   });
 
-  it("waits while the bridge has it pending, then credits", async () => {
-    const findDeposit = vi
-      .fn()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(entry("PENDING"))
-      .mockResolvedValueOnce(entry("COMPLETED"));
-    const run = input({ findDeposit });
-    expect(await runEvmWalletDeposit(run)).toMatchObject({ kind: "credited" });
-    expect(run.sleep).toHaveBeenCalledTimes(2);
-  });
-
-  it("finds its own transaction in the account's deposits, whatever case or prefix the bridge writes", async () => {
-    vi.mocked(getDepositStatus).mockResolvedValue({
-      deposits: [entry("COMPLETED", "0xfff0000000000000000000000000000000000000000000000000000000000009"), entry("COMPLETED", HASH.slice(2).toUpperCase())],
-      total: 2,
-      limit: 50,
-      offset: 0,
-    });
-    const run = input({ findDeposit: undefined });
-    expect(await runEvmWalletDeposit(run)).toMatchObject({ kind: "credited", txHash: HASH });
-    expect(getDepositStatus).toHaveBeenCalledWith(OWNER.toLowerCase());
-  });
-
-  it("another transaction completed is not this one", async () => {
-    vi.mocked(getDepositStatus).mockResolvedValue({
-      deposits: [entry("COMPLETED", "0xfff0000000000000000000000000000000000000000000000000000000000009")],
-      total: 1,
-      limit: 50,
-      offset: 0,
-    });
-    expect(await runEvmWalletDeposit(input({ findDeposit: undefined }))).toEqual({ kind: "sent", txHash: HASH });
-  });
-
-  it("past the watch the deposit is sent, on its way — not unconfirmed", async () => {
-    const run = input({ findDeposit: vi.fn(async () => entry("PENDING")) });
+  it("a deposit the first read already lists is never this one: past the watch it is sent", async () => {
+    const run = input({ findDeposits: vi.fn(async () => [OLD]) });
     expect(await runEvmWalletDeposit(run)).toEqual({ kind: "sent", txHash: HASH });
-    expect(run.findDeposit).toHaveBeenCalledTimes(BRIDGE_WATCH_ATTEMPTS);
+    expect(run.findDeposits).toHaveBeenCalledTimes(BRIDGE_WATCH_ATTEMPTS);
   });
 
-  it("a bridge read that fails is waited out, not read as a verdict", async () => {
-    const findDeposit = vi.fn().mockRejectedValueOnce(new Error("bridge down")).mockResolvedValueOnce(entry("COMPLETED"));
-    expect(await runEvmWalletDeposit(input({ findDeposit }))).toMatchObject({ kind: "credited" });
+  it("an empty history first, then the deposit: credited", async () => {
+    const findDeposits = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([NEW]);
+    expect(await runEvmWalletDeposit(input({ findDeposits }))).toMatchObject({ kind: "credited", amount: big("4994880") });
   });
 
-  it("a deposit the bridge reports failed is unconfirmed: the funds left the wallet", async () => {
-    expect(await runEvmWalletDeposit(input({ findDeposit: vi.fn(async () => entry("FAILED")) }))).toMatchObject({
-      kind: "unconfirmed",
-      txHash: HASH,
-    });
+  it("a read that fails or cannot be read is waited out, and the first one that answers is the baseline", async () => {
+    const findDeposits = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("history down"))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce([OLD])
+      .mockResolvedValueOnce([NEW, OLD]);
+    const run = input({ findDeposits });
+    expect(await runEvmWalletDeposit(run)).toMatchObject({ kind: "credited" });
+    expect(run.sleep).toHaveBeenCalledTimes(3);
   });
 
-  it("reverted on chain: failed, and the bridge is never asked", async () => {
+  it("reverted on chain: failed, and the history is never asked", async () => {
     const run = input({ waitForReceipt: vi.fn(async () => ({ kind: "reverted" as const, txHash: HASH })) });
     expect(await runEvmWalletDeposit(run)).toEqual({ kind: "failed", cause: "reverted", txHash: HASH });
-    expect(run.findDeposit).not.toHaveBeenCalled();
+    expect(run.findDeposits).not.toHaveBeenCalled();
   });
 
   it("cancelled from the wallet after sending: failed, nothing moved", async () => {
@@ -332,14 +297,10 @@ describe("runEvmWalletDeposit", () => {
     expect(await runEvmWalletDeposit(run)).toMatchObject({ kind: "failed", cause: "cancelled" });
   });
 
-  it("a speed-up follows the new hash to the bridge", async () => {
+  it("a speed-up reports the new hash", async () => {
     const SPED_UP = "0xdef0000000000000000000000000000000000000000000000000000000000002" as Hex;
-    const run = input({
-      waitForReceipt: vi.fn(async () => ({ kind: "success" as const, txHash: SPED_UP })),
-      findDeposit: vi.fn(async () => entry("COMPLETED", SPED_UP)),
-    });
+    const run = input({ waitForReceipt: vi.fn(async () => ({ kind: "success" as const, txHash: SPED_UP })) });
     expect(await runEvmWalletDeposit(run)).toMatchObject({ kind: "credited", txHash: SPED_UP });
-    expect(run.findDeposit).toHaveBeenCalledWith(OWNER.toLowerCase(), SPED_UP);
   });
 
   it("no receipt in time, a replacement we did not build, or a receipt read that fails: unconfirmed", async () => {

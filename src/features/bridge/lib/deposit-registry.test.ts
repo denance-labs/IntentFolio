@@ -8,6 +8,7 @@ import {
 } from "./deposit-registry";
 import { chainRegistry } from "./chain-registry";
 import { withdrawalRegistry } from "./withdrawal-registry";
+import { isReceivable } from "./token-availability";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { depositableTokens as allDepositableTokens } from "@/features/market/lib/token-registry";
 
@@ -124,16 +125,25 @@ describe("depositTokenIdFor", () => {
     expect(depositTokenIdFor("NOPE", "near:mainnet")).toBeNull();
   });
 
-  it("every (group, chain) the picker offers maps to exactly one token", () => {
+  it("every (group, chain) the picker offers maps to one token, and at most one is offered", () => {
     for (const g of depositGroups) {
       for (const chainId of g.chainIds) {
         const matches = depositableTokens.filter(
           (t) => (t.assetName ?? t.symbol) === g.assetName && withdrawalRegistry[t.id]?.chainId === chainId
         );
-        expect(matches, `${g.assetName} · ${chainId}`).toHaveLength(1);
-        expect(depositTokenIdFor(g.assetName, chainId)).toBe(matches[0].id);
+        const offered = matches.filter((t) => isReceivable(t.id));
+        expect(offered.length, `${g.assetName} · ${chainId}`).toBeLessThanOrEqual(1);
+        // A shared pair is only ever a replaced id and its replacement (D-581).
+        if (matches.length > 1) expect(matches, `${g.assetName} · ${chainId}`).toHaveLength(2);
+        expect(depositTokenIdFor(g.assetName, chainId)).toBe((offered[0] ?? matches[0]).id);
       }
     }
+  });
+
+  it("resolves USDT on BNB Chain to the Omni id, not the HOT one it replaced (D-581)", () => {
+    expect(depositTokenIdFor("USDT", "eth:56")).toBe(
+      "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near"
+    );
   });
 });
 

@@ -26,7 +26,7 @@ vi.mock("@/features/vault/context/real-allocate-context", () => ({
   useSendTransactionAs: vi.fn(() => sender.value),
 }));
 
-vi.mock("../lib/bridge-client", () => ({ getDepositAddress: vi.fn() }));
+vi.mock("../lib/deposit-address-client", () => ({ getDepositAddress: vi.fn() }));
 
 vi.mock("../lib/near-wallet-deposit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/near-wallet-deposit")>();
@@ -39,7 +39,7 @@ vi.mock("../lib/evm-wallet-holdings", async (importOriginal) => {
 });
 
 import { ReceiveModal } from "./receive-modal";
-import { getDepositAddress } from "../lib/bridge-client";
+import { getDepositAddress } from "../lib/deposit-address-client";
 import {
   DECLINE_RECHECK_ATTEMPTS,
   DECLINE_RECHECK_INTERVAL_MS,
@@ -123,7 +123,7 @@ beforeEach(() => {
   vi.mocked(readWalletDepositBalance).mockResolvedValue(NEAR_BALANCE);
   vi.mocked(readWalletHoldings).mockResolvedValue([]);
   vi.mocked(readEvmWalletHoldings).mockResolvedValue([]);
-  vi.mocked(getDepositAddress).mockResolvedValue({ address: "bridge.address.near", chain: "near:mainnet", memo: undefined });
+  vi.mocked(getDepositAddress).mockResolvedValue({ address: "bridge.address.near" });
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ minDeposit: {}, familyValidation: {} }) }));
 });
 
@@ -222,7 +222,7 @@ describe("when the wallet tab appears", () => {
     pickSingleNetwork("NEAR");
     fireEvent.click(screen.getByRole("tab", { name: "With an address (QR)" }));
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());
-    expect(getDepositAddress).toHaveBeenCalledWith(LOGIN, "near:mainnet", undefined);
+    expect(getDepositAddress).toHaveBeenCalledWith(LOGIN, "near:mainnet");
     expect(screen.getByText("Address")).toBeTruthy();
   });
 });
@@ -335,8 +335,6 @@ describe("From your connected wallet, EVM login", () => {
     vi.mocked(readEvmWalletHoldings).mockResolvedValue(EVM_HOLDINGS);
     vi.mocked(getDepositAddress).mockResolvedValue({
       address: "0x1111111111111111111111111111111111111111",
-      chain: "eth:8453",
-      memo: undefined,
     });
   });
 
@@ -361,7 +359,7 @@ describe("From your connected wallet, EVM login", () => {
     // No wallet tab for EVM yet (part 2B): the address step as always, for the session's account.
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());
     expect(screen.queryByRole("tab")).toBeNull();
-    expect(getDepositAddress).toHaveBeenCalledWith(EVM_LOGIN.toLowerCase(), "eth:8453", undefined);
+    expect(getDepositAddress).toHaveBeenCalledWith(EVM_LOGIN.toLowerCase(), "eth:8453");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByText("Select a network")).toBeTruthy();
   });

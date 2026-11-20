@@ -13,7 +13,7 @@ import type { WithdrawalInFlightRecord } from "@/features/intents-account/mock-c
 import { DISMISS_AFTER_MS } from "@/features/bridge/lib/withdraw-rescue-store";
 
 /** The statuses that END a withdrawal. Everything else is still open. */
-const RESOLVED: ReadonlyArray<WithdrawalInFlightRecord["status"]> = ["DELIVERED", "FAILED", "REFUNDED"];
+const RESOLVED: ReadonlyArray<WithdrawalInFlightRecord["status"]> = ["DELIVERED", "SENT", "FAILED", "REFUNDED"];
 
 /**
  * How many REAL withdrawals are still open for this account.

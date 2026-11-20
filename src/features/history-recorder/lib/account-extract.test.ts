@@ -10,6 +10,7 @@ import {
   EVM_HOT_DEPOSIT,
   EVM_HOT_WITHDRAWAL,
   FAILED_TRANSFER,
+  RDA_DEPOSIT,
   RECEIVED_WITHDRAWAL,
   TRANSFER_HEX,
   UNALLOCATE,
@@ -68,13 +69,38 @@ describe("extractAccountTx — real transactions", () => {
     ]);
   });
 
-  it("the vault paying a portfolio's withdrawal back: the incoming `mt_transfer` is kept raw, not a movement", () => {
+  it("the vault paying a portfolio's withdrawal back: the incoming `mt_transfer` is a `transfer_in` from the vault", () => {
     const x = finished(extractAccountTx(UNALLOCATE, NEAR, VAULT));
     expect(x.lines).toEqual([expect.objectContaining({ standard: "nep245", event: "mt_transfer" })]);
-    expect(x.movements).toEqual([]);
+    expect(x.movements).toEqual([expect.objectContaining({ kind: "transfer_in", counterparty: VAULT, intentHash: null })]);
     expect(x.vault?.events.map((e) => [e.event, e.accountId])).toEqual([
       ["pending_unallocation_opened", null],
       ["unallocate", NEAR],
+    ]);
+  });
+
+  it("a deposit to a 1Click address set: the `mt_transfer` from its internal account is a `transfer_in`; the dip4 `transfer` to the account is not", () => {
+    const x = finished(extractAccountTx(RDA_DEPOSIT, NEAR, VAULT));
+    expect(x.lines.map((l) => [l.standard, l.event])).toEqual([
+      ["dip4", "transfer"],
+      ["nep245", "mt_transfer"],
+    ]);
+    const receipt = intentsReceiptOf(RDA_DEPOSIT, "mt_transfer");
+    expect(x.movements).toEqual([
+      {
+        receiptId: receipt.execution_outcome.id,
+        logIndex: 3,
+        entryIndex: 0,
+        tokenIndex: 0,
+        kind: "transfer_in",
+        tokenId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        amount: "494880",
+        counterparty: "73a18e04c7c535a31e2682bd47ee68732095542b0f7ba56624216921f76735a7",
+        memo: null,
+        intentHash: null,
+        blockHeight: receipt.execution_outcome.block_height,
+        blockTsMs: Math.floor(receipt.execution_outcome.block_timestamp / 1e6),
+      },
     ]);
   });
 
@@ -100,10 +126,11 @@ describe("extractAccountTx — real transactions", () => {
     expect(finished(extractAccountTx(EVM_ALLOCATE, EVM, "intentfolio-staging.near")).vault).toBeNull();
   });
 
-  it("a HOT withdrawal that buys gas: one `mt_burn` entry with two tokens is two movements; the swap stays raw", () => {
+  it("a HOT withdrawal that buys gas: one `mt_burn` entry with two tokens is two movements; the swap's leg in is a `transfer_in`", () => {
     const x = finished(extractAccountTx(EVM_HOT_WITHDRAWAL, EVM, VAULT));
     expect(x.lines.map((l) => l.event)).toEqual(["token_diff", "mt_withdraw", "intents_executed", "mt_transfer", "mt_burn"]);
     expect(x.movements.map((m) => [m.kind, m.entryIndex, m.tokenIndex, m.tokenId, m.amount])).toEqual([
+      ["transfer_in", 0, 0, "nep245:v2_1.omni.hot.tg:137_11111111111111111111", "72238484999800000"],
       ["withdrawal", 0, 0, "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr", "494431"],
       ["withdrawal", 0, 1, "nep245:v2_1.omni.hot.tg:137_11111111111111111111", "72238484999800000"],
     ]);
@@ -260,6 +287,30 @@ describe("extractAccountTx — what anyone can make intents.near log (009 header
     );
     const x = finished(extractAccountTx(tx, NEAR, VAULT));
     expect(x.movements.map((m) => [m.entryIndex, m.tokenId])).toEqual([[0, "nep141:y"]]);
+  });
+
+  it("an `mt_transfer` the account SENT is no movement; one entry it received is, by its position", () => {
+    const line = `EVENT_JSON:${JSON.stringify({
+      standard: "nep245",
+      version: "1.0.0",
+      event: "mt_transfer",
+      data: [
+        { old_owner_id: NEAR, new_owner_id: "solver.near", token_ids: ["nep141:x"], amounts: ["7"] },
+        { old_owner_id: "solver.near", new_owner_id: NEAR, token_ids: ["nep141:y", "nep141:z"], amounts: ["3", "4"], memo: "a\u0000b" },
+      ],
+    })}`;
+    const x = finished(extractAccountTx(withLog(TRANSFER_HEX, "mt_transfer", line), NEAR, VAULT));
+    expect(x.movements.filter((m) => m.kind === "transfer_in").map((m) => [m.entryIndex, m.tokenIndex, m.tokenId, m.amount, m.counterparty, m.memo])).toEqual([
+      [1, 0, "nep141:y", "3", "solver.near", "a�b"],
+      [1, 1, "nep141:z", "4", "solver.near", "a�b"],
+    ]);
+  });
+
+  it("an `mt_transfer` whose sender carries U+0000 is skipped and named, not stored with another sender", () => {
+    const line = `EVENT_JSON:{"standard":"nep245","version":"1.0.0","event":"mt_transfer","data":[{"old_owner_id":"a\\u0000b","new_owner_id":"${NEAR}","token_ids":["nep141:x"],"amounts":["1"]}]}`;
+    const x = finished(extractAccountTx(withLog(TRANSFER_HEX, "mt_transfer", line), NEAR, VAULT));
+    expect(x.movements.filter((m) => m.kind === "transfer_in")).toEqual([]);
+    expect(x.skipped).toEqual([expect.stringMatching(/mt_transfer field not storable/)]);
   });
 
   it("a shape of intents.near's own this code does not know holds the transaction back", () => {

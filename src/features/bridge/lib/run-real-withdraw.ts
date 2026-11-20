@@ -39,7 +39,6 @@ import {
 import {
   waitForWithdrawDelivery,
   waitForWithdrawSettlement,
-  type DeliveryWaiter,
   type SettlementWaiter,
   type WithdrawDelivery,
 } from "./withdraw-poll";
@@ -49,6 +48,7 @@ import type { OmniDeliveryDeps, OmniFeeDetail } from "./omni-bridge";
 import { WithdrawError, type WithdrawFundsState } from "./withdraw-errors";
 import { recordPendingWithdraw, updateWithdrawRecord } from "./withdraw-record-sink";
 import { nonceToBase64 } from "./withdraw-publication-check";
+import { unconfirmedPublishTxHash } from "./own-relay-publish";
 
 export type RealWithdrawStage =
   | "preparing"
@@ -58,6 +58,11 @@ export type RealWithdrawStage =
   /** Only for routes that actually cross the bridge; `near-native` skips it. */
   | "awaiting-delivery"
   | "delivered"
+  /**
+   * `omft` only (D-584): settled, and handed to a bridge nobody can watch any more. Final, and
+   * neither a delivery nor a failure — the copy says "sent, may take a few minutes".
+   */
+  | "sent"
   // Published (and possibly settled) without an observed delivery. NOT a failure: the funds
   // may be in flight. The rescue record keeps the handle to re-check with.
   | "published-unconfirmed";
@@ -154,7 +159,6 @@ export type RunRealWithdrawParams = {
   publish?: WithdrawPublisher;
   probe?: NearDestinationProbe;
   waitForSettlement?: SettlementWaiter;
-  waitForDelivery?: DeliveryWaiter;
   /** The `hot-omni` delivery seam (4.3.4). Same contract: no test may reach the network. */
   hotDelivery?: HotDeliveryDeps;
   /** The `omni` delivery seam (omni-bridge.ts). */
@@ -329,15 +333,17 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
       throw e;
     }
     // Unknown: the relay may have taken it before the connection died. The record stays
-    // UNRESOLVED — that is the whole point of having written it before publishing.
-    track({ error: describeError(e) });
+    // UNRESOLVED — that is the whole point of having written it before publishing. The own
+    // relay (D-589) names the transaction even when it cannot prove the outcome: kept.
+    const txHash = unconfirmedPublishTxHash(e);
+    track(txHash === null ? { error: describeError(e) } : { error: describeError(e), txHash });
     stage("published-unconfirmed");
     throw new RealWithdrawUnconfirmedError(
       describeError(e),
       fundsState,
       rescue.id,
       null,
-      null,
+      txHash,
       e
     );
   }
@@ -417,7 +423,6 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
       txHash: settlement.txHash,
       timeoutMs: p.timeouts?.deliveryMs,
       signal: p.signal,
-      waitForDelivery: p.waitForDelivery,
       hotDelivery: p.hotDelivery,
       destinationAddress: p.destinationAddress,
       amountRaw: request.amount,
@@ -439,6 +444,19 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
       settlement.txHash,
       e
     );
+  }
+
+  if (delivery.kind === "bridge-handoff") {
+    updateWithdrawRecord(recordId, { status: "sent" });
+    stage("sent");
+    return {
+      recordId,
+      intentHash: submitted.intentHash,
+      txHash: settlement.txHash,
+      route: submitted.route,
+      amount: request.amount,
+      delivery,
+    };
   }
 
   updateWithdrawRecord(recordId, {

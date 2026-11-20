@@ -12,7 +12,7 @@
 // NEXT_PUBLIC_ (unlike bridge family-validation's server-only vars) because the signing
 // flow runs in the browser.
 
-import { getWithdrawalEntry } from "./withdrawal-registry";
+import { getWithdrawalEntry, NEAR_REGISTRABLE_ONE_CLICK } from "./withdrawal-registry";
 import { hotReceiverEncodable } from "./hot-envelope";
 import { hotFeeSupported } from "./hot-fee";
 import { withdrawalPlan } from "./conversion-routes";
@@ -75,6 +75,10 @@ export function isRealWithdrawalRoute(params: {
     // the recipient back out of the signed `msg`.
     case "omni":
       return true;
+    // D-581: to its own chain a `one-click` token is a conversion (`isConversionRoute`), never
+    // this path. The one direct route it has is the natives' plain `ft_withdraw` to a NEAR account.
+    case "one-click":
+      return NEAR_REGISTRABLE_ONE_CLICK.has(params.tokenId);
     default:
       return false;
   }

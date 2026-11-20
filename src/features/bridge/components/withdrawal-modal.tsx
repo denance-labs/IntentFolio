@@ -430,7 +430,8 @@ export function WithdrawalModal({
   const groups = [...groupMap.values()];
   // Deferred rows sink below the selectable ones in both lists, then the existing
   // balance-first order applies within each block — a row the user cannot act on should not
-  // outrank one they can just because it holds more money.
+  // outrank one they can just because it holds more money. D-586: the last-used token keeps its
+  // badge but no longer jumps to the top — USD value decides the order (operator, 2026-11-19).
   for (const group of groups) {
     group.variants.sort(
       (a, b) =>
@@ -450,12 +451,6 @@ export function WithdrawalModal({
     ? groupMap.get(selectedAssetName)?.variants ?? []
     : [];
 
-  const sortedGroups = lastUsedToken
-    ? [
-        ...groups.filter((g) => g.assetName === lastUsedToken),
-        ...groups.filter((g) => g.assetName !== lastUsedToken),
-      ]
-    : groups;
 
   // The token's own chain today. With conversions, the first of its destinations — for a row
   // that only converts (USDT on Polygon) its own chain is not one.
@@ -602,7 +597,7 @@ export function WithdrawalModal({
         <div className="flex-1 overflow-y-auto">
           {step === 1 && (
             <WithdrawTokenPicker
-              groups={sortedGroups}
+              groups={groups}
               holdsStock={[...generalBalance].some(([id, qty]) => qty > 0 && isStockToken(id))}
               lastUsedToken={lastUsedToken}
               t={t}
@@ -1695,6 +1690,8 @@ function WithdrawConversionStep4({
   const deliveryToken = getTokenById(deliveryTokenId);
   const ticker = tickerOf(tokenId);
   const deliveryTicker = tickerOf(deliveryTokenId);
+  // D-581: a `one-click` token goes out through 1Click as itself — nothing is converted.
+  const selfDelivery = deliveryTokenId === tokenId;
   const decimals = token?.decimals ?? 6;
   const deliveryDecimals = deliveryToken?.decimals ?? decimals;
   const price = prices[tokenId]?.usdPrice ?? token?.fallbackUsdPrice ?? 0;
@@ -1894,11 +1891,13 @@ function WithdrawConversionStep4({
           <DetailRow label={t.addressLabel} value={truncateAddress(address)} mono />
         </dl>
         <p className="mt-1.5 text-[11px] text-slate-400">
-          {t.conversionNote
-            .replace("{ticker}", ticker)
-            .replace("{deliveryTicker}", deliveryTicker)
-            .replace("{from}", fromChainName)
-            .replace("{to}", chainName)}
+          {selfDelivery
+            ? t.deliveryRefundNote
+            : t.conversionNote
+                .replace("{ticker}", ticker)
+                .replace("{deliveryTicker}", deliveryTicker)
+                .replace("{from}", fromChainName)
+                .replace("{to}", chainName)}
           {quote && BigInt(quote.refundFeeRaw) > BigInt(0) && (
             <>
               {" "}
@@ -1929,11 +1928,13 @@ function WithdrawConversionStep4({
             sub={quote && !feeIsZero ? formatUsd(feeQty * deliveryPrice) : undefined}
             dimValue={!quote || feeIsZero}
           />
-          <DetailRow
-            label={t.conversionCostLabel}
-            value={quote ? formatCostBps(conversionCostBps(quote)) : dash}
-            dimValue={!quote}
-          />
+          {!selfDelivery && (
+            <DetailRow
+              label={t.conversionCostLabel}
+              value={quote ? formatCostBps(conversionCostBps(quote)) : dash}
+              dimValue={!quote}
+            />
+          )}
           <div className="border-t border-slate-700" role="separator" />
           <DetailRow
             label={t.conversionArrivesLabel}
@@ -2520,7 +2521,7 @@ function WithdrawStep3({
               );
             })}
           </div>
-          {conversion ? (
+          {conversion && conversion.deliveryTokenId === tokenId ? null : conversion ? (
             <p className="text-[11px] text-slate-400">
               {t.withdrawArrivesAs
                 .replace("{ticker}", tickerOf(conversion.deliveryTokenId))
@@ -2923,7 +2924,8 @@ function WithdrawTokenPicker({
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {isLastUsed && (
-                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+                    // D-586: solid, because the row no longer sits first — the faint pill got lost mid-list.
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-ink">
                       {t.lastUsed}
                     </span>
                   )}

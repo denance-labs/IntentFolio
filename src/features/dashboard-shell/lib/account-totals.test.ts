@@ -7,7 +7,6 @@ import {
   sumBalanceUsd,
   sumPortfoliosUsd,
 } from "./account-totals";
-import type { DepositStatusEntry } from "@/features/bridge";
 import type { PendingUnallocationRecord } from "@/features/intents-account/mock-contract/types";
 import { getTokenById } from "@/features/market/lib/token-registry";
 
@@ -66,8 +65,7 @@ describe("computeAccountTotals", () => {
 });
 
 describe("hasMovementsInProgress", () => {
-  const none = { pendingAllocates: 0, deposits: [], unallocations: [] };
-  const deposit = (status: string) => ({ status }) as unknown as DepositStatusEntry;
+  const none = { pendingAllocates: 0, unallocations: [] };
   const unallocation = (status: PendingUnallocationRecord["status"]) =>
     ({ status }) as unknown as PendingUnallocationRecord;
 
@@ -77,11 +75,6 @@ describe("hasMovementsInProgress", () => {
 
   it("is true with an Allocate in transit", () => {
     expect(hasMovementsInProgress({ ...none, pendingAllocates: 1 })).toBe(true);
-  });
-
-  it("counts only deposits not yet credited", () => {
-    expect(hasMovementsInProgress({ ...none, deposits: [deposit("PENDING")] })).toBe(true);
-    expect(hasMovementsInProgress({ ...none, deposits: [deposit("COMPLETED"), deposit("FAILED")] })).toBe(false);
   });
 
   it("counts only portfolio withdrawals still pending", () => {

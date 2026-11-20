@@ -1,14 +1,5 @@
-export {
-  getSupportedTokens,
-  getDepositAddress,
-  getDepositStatus,
-  getPendingDeposits,
-  type BridgeChainId,
-  type SupportedToken,
-  type DepositAddressResult,
-  type DepositStatusEntry,
-  type PendingDeposit,
-} from "./lib/bridge-client";
+// Receive's deposit address comes from our server since PoA's Bridge API closed (D-584).
+export { getDepositAddress, type DepositAddress } from "./lib/deposit-address-client";
 
 export {
   chainRegistry,
@@ -19,7 +10,5 @@ export {
 export { ReceiveModal } from "./components/receive-modal";
 export { WithdrawalModal } from "./components/withdrawal-modal";
 export { bridgeTranslations } from "./lib/translations";
-export { isDepositCredited } from "./lib/deposit-status";
-export { useRecentDeposits } from "./hooks/use-recent-deposits";
 export { dismissWithdrawal, usePendingWithdrawals } from "./hooks/use-pending-withdrawals";
 export { dismissedWithdrawTxHashes } from "./lib/withdraw-rescue-store";

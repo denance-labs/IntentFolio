@@ -1326,3 +1326,64 @@ export const EDIT_ALLOCATE_INTO: FastNearTx = {
     }
   ]
 };
+
+/**
+ * 1Click credits pablofork.near 0.494880 USDC sent on Base to its reusable deposit address set
+ * (D-584, fetched 2026-11-15): an `mt_transfer` from the set's internal account `73a18e04…` and two
+ * dip4 `transfer`s through an intermediate account that changes on every deposit. No `mt_mint`.
+ */
+export const RDA_DEPOSIT: FastNearTx = {
+  "transaction": {
+    "hash": "Ao6iFwBQ2Ltui7PbZ54Qe6JC5qP9iEZJ15wRjrBJY4Mr",
+    "signer_id": "intents.near",
+    "receiver_id": "intents.near"
+  },
+  "execution_outcome": {
+    "block_height": 224720484,
+    "block_timestamp": 1794777055043186007,
+    "outcome": {
+      "receipt_ids": [
+        "E9NHq7YzSbZahSSJoohiv3LaSJugq39Nvmz1sKgYzjPq"
+      ]
+    }
+  },
+  "receipts": [
+    {
+      "execution_outcome": {
+        "id": "E9NHq7YzSbZahSSJoohiv3LaSJugq39Nvmz1sKgYzjPq",
+        "block_height": 224720484,
+        "block_timestamp": 1794777055043186007,
+        "outcome": {
+          "executor_id": "intents.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"dip4\",\"version\":\"0.4.3\",\"event\":\"transfer\",\"data\":[{\"intent_hash\":\"4Fy8tGzW8eHeNBtmx5c2Hr2MmoKKBeQoY7RRocoi4e2u\",\"account_id\":\"73a18e04c7c535a31e2682bd47ee68732095542b0f7ba56624216921f76735a7\",\"receiver_id\":\"ef27d4cb4cc183d1a3f73b3e9c8bf5b55953e22ad06cced88d387de5781816bf\",\"tokens\":{\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\":\"494880\"}}]}",
+            "EVENT_JSON:{\"standard\":\"dip4\",\"version\":\"0.4.3\",\"event\":\"transfer\",\"data\":[{\"intent_hash\":\"6DtvwBgnDWtMRaNR4YradHndQk661RpTTDkYA8ffRywN\",\"account_id\":\"ef27d4cb4cc183d1a3f73b3e9c8bf5b55953e22ad06cced88d387de5781816bf\",\"receiver_id\":\"pablofork.near\",\"tokens\":{\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\":\"494880\"}}]}",
+            "EVENT_JSON:{\"standard\":\"dip4\",\"version\":\"0.4.3\",\"event\":\"intents_executed\",\"data\":[{\"intent_hash\":\"4Fy8tGzW8eHeNBtmx5c2Hr2MmoKKBeQoY7RRocoi4e2u\",\"account_id\":\"73a18e04c7c535a31e2682bd47ee68732095542b0f7ba56624216921f76735a7\",\"nonce\":\"Vij2xgAlKBKzwBq5t35X6Bg9VGH+QrO4+95KVVkSWP4=\"},{\"intent_hash\":\"6DtvwBgnDWtMRaNR4YradHndQk661RpTTDkYA8ffRywN\",\"account_id\":\"ef27d4cb4cc183d1a3f73b3e9c8bf5b55953e22ad06cced88d387de5781816bf\",\"nonce\":\"Vij2xgAlKBKzAABHtWJU6BgRfZlT2hnf2NFd4QuYA3c=\"}]}",
+            "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_transfer\",\"data\":[{\"old_owner_id\":\"73a18e04c7c535a31e2682bd47ee68732095542b0f7ba56624216921f76735a7\",\"new_owner_id\":\"pablofork.near\",\"token_ids\":[\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"],\"amounts\":[\"494880\"]}]}"
+          ],
+          "status": {
+            "SuccessValue": ""
+          },
+          "receipt_ids": [
+            "Aka64jvaJaqaSciTwBCSvMJYZwqBtk1grML64CB5fWx7"
+          ]
+        }
+      }
+    },
+    {
+      "execution_outcome": {
+        "id": "Aka64jvaJaqaSciTwBCSvMJYZwqBtk1grML64CB5fWx7",
+        "block_height": 224720485,
+        "block_timestamp": 1794777055564393821,
+        "outcome": {
+          "executor_id": "intents.near",
+          "logs": [],
+          "status": {
+            "SuccessValue": ""
+          },
+          "receipt_ids": []
+        }
+      }
+    }
+  ]
+};

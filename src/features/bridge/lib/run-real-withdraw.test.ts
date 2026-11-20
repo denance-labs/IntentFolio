@@ -23,7 +23,7 @@ import {
   WithdrawRelayRejectedError,
   WithdrawSettlementFailedError,
 } from "./withdraw-errors";
-import type { DeliveryWaiter, SettlementWaiter } from "./withdraw-poll";
+import type { SettlementWaiter } from "./withdraw-poll";
 import type { NearDestinationProbe, WithdrawPublisher } from "./withdraw-submit";
 import type { HotFeeDetail } from "./hot-fee";
 
@@ -68,7 +68,6 @@ let signer: VaultSigner & { signEnvelope: ReturnType<typeof vi.fn> };
 let publish: ReturnType<typeof vi.fn>;
 let probe: NearDestinationProbe;
 let settle: ReturnType<typeof vi.fn>;
-let deliver: ReturnType<typeof vi.fn>;
 let stages: RealWithdrawStage[];
 
 beforeEach(() => {
@@ -91,7 +90,6 @@ beforeEach(() => {
     txHash: TX_HASH,
     intentHash,
   }));
-  deliver = vi.fn(async () => ({ destinationTxHash: "0xArbTx", chain: "eth:42161" }));
   stages = [];
 });
 
@@ -111,7 +109,6 @@ function run(over: Partial<RunRealWithdrawParams> = {}) {
     publish: publish as unknown as WithdrawPublisher,
     probe,
     waitForSettlement: settle as unknown as SettlementWaiter,
-    waitForDelivery: deliver as unknown as DeliveryWaiter,
     envelope: { deadlineSecs: DEADLINE_SECS, nonce: NONCE },
     onStage: (s) => stages.push(s),
     // Ample: the cap has its own tests (D-303); nothing here may reach the network.
@@ -126,14 +123,24 @@ const nearNative = {
   destinationAddress: NEAR_ADDRESS,
 } as const;
 
+// POL native on Polygon: a `hot-omni` route the whole path can make end to end.
+const POL_NATIVE_HOT = "nep245:v2_1.omni.hot.tg:137_11111111111111111111";
+const POL_HOT_FEE: HotFeeDetail = {
+  relayerFeeRaw: "1000000000000000",
+  blockNumber: "123",
+  nativeAssetId: POL_NATIVE_HOT,
+  payment: "in-kind",
+  swap: null,
+};
+
 function onlyRecord(): WithdrawRescueRecord {
   const records = listWithdrawRecords();
   expect(records).toHaveLength(1);
   return records[0];
 }
 
-describe("runRealWithdraw — omft, the route that crosses the bridge", () => {
-  it("walks every stage in order and reports what was delivered", async () => {
+describe("runRealWithdraw — omft, handed to a bridge nobody can watch (D-584)", () => {
+  it("walks every stage in order and ends as sent, never as delivered", async () => {
     const result = await run();
 
     expect(stages).toEqual([
@@ -142,14 +149,14 @@ describe("runRealWithdraw — omft, the route that crosses the bridge", () => {
       "publishing",
       "awaiting-settlement",
       "awaiting-delivery",
-      "delivered",
+      "sent",
     ]);
     expect(result).toMatchObject({
       intentHash: INTENT_HASH,
       txHash: TX_HASH,
       route: "omft",
       amount: "1500000", // 1.5 USDC at 6 decimals, no float drift
-      delivery: { kind: "bridge", destinationTxHash: "0xArbTx", chain: "eth:42161" },
+      delivery: { kind: "bridge-handoff", chain: "eth:42161" },
     });
     expect(signer.signEnvelope).toHaveBeenCalledTimes(1);
   });
@@ -162,20 +169,21 @@ describe("runRealWithdraw — omft, the route that crosses the bridge", () => {
     expect(seen).toEqual([{ txHash: TX_HASH, stagesSoFar: ["preparing", "signing", "publishing", "awaiting-settlement"] }]);
   });
 
-  it("resolves the rescue record only once delivery is observed", async () => {
+  it("resolves the rescue record as sent, with no destination transaction", async () => {
     const result = await run();
     const record = onlyRecord();
 
     expect(record).toMatchObject({
       id: result.recordId,
-      status: "delivered",
+      status: "sent",
       intentHash: INTENT_HASH,
       txHash: TX_HASH,
-      destinationTxHash: "0xArbTx",
       tokenId: USDC_ARB,
       amount: "1500000",
       destinationAddress: EVM_ADDRESS,
     });
+    expect(record.destinationTxHash).toBeUndefined();
+    // Resolved: nothing re-checks it on the next load, and it no longer counts as in flight.
     expect(listUnresolvedWithdrawRecords()).toEqual([]);
   });
 
@@ -205,7 +213,6 @@ describe("runRealWithdraw — near-native has no bridge to wait for", () => {
     ]);
     expect(result.delivery).toEqual({ kind: "near-settlement" });
     expect(result.route).toBe("near-native");
-    expect(deliver).not.toHaveBeenCalled();
     expect(onlyRecord()).toMatchObject({ status: "delivered", route: "near-native" });
   });
 });
@@ -231,7 +238,6 @@ describe("runRealWithdraw — an omft token to NEAR (D-384)", () => {
     ]);
     expect(result.route).toBe("near-native");
     expect(result.delivery).toEqual({ kind: "near-settlement" });
-    expect(deliver).not.toHaveBeenCalled();
     expect(onlyRecord()).toMatchObject({
       status: "delivered",
       route: "near-native",
@@ -306,9 +312,22 @@ describe("the D-190 moment — when the record is written", () => {
 
 describe("published-unconfirmed — the state that must never read as a failure", () => {
   it("settled, delivery not observed: LEFT-BALANCE, and the copy says it may still arrive", async () => {
-    deliver = vi.fn(hangs<{ destinationTxHash: string; chain: string }>());
-
-    const error = await run({ timeouts: { deliveryMs: 5 } }).catch((e: unknown) => e);
+    // A watched bridge (HOT) that never answers. `omft` can no longer reach this state (D-584).
+    const error = await run({
+      tokenId: POL_NATIVE_HOT,
+      chainId: "eth:137",
+      hotFee: POL_HOT_FEE,
+      timeouts: { deliveryMs: 5 },
+      hotDelivery: {
+        fetchTxOutcome: async () => ({
+          receipts_outcome: [
+            { outcome: { logs: ['EVENT_JSON:{"standard":"nep245","data":[{"memo":"42"}]}'] } },
+          ],
+        }),
+        getWithdrawalStatus: async () => null,
+        indexerWithdrawals: async () => [],
+      },
+    }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(RealWithdrawUnconfirmedError);
     const unconfirmed = error as RealWithdrawUnconfirmedError;
@@ -463,14 +482,7 @@ describe("hot-omni with `hotFee` threaded (4.3.5 wiring)", () => {
   // POL native on Polygon: a `hot-omni` route the whole path can make end to end. Every
   // `hot-omni` chain has a receiver encoder as of 4.5, so this is a representative now rather
   // than the only option it used to be.
-  const POL_NATIVE_HOT = "nep245:v2_1.omni.hot.tg:137_11111111111111111111";
-  const hotFee: HotFeeDetail = {
-    relayerFeeRaw: "1000000000000000",
-    blockNumber: "123",
-    nativeAssetId: POL_NATIVE_HOT,
-    payment: "in-kind",
-    swap: null,
-  };
+  const hotFee = POL_HOT_FEE;
 
   it("no longer dies in requireHotFee, and delivers end to end", async () => {
     const result = await run({

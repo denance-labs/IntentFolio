@@ -9,8 +9,8 @@ import type { Language } from "@/features/portfolio-editor/types";
 import { useDialogFocus } from "@/features/portfolio-editor/hooks/use-dialog-focus";
 import { useLoginWallet } from "@/features/login-wallet";
 import { useSendTransactionAs } from "@/features/vault/context/real-allocate-context";
-import { getDepositAddress } from "../lib/bridge-client";
-import { expectOmniDeposit, OMNI_CREDITED_DEPOSIT_CHAIN_IDS } from "../lib/omni-deposit-watch";
+import { getDepositAddress } from "../lib/deposit-address-client";
+import { expectDeposit } from "../lib/deposit-watch";
 import { chainRegistry } from "../lib/chain-registry";
 import {
   depositGroupKeyFor,
@@ -701,10 +701,10 @@ function TokenPicker({
                   <p className="truncate text-xs text-slate-400">{group.assetName}</p>
                 </div>
 
-                {/* Right side: badge + chain label */}
+                {/* Right side: badge + chain label. D-586: the solid «Last used» pill, as in Withdraw. */}
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {isLastUsed && (
-                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-ink">
                       {t.lastUsed}
                     </span>
                   )}
@@ -798,7 +798,7 @@ function ChainPicker({
 
                 {/* Last used badge — never on a pair the user can no longer pick */}
                 {isLastUsed && chain.available && (
-                  <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+                  <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-ink">
                     {t.lastUsed}
                   </span>
                 )}
@@ -854,17 +854,16 @@ function DepositStep({
     if (!chainId || !intentsAccountId) return;
     setLoading(true);
     setError(false);
-    getDepositAddress(intentsAccountId, chainId, memoRequired ? "MEMO" : undefined)
+    getDepositAddress(intentsAccountId, chainId)
       .then((result) => {
         setAddress(result.address);
         setMemo(result.memo);
-        // D-580: the bridge never lists this deposit, so the dashboard watches the account's
-        // history for it instead — from now, for an hour (omni-deposit-watch.ts).
-        if (OMNI_CREDITED_DEPOSIT_CHAIN_IDS.has(chainId)) expectOmniDeposit(intentsAccountId);
+        // D-580 / D-584: no bridge lists this deposit, so the dashboard watches the account's
+        // history for it — from now, for an hour (deposit-watch.ts).
+        expectDeposit(intentsAccountId);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chainId, intentsAccountId, memoRequired]);
 
   function handleCopy() {
@@ -879,13 +878,13 @@ function DepositStep({
     if (!chainId || !intentsAccountId) return;
     setError(false);
     setLoading(true);
-    getDepositAddress(intentsAccountId, chainId, memoRequired ? "MEMO" : undefined)
+    getDepositAddress(intentsAccountId, chainId)
       .then((result) => {
         setAddress(result.address);
         setMemo(result.memo);
-        // D-580: the bridge never lists this deposit, so the dashboard watches the account's
-        // history for it instead — from now, for an hour (omni-deposit-watch.ts).
-        if (OMNI_CREDITED_DEPOSIT_CHAIN_IDS.has(chainId)) expectOmniDeposit(intentsAccountId);
+        // D-580 / D-584: no bridge lists this deposit, so the dashboard watches the account's
+        // history for it — from now, for an hour (deposit-watch.ts).
+        expectDeposit(intentsAccountId);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));

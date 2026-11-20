@@ -17,6 +17,7 @@
 import type { AllowanceWatcher } from "./relay-allowance";
 import type { RelayGate, RelayGateVerdict } from "./relay-gate";
 import {
+  RELAY_ALREADY_SENT_ERROR,
   RELAY_DESTINATIONS,
   RELAY_GAS,
   extractEnvelopeRecipient,
@@ -395,7 +396,7 @@ async function checkAndSend({
   // cannot both get past it.
   if (!recordSend(input.sent ?? processSent, `${target}:${verdict.replayKey}`, (input.now ?? Date.now)())) {
     log(`[relay] REFUSED ${target} would-fail: ${JSON.stringify({ ...who, reason: "sent before" })}`);
-    return fail(422, "would-fail", "this signed operation was already sent");
+    return fail(422, "would-fail", RELAY_ALREADY_SENT_ERROR);
   }
 
   // ── Send ───────────────────────────────────────────────────────────────────

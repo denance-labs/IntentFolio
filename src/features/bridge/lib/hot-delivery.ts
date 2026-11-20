@@ -63,6 +63,7 @@
 import { poll, POLL_PENDING, bridgeIndexer, config, type CompletionStats } from "@defuse-protocol/internal-utils";
 import { fetchTxOutcome, viewCall } from "@/features/vault/lib/near-view";
 import { HOT_BRIDGE_RECEIVER_ID } from "./hot-envelope";
+import { ownRelayPublication } from "./own-relay-publish";
 import { WithdrawDeliveryCancelledError } from "./withdraw-errors";
 
 /** The two statuses `get_withdrawal_hash` spells out. Anything else is a hash, or nothing. */
@@ -254,9 +255,11 @@ export async function waitForHotDelivery(
   return poll<HotDeliveryOutcome>(async () => {
     try {
       if (nonce === null) {
-        // `intents.near`, not the user: the settlement transaction is signed by the Verifier
-        // contract's relayer, and the RPC needs the sender to find it.
-        const outcome = await readOutcome(p.txHash, config.env.contractID);
+        // Not the user: the RPC needs the transaction's sender to find it. Since D-589 IntentFolio's
+        // own relayer sends it, and the publish read who that is from the outcome; `intents.near`
+        // stays the fallback it was under the solver relay.
+        const sender = ownRelayPublication.senderOf(p.txHash) ?? config.env.contractID;
+        const outcome = await readOutcome(p.txHash, sender);
         nonce = parseHotWithdrawalNonces(outcome)[0] ?? null;
         if (nonce === null) {
           throw new Error(`no HOT withdrawal nonce in the receipts of ${p.txHash} yet`);

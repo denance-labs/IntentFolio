@@ -1,8 +1,12 @@
 // ③ Withdraw, step 1: pre-flight → sign → publish (005.plan §8, Phase 5, block 5.2).
 //
-// Takes the envelope block 5.1 built and gets it onto the Solver Relay. Nothing here talks
-// to the vault contract: a withdrawal of the General Balance is signed directly against
-// `intents.near` (ADR-0005, Path D), so the vault is not in the loop at all.
+// Takes the envelope block 5.1 built and publishes it. Nothing here talks to the vault
+// contract: a withdrawal of the General Balance is signed directly against `intents.near`
+// (ADR-0005, Path D), so the vault is not in the loop at all.
+//
+// It used to go onto the Solver Relay; since that relay answers 403 to everyone (D-589), the
+// default publisher is IntentFolio's own relay (own-relay-publish.ts), which answers in the
+// Solver Relay's response shape — so the parsing below, written for that relay, still applies.
 //
 // WHY THE LOW-LEVEL httpClient AND NOT `solverRelay.publishIntent`
 // The high-level entry point takes a RAW WalletSignatureResult and re-assembles the
@@ -23,7 +27,6 @@
 // HOT receiver encoding this file re-runs to check the destination). The withdrawal intent
 // shapes themselves are #9 (withdraw-envelope.ts) and #11 (hot-envelope.ts).
 
-import { solverRelay } from "@defuse-protocol/internal-utils";
 import { accountExists, accountHasContract, viewCall } from "@/features/vault/lib/near-view";
 import type { MultiPayload, VaultSigner } from "@/features/vault/lib/vault-signer";
 import { getWithdrawalEntry } from "./withdrawal-registry";
@@ -40,11 +43,13 @@ import {
   type SolanaDestinationProbe,
 } from "./solana-destination";
 import {
+  NOT_EXECUTED_REASON_PREFIX,
   WithdrawDestinationUnusableError,
   WithdrawPublishUnknownError,
   WithdrawRelayRejectedError,
   type WithdrawPublishErrorCode,
 } from "./withdraw-errors";
+import { ownRelayPublication } from "./own-relay-publish";
 
 /**
  * Request tuning copied from the high-level `publishIntents` (internal-utils 0.34.0).
@@ -80,8 +85,12 @@ export type NearDestinationProbe = {
   ) => Promise<{ total: string } | null>;
 };
 
-export const defaultWithdrawPublisher: WithdrawPublisher = (params) =>
-  solverRelay.httpClient.publishIntent(params, PUBLISH_REQUEST_CONFIG);
+/**
+ * IntentFolio's own relay (`/api/relay` → `execute_intents`), since the solver relay answers 403
+ * to everyone (D-589). The previous default was `solverRelay.httpClient.publishIntent(params,
+ * PUBLISH_REQUEST_CONFIG)`; going back is this line and `defaultSettlementWaiter`.
+ */
+export const defaultWithdrawPublisher: WithdrawPublisher = ownRelayPublication.publish;
 
 export const defaultNearDestinationProbe: NearDestinationProbe = {
   accountExists,
@@ -140,7 +149,10 @@ export type SubmitWithdrawResult = {
   route: SupportedWithdrawRoute;
 };
 
-/** Mirrors `parseFailedPublishReason` (internal-utils 0.34.0) exactly, match for match. */
+/**
+ * Mirrors `parseFailedPublishReason` (internal-utils 0.34.0) exactly, match for match — plus one
+ * code of our own, last, for what IntentFolio's relay proved did not execute (D-589).
+ */
 export function parsePublishFailureCode(reason: string): WithdrawPublishErrorCode {
   if (reason === "expired" || reason.includes("deadline has expired")) return "SIGNATURE_EXPIRED";
   if (reason === "internal") return "INTERNAL_ERROR";
@@ -149,6 +161,7 @@ export function parsePublishFailureCode(reason: string): WithdrawPublishErrorCod
   if (reason.includes("insufficient balance or overflow")) return "INSUFFICIENT_BALANCE";
   if (reason.includes("public key doesn't exist")) return "PUBLIC_KEY_NOT_EXIST";
   if (reason.includes("invalid salt")) return "INVALID_SALT";
+  if (reason.startsWith(NOT_EXECUTED_REASON_PREFIX)) return "NOT_EXECUTED";
   return "UNKNOWN_ERROR";
 }
 
@@ -161,11 +174,12 @@ export function parsePublishFailureCode(reason: string): WithdrawPublishErrorCod
  * record open.
  *
  *   - `NONCE_USED` — the nonce is unique per signature, so the relay saying it was already
- *     used means an intent carrying it ALREADY EXECUTED. The likeliest author is our own
- *     earlier attempt: `PUBLISH_REQUEST_CONFIG` retries up to 7 times, so a publish that
- *     settled and whose HTTP answer was lost gets resent verbatim and comes back exactly
- *     like this. Calling it a rejection tells someone their money never moved while it did,
- *     and drops the only trace that could recover it. Found by cross-review, 2026-08-10.
+ *     used means an intent carrying it ALREADY EXECUTED. With the solver relay the likeliest
+ *     author was our own earlier attempt (`PUBLISH_REQUEST_CONFIG` retried up to 7 times, so a
+ *     publish that settled and whose HTTP answer was lost got resent verbatim); the own relay
+ *     (D-589) sends once, but the reading stands. Calling it a rejection tells someone their
+ *     money never moved while it did, and drops the only trace that could recover it. Found by
+ *     cross-review, 2026-08-10.
  *   - `INTERNAL_ERROR` — `"internal"` is an opaque string that can be raised anywhere in the
  *     relay, including after the intent was accepted. Upstream treats it as a rejection; we
  *     deliberately do not, because the two mistakes do not cost the same. A false "we cannot

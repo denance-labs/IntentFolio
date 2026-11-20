@@ -140,13 +140,17 @@ describe("WithdrawalModal — conversions on: steps 1 to 3", () => {
     expect(screen.getByRole("heading", { name: t.withdrawStep2TitleConversions })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: t.continueButton }));
     expect(screen.getByRole("heading", { name: t.withdrawStep3Title })).toBeTruthy();
-    // The family's delivery chains, NEAR first: Polygon itself is not one (plan 020 §4).
+    // The family's delivery chains, NEAR first. The old HOT id has no row of its own, so Polygon
+    // is reached by converting into the Omni id there (D-581), in the table's order.
     expect(destinationButtons().map((b) => b.textContent)).toEqual([
       "NEAR",
       "Ethereum",
       "Arbitrum",
       "Tron",
       "Solana",
+      "BNB Chain",
+      "Polygon",
+      "Avalanche",
     ]);
     expect(destinationButtons()[0].getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Delivered as USDT on NEAR, with a conversion cost")).toBeTruthy();
@@ -629,5 +633,39 @@ describe("WithdrawalModal — conversions on: step 4", () => {
     openUsdt();
     await toStep4();
     expect(screen.getByText("0.006693 USDT")).toBeTruthy();
+  });
+});
+
+// D-581: an Omni id of BNB Chain leaves through 1Click as ITSELF. Same pipeline as a conversion,
+// but nothing is converted, so the screen must not say so.
+describe("WithdrawalModal — one-click: delivered as itself", () => {
+  const USDT_BSC = "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near";
+  const BSC = "eth:56";
+  const EVM_ADDRESS = "0x182906FFeF0C8a3c4D68bABA3ef82967328ffabB";
+
+  it("says nothing about a conversion, on step 3 or before signing", async () => {
+    mockBalance.mockReturnValue(new Map([[USDT_BSC, 5]]));
+    const selfQuote = quote({
+      originTokenId: USDT_BSC,
+      deliveryTokenId: USDT_BSC,
+      destinationAsset: USDT_BSC,
+      chainId: BSC,
+      recipient: EVM_ADDRESS,
+      amountInRaw: "5000000000000000000",
+      amountOutRaw: "4989991412626027386",
+      minAmountOutRaw: "4965041455562897249",
+      withdrawFeeRaw: "10008587373972614",
+    });
+    renderModal({ conversions: conversions(vi.fn(async () => ok(selfQuote))) });
+    openUsdt();
+    fireEvent.click(screen.getByRole("button", { name: "BNB Chain" }));
+    expect(screen.queryByText(/with a conversion cost/)).toBeNull();
+    // D-426's "you already hold the Delivery Token" would be wrong here: it IS the held token.
+    expect(screen.queryByText(/skips the conversion/)).toBeNull();
+
+    await toStep4(EVM_ADDRESS, "5");
+    expect(screen.queryByText(t.conversionCostLabel)).toBeNull();
+    expect(screen.getByText(t.deliveryRefundNote)).toBeTruthy();
+    expect(screen.queryByText(/becomes/)).toBeNull();
   });
 });

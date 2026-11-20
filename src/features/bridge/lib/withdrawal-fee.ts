@@ -1,19 +1,14 @@
-// The withdrawal fee the user is about to pay, live from the PoA bridge (005.plan §8, 5.4).
+// The withdrawal fee the user is about to pay (005.plan §8, 5.4).
 //
-// Attribution: see ATTRIBUTIONS.md #4 (wraps internal-utils — re-review on version bump).
+// `omft` has no live quote any more: the PoA bridge's `withdrawal_estimate` closed with its API
+// on 2026-11-11 (D-584). Its fees are the registry's, re-checked 2026-11-19 (046 §3) — flat on
+// every `omft` token but one. USDT on Tron depends on whether the destination already holds
+// USDT, so that one is priced by reading the destination (`tron-usdt-fee.ts`).
 //
-// WHY LIVE AT ALL. `withdrawalRegistry` carries a fee snapshotted on 2026-06-08. It is
-// accurate enough to reason about, and stale enough to mis-state what someone receives:
-// the OMFT fee tracks destination-chain gas and moves on its own. The registry stays the
-// FALLBACK, never the silent default — a failed estimate shows the static figure rather
-// than blocking a withdrawal on a fee lookup.
-//
-// WHY ONLY `omft`. `withdrawal_estimate` is a PoA bridge method and only answers for tokens
-// the bridge moves. `near-native` never crosses it (its fee is genuinely 0, not "unknown"),
-// and `hot-omni` is not a bridge quote at all — its fee is the destination chain's own gas
-// price plus a solver swap to buy that gas, and it is SIGNED. That lives in `hot-fee.ts`
-// (4.3.1); asking the PoA bridge for it would return an error we would then have to paper
-// over with the static value we already have.
+// `hot-omni` is not a bridge quote at all — its fee is the destination chain's own gas price
+// plus a solver swap to buy that gas, and it is SIGNED. That lives in `hot-fee.ts` (4.3.1).
+// `omni` likewise, in `omni-bridge.ts`. `near-native` never crosses a bridge: its fee is
+// genuinely 0, not "unknown".
 //
 // The fee is NOT part of what gets signed: the envelope carries the GROSS amount and the
 // bridge deducts its fee on the far side (withdraw-envelope.ts). So a fee that moved
@@ -21,8 +16,6 @@
 // valid — which is exactly why P2 is answered in the UI (block and re-confirm) and not by
 // rebuilding the envelope.
 
-import { poaBridge } from "@defuse-protocol/internal-utils";
-import { getTokenById } from "@/features/market/lib/token-registry";
 import {
   fetchHotFeeAndRequirement,
   hotFeeSupported,
@@ -32,6 +25,7 @@ import {
 } from "./hot-fee";
 import { getWithdrawalEntry } from "./withdrawal-registry";
 import { fetchOmniWithdrawalFee, omniFeeTotalRaw, type OmniFeeDetail } from "./omni-bridge";
+import { readTronUsdtBalance, tronUsdtFeeRaw, TRON_USDT_TOKEN_ID } from "./tron-usdt-fee";
 
 export type WithdrawalFeeQuote = {
   /** Base units of the token being withdrawn — same precision as the registry's fee. */
@@ -71,7 +65,8 @@ export function staticWithdrawalFee(
 }
 
 /**
- * Whether a live quote is even obtainable for this token — see the `omft` note above.
+ * Whether a live quote is even obtainable for this token — see the header. On `omft` only USDT
+ * on Tron, whose fee is read off the destination (D-584).
  *
  * `hot-omni` joins as of block 4.3.5: the arithmetic no longer disagrees (4.3.2 subtracts,
  * like `omft`), and `hotFeeSupported` (hot-fee.ts) is the same table `fetchHotWithdrawalFee`
@@ -80,7 +75,8 @@ export function staticWithdrawalFee(
 export function supportsLiveWithdrawalFee(tokenId: string, chainId?: string): boolean {
   const entry = getWithdrawalEntry(tokenId, chainId);
   if (!entry) return false;
-  if (entry.bridgeRoute === "omft" || entry.bridgeRoute === "omni") return true;
+  if (entry.bridgeRoute === "omni") return true;
+  if (entry.bridgeRoute === "omft") return tokenId === TRON_USDT_TOKEN_ID && entry.chainId === "tron:mainnet";
   if (entry.bridgeRoute === "hot-omni") return hotFeeSupported(tokenId);
   return false;
 }
@@ -116,7 +112,7 @@ export type FetchWithdrawalFeeParams = {
   tokenId: string;
   /** The destination chain; omitted, the token's own. NEAR for an `omft` token has no fee. */
   chainId?: string;
-  /** The real destination. The bridge may price per-address, so the dummy is a last resort. */
+  /** The real destination: USDT on Tron is priced by it, and `hot-omni`/`omni` quote for it. */
   destinationAddress: string;
   /**
    * `hot-omni` only: base units of the destination chain's native asset the signer already
@@ -130,8 +126,8 @@ export type FetchWithdrawalFeeParams = {
    */
   amountRaw?: string;
   signal?: AbortSignal;
-  /** Injected in tests; nothing here may reach the network in a unit test. */
-  estimate?: typeof poaBridge.httpClient.getWithdrawalEstimate;
+  /** Injected in tests; USDT on Tron only — see `tron-usdt-fee.ts`. */
+  tronFetch?: typeof fetch;
   /** Injected in tests; `omni` only. */
   omniFetch?: typeof fetch;
   /** Injected in tests; `hot-omni` only — see `hot-fee.ts`. */
@@ -213,39 +209,13 @@ export async function fetchWithdrawalFee(
   }
 
   const fallback: WithdrawalFeeQuote = { feeRaw: entry.withdrawalFeeRaw, source: "registry" };
-  if (entry.bridgeRoute !== "omft") return { quote: fallback };
-
-  const call = p.estimate ?? poaBridge.httpClient.getWithdrawalEstimate;
-  try {
-    // `chain` is typed `BlockchainEnum` upstream, whose members are exactly these chain-id
-    // strings — but the constant lags the live API (see chain-registry.ts:75), so the cast
-    // matches what `getPendingDeposits` already does rather than dropping live chains.
-    type EstimateParams = Parameters<typeof poaBridge.httpClient.getWithdrawalEstimate>[0];
-    const result = await call(
-      {
-        token: entry.nearTokenId,
-        address: p.destinationAddress,
-        chain: entry.chainId,
-      } as EstimateParams,
-      { fetchOptions: p.signal ? { signal: p.signal } : undefined }
-    );
-
-    const feeRaw = result?.withdrawalFee;
-    if (typeof feeRaw !== "string" || !/^\d+$/.test(feeRaw)) return { quote: fallback };
-
-    // The response reports its OWN precision, and it is the registry's fee — not the
-    // amount — that this number has to line up with. It has always matched the token's
-    // decimals in practice, but "in practice" is not something to spend someone's money
-    // on: a mismatch would scale the displayed fee by a power of ten, silently. Take the
-    // static figure rather than a number we cannot place on the same scale.
-    const decimals = getTokenById(p.tokenId)?.decimals;
-    if (decimals !== undefined && result.withdrawalFeeDecimals !== decimals) {
-      return { quote: fallback };
-    }
-
-    return { quote: { feeRaw, source: "live" } };
-  } catch {
-    // Includes the caller aborting. Same answer either way: show what we know.
+  if (entry.bridgeRoute !== "omft" || p.tokenId !== TRON_USDT_TOKEN_ID || entry.chainId !== "tron:mainnet") {
     return { quote: fallback };
   }
+
+  // An unread balance keeps the registry's figure, which is the higher of the two: the screen
+  // may then say a little more than is taken, never less.
+  const balance = await readTronUsdtBalance(p.destinationAddress, { fetchImpl: p.tronFetch, signal: p.signal });
+  if (balance === null) return { quote: fallback };
+  return { quote: { feeRaw: tronUsdtFeeRaw(balance), source: "live" } };
 }

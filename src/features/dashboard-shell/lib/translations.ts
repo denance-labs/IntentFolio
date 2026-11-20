@@ -287,6 +287,7 @@ export const shellTranslations = {
     depositCredited: "{amount} {asset} credited!",
     withdrawSentToast: "Withdrawal sent · {qty} {symbol} to {chain}",
     withdrawalDeliveredToast: "Withdrawal delivered · {qty} {symbol} on {chain}",
+    withdrawalHandedOffToast: "Withdrawal sent · {qty} {symbol} to {chain} — it can take a few minutes to arrive",
     withdrawalFailedToast: "Withdrawal not sent · {qty} {symbol} is still in your funding account",
     // Real path only. Accurate whether the withdrawal never left the browser or the network
     // rejected it after publishing: both are the `untouched` case, where the balance really
@@ -319,8 +320,6 @@ export const shellTranslations = {
     activityHistoryLoading: "Loading your history…",
     activityHistoryError: "We couldn't read your full history. What's in progress is still shown.",
     activityHistoryRetry: "Try again",
-    depositStatusPending: "Pending",
-    depositStatusCompleted: "Completed",
     depositStatusCredited: "Credited",
     // 027 A-5: what a finished row says at the start of its date line (no chip).
     activityDoneSent: "Sent",
@@ -331,12 +330,14 @@ export const shellTranslations = {
     withdrawalStatusSettled: "Settled on NEAR",
     withdrawalStatusDelivered: "Delivered",
     withdrawalStatusUnconfirmed: "Not confirmed",
-    withdrawalStatusFailed: "Still in your balance",
+    // 023-B: never "failed" in red — nothing left. The chip says what happened, the date line where the money is.
+    withdrawalStatusFailed: "Not sent",
     withdrawalStatusConverting: "Converting",
     withdrawalStatusRefunded: "Returned",
     // The row of a conversion names what arrives, and — while unconfirmed — the code to quote.
     withdrawalArrivesAs: "as {symbol}",
     withdrawalConversionCode: "ref. {code}",
+    withdrawalStillInFunding: "still in your funding account",
     // D-463 (023-B): a withdrawal open for over a day that no re-check could close.
     withdrawalStuckLeftBalance: "Left your funding account; delivery to {address} not confirmed.",
     withdrawalStuckUnknown: "We couldn't confirm this withdrawal yet. Check your funding account and the destination wallet ({address}).",
@@ -891,6 +892,7 @@ export const shellTranslations = {
     depositCredited: "¡{amount} {asset} acreditado!",
     withdrawSentToast: "Retiro enviado · {qty} {symbol} a {chain}",
     withdrawalDeliveredToast: "Retiro entregado · {qty} {symbol} en {chain}",
+    withdrawalHandedOffToast: "Retiro enviado · {qty} {symbol} a {chain} — puede tardar unos minutos en llegar",
     withdrawalFailedToast: "Retiro no enviado · {qty} {symbol} sigue en tu cuenta de fondos",
     withdrawalNotCompletedToast: "Retiro no enviado · {qty} {symbol} sigue en tu cuenta de fondos",
     withdrawalUnconfirmedToast: "Retiro enviado · {qty} {symbol} a {chain} — falta confirmar la entrega",
@@ -911,8 +913,6 @@ export const shellTranslations = {
     activityHistoryLoading: "Cargando tu historial…",
     activityHistoryError: "No pudimos leer tu historial completo. Lo que está en curso se sigue mostrando.",
     activityHistoryRetry: "Reintentar",
-    depositStatusPending: "Pendiente",
-    depositStatusCompleted: "Completado",
     depositStatusCredited: "Acreditado",
     activityDoneSent: "Enviado",
     activityDoneConfirmed: "Confirmado",
@@ -922,11 +922,12 @@ export const shellTranslations = {
     withdrawalStatusSettled: "Confirmado en NEAR",
     withdrawalStatusDelivered: "Entregado",
     withdrawalStatusUnconfirmed: "Sin confirmar",
-    withdrawalStatusFailed: "Sigue en tu saldo",
+    withdrawalStatusFailed: "No enviado",
     withdrawalStatusConverting: "Convirtiendo",
     withdrawalStatusRefunded: "Devuelto",
     withdrawalArrivesAs: "como {symbol}",
     withdrawalConversionCode: "ref. {code}",
+    withdrawalStillInFunding: "sigue en tu cuenta de fondos",
     withdrawalStuckLeftBalance: "Salió de tu cuenta de fondos; no pudimos confirmar la entrega a {address}.",
     withdrawalStuckUnknown: "Todavía no pudimos confirmar este retiro. Revisa tu cuenta de fondos y la wallet de destino ({address}).",
     withdrawalHide: "Ocultar",

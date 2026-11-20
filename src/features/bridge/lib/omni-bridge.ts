@@ -114,7 +114,7 @@ export function omniRecipient(chainId: string, address: string): string | null {
  * (before 17.4) lacks — there it would throw, and a throw here reads as "fee unavailable",
  * which blocks the withdrawal for no reason the user could act on.
  */
-function requestSignal(outer: AbortSignal | undefined, ms: number): { signal: AbortSignal; done: () => void } {
+export function requestSignal(outer: AbortSignal | undefined, ms: number): { signal: AbortSignal; done: () => void } {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`timed out after ${ms}ms`)), ms);
   const forward = () => controller.abort(outer?.reason);

@@ -13,7 +13,7 @@ import { usePortfolio } from "../context/portfolio-context";
 import { DepositActionProvider } from "../context/deposit-action-context";
 import { ensureCanOperate, useLoginWallet } from "@/features/login-wallet";
 import { NearKeyVerificationNotice } from "@/features/login-wallet";
-import { ReceiveModal, WithdrawalModal, dismissWithdrawal, useRecentDeposits, usePendingWithdrawals, type DepositStatusEntry } from "@/features/bridge";
+import { ReceiveModal, WithdrawalModal, dismissWithdrawal, usePendingWithdrawals } from "@/features/bridge";
 import type {
   ConversionQuoteRequest,
   WithdrawConfirmParams,
@@ -49,12 +49,12 @@ import { WithdrawError } from "@/features/bridge/lib/withdraw-errors";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
 import { announceOperation } from "@/features/vault/hooks/use-real-portfolio-history";
 import { mockContract } from "@/features/intents-account/mock-contract";
-import { tokenRegistry, assetIdForNearTokenId, getTokenById, getTokenByNearTokenId } from "@/features/market/lib/token-registry";
+import { tokenRegistry, getTokenById } from "@/features/market/lib/token-registry";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import type { WalletDepositCredit } from "@/features/bridge/lib/near-wallet-deposit";
 import { markDepositNotified } from "@/features/bridge/lib/credited-deposits-store";
-import { useOmniDepositWatch } from "@/features/bridge/hooks/use-omni-deposit-watch";
-import type { OmniCreditedDeposit } from "@/features/bridge/lib/omni-deposit-watch";
+import { useDepositWatch } from "@/features/bridge/hooks/use-deposit-watch";
+import type { CreditedDeposit } from "@/features/bridge/lib/deposit-watch";
 import {
   AmountExceedsBalanceError,
   capToHeld,
@@ -469,22 +469,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
     [intentsAccountId, lang, queryClient]
   );
 
-  const handleCredited = useCallback(
-    (deposit: DepositStatusEntry) => {
-      const token = getTokenByNearTokenId(deposit.near_token_id);
-      creditDeposit({
-        assetId: token?.id ?? assetIdForNearTokenId(deposit.near_token_id),
-        qty: deposit.amount / Math.pow(10, deposit.decimals),
-        chain: deposit.chain,
-        txHash: deposit.tx_hash,
-        assetLabel: token?.assetName ?? token?.symbol ?? deposit.near_token_id,
-      });
-    },
-    [creditDeposit]
-  );
-
-  const handleOmniCredited = useCallback(
-    (deposit: OmniCreditedDeposit) => {
+  // D-584: every deposit made through Receive, from the account's history (deposit-watch.ts).
+  const handleDepositCredited = useCallback(
+    (deposit: CreditedDeposit) => {
       const token = getTokenById(deposit.tokenId);
       if (!token) return;
       creditDeposit({
@@ -678,6 +665,20 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
 
       run.then(
         (result) => {
+          // `omft` (D-584): settled and handed to a bridge nobody can watch any more. Final, and
+          // told as "sent" — never as delivered, and never as an open question that will not close.
+          if (result.delivery.kind === "bridge-handoff") {
+            setStatus("SENT", { txHash: result.txHash });
+            invalidateBalances();
+            setToast({
+              text: t.withdrawalHandedOffToast
+                .replace("{qty}", formatCrypto(qty))
+                .replace("{symbol}", symbol)
+                .replace("{chain}", chainDisplay),
+            });
+            if (!showMiCuentaRef.current) setMiCuentaBadge(true);
+            return;
+          }
           setStatus("DELIVERED", {
             txHash: result.txHash,
             // `hot-omni` (4.3.4) can confirm the delivery without naming a transaction, so
@@ -886,6 +887,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
             invalidateBalances();
           }
         },
+        // The NEAR hash on the Converting row, as on a direct withdrawal (`onSettled` above).
+        onSettled: (txHash) => setStatus("SETTLED", { txHash }),
       });
 
       run.then(
@@ -1306,15 +1309,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
     onFailed: handleUnallocationResolved,
   });
 
-  const { deposits } = useRecentDeposits({
+  useDepositWatch({
     intentsAccountId: loginConnected ? intentsAccountId : "",
-    onCredited: handleCredited,
-  });
-
-  // D-580: the deposits PoA never lists (ZEC, credited by the Omni Bridge), from the history.
-  useOmniDepositWatch({
-    intentsAccountId: loginConnected ? intentsAccountId : "",
-    onCredited: handleOmniCredited,
+    onCredited: handleDepositCredited,
   });
 
   // `leavesDraftTab`: false for the draft's own tab, whose unsaved edits stay where they are.
@@ -1439,7 +1436,6 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         onOpenPortfolio={handlePortfolioTabSelect}
         signedOut={!loginConnected}
         onConnect={() => setConnectOpen(true)}
-        deposits={deposits}
         pendingWithdrawals={pendingWithdrawals}
         pendingUnallocations={pendingUnallocations}
         onDismissWithdrawal={dismissWithdrawal}

@@ -35,6 +35,7 @@ import {
   type EvmWalletDepositPhase,
 } from "../hooks/use-wallet-deposit-phase";
 import { chainRegistry } from "../lib/chain-registry";
+import { expectDeposit } from "../lib/deposit-watch";
 import {
   EVM_RETRYABLE,
   buildEvmDepositTransaction,
@@ -163,6 +164,8 @@ export function EvmWalletDepositPanel({
       onSent: () => setIfCurrent(runId, { kind: "confirming", runId }),
       onConfirmed: () => {
         setIfCurrent(runId, { kind: "arriving", runId });
+        // The dashboard announces it when the history shows it, even after this panel closes.
+        expectDeposit(intentsAccountId);
         // The funds left the wallet: its balances change now, not when the bridge credits.
         refreshBalancesAfterWalletDeposit(queryClient);
       },

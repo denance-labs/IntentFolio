@@ -205,7 +205,8 @@ suite("account recorder — one pass against a real Postgres 16 and the 009 sche
     const { account, vault, txs } = evmCase();
     await follow(account);
     const r = ran(await pass(account, vault, fakeFastNear([txs], account)));
-    expect(r).toMatchObject({ ok: true, recordedTxs: 3, recordedMovements: 4 });
+    // 5: the allocation, the HOT withdrawal's two burns and the transfer_in of its gas swap, the deposit.
+    expect(r).toMatchObject({ ok: true, recordedTxs: 3, recordedMovements: 5 });
     const vaultRows = async (table: string) =>
       Number((await owner.query(`SELECT count(*) AS n FROM ${table} WHERE vault_id = $1`, [vault])).rows[0].n);
     expect([await vaultRows("vault_tx"), await vaultRows("vault_event"), await vaultRows("portfolio_owner")]).toEqual([1, 4, 1]);

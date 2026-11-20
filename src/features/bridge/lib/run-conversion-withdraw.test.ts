@@ -179,6 +179,15 @@ describe("runConversionWithdraw — 1Click delivers", () => {
     });
   });
 
+  // The Converting row's NEAR hash: handed over at settlement, before 1Click takes over.
+  it("hands the settlement hash over at settlement, before converting", async () => {
+    const seen: Array<{ txHash: string; stagesSoFar: string[] }> = [];
+    await run({ onSettled: (txHash) => seen.push({ txHash, stagesSoFar: [...stages] }) });
+    expect(seen).toEqual([
+      { txHash: TX_HASH, stagesSoFar: ["preparing", "signing", "publishing", "awaiting-settlement"] },
+    ]);
+  });
+
   // D-463: what lets a reload ask intents.near whether the transfer ever ran.
   it("keeps the signed nonce and the transfer deadline on the record", async () => {
     await run();

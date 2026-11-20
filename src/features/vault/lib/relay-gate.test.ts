@@ -6,11 +6,24 @@ import { portfolioPresets } from "@/content/portfolio-presets";
 import { deriveIntentsAccountId } from "@/features/login-wallet/lib/identity";
 import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
+import { buildConversionSignRequest } from "@/features/bridge/lib/conversion-envelope";
+import { buildGasPurchaseSignRequest } from "@/features/bridge/lib/gas-purchase";
+import type { ConversionQuote } from "@/features/bridge/lib/oneclick-conversion-quote";
+import { isTokenAvailable } from "@/features/bridge/lib/token-availability";
+import { buildWithdrawSignRequest } from "@/features/bridge/lib/withdraw-envelope";
+import { withdrawalRegistry } from "@/features/bridge/lib/withdrawal-registry";
+import {
+  buildStockSwapSignRequest,
+  STOCK_TEST_ASSETS,
+  STOCK_TEST_FUNDING_ASSETS,
+} from "@/features/stocks/lib/stock-swap";
 import {
   ALLOCATE_DEADLINE_SLACK_SECS,
   COMMIT_DEADLINE_CAP_SECS,
   createRelayGate,
   isAllocateIntoVault,
+  isAppOutflow,
+  OUTFLOW_DEADLINE_CAP_SECS,
   RELAY_MAX_AUTH_CALL_MIN_GAS,
   type RelayView,
 } from "./relay-gate";
@@ -1156,5 +1169,305 @@ describe("relay gate — canonical JSON (D-538)", () => {
       await expect(gateWith(view)({ target: "vault", payload })).resolves.toEqual({ ok: false, code: "would-fail", reason: ENVELOPE_REASON });
       expect(view).not.toHaveBeenCalled();
     }
+  });
+});
+
+// D-589: the solver relay stopped answering, so withdrawals and 1Click transfers reach
+// `intents.near` through this relay. It pays only for the one-intent envelopes the app builds.
+describe("relay gate — withdrawals and 1Click transfers (D-589)", () => {
+  const SIGNER = "alice.near";
+  const DEPOSIT = "5863efabda6c40d89b37aa899add569e32cb7a670e6b56a7f2cbb8d62c5333a0";
+  const NONCE_BYTES = new Uint8Array(32).fill(7);
+  const outflowView = (answers: Record<string, RelayViewResult | Error> = {}) =>
+    fakeView({ simulate_intents: value({ intents_executed: [{}], state: {} }), ...answers });
+  const verifier = (view: RelayView, payload: unknown) => gateWith(view)({ target: "verifier", payload });
+
+  /** The same request as each signing family puts it on the wire: NEP-413, and EVM's text. */
+  function wire(request: { nep413: { message: string; recipient: string; nonce: Uint8Array }; erc191Message: string }) {
+    return {
+      nep413: {
+        standard: "nep413",
+        payload: {
+          message: request.nep413.message,
+          nonce: Buffer.from(request.nep413.nonce).toString("base64"),
+          recipient: request.nep413.recipient,
+        },
+        public_key: "ed25519:x",
+        signature: "ed25519:x",
+      },
+      erc191: { standard: "erc191", payload: request.erc191Message, signature: "secp256k1:x" },
+    };
+  }
+
+  const withdraw = (over: Partial<Parameters<typeof buildWithdrawSignRequest>[0]>) =>
+    buildWithdrawSignRequest({
+      signerId: SIGNER,
+      tokenId: "nep141:usdt.tether-token.near",
+      chainId: "near:mainnet",
+      qty: 1,
+      heldRaw: BigInt(10) ** BigInt(24),
+      destinationAddress: "bob.near",
+      deadlineSecs: NOW + 600,
+      nonce: NONCE_BYTES,
+      ...over,
+    });
+
+  const conversionQuote: ConversionQuote = {
+    originTokenId: "nep141:eth.omft.near",
+    deliveryTokenId: "nep141:eth.bridge.near",
+    chainId: "near:mainnet",
+    destinationAsset: "nep141:eth.bridge.near",
+    recipient: SIGNER,
+    refundTo: SIGNER,
+    depositAddress: DEPOSIT,
+    amountInRaw: "5000000000000000",
+    amountOutRaw: "4998990052004899",
+    minAmountOutRaw: "4973995101744874",
+    withdrawFeeRaw: "0",
+    createsTokenAccount: false,
+    refundFeeRaw: "0",
+    slippageBps: 50,
+    requestedDeadlineMs: NOW_MS + 10 * 60_000,
+    quoteDeadlineMs: NOW_MS + 3 * 24 * 3600_000,
+    timeEstimateSecs: 10,
+    signature: "ed25519:x",
+    quotedAtMs: NOW_MS - 30_000,
+  };
+
+  /** Every envelope the app signs straight against `intents.near`, from the app's own builders. */
+  const appRequests = () => ({
+    "near-native": withdraw({}),
+    omft: withdraw({
+      tokenId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",
+      chainId: "tron:mainnet",
+      qty: 5,
+      destinationAddress: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+    }),
+    "near-unwrap": withdraw({ tokenId: "near", qty: 0.5 }),
+    omni: withdraw({
+      tokenId: "nep141:zec.omft.near",
+      chainId: "zec:mainnet",
+      qty: 0.005,
+      destinationAddress: "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K",
+      omniFee: { gasFeeRaw: "22000", protocolFeeRaw: "10000", minAmountRaw: "100000", quotedForRaw: "500000" },
+      omniExternalId: "5d0f1c2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+    }),
+    conversion: buildConversionSignRequest({
+      signerId: SIGNER,
+      quote: conversionQuote,
+      heldRaw: BigInt(conversionQuote.amountInRaw),
+      nowMs: NOW_MS,
+      nonce: NONCE_BYTES,
+    }),
+    "gas purchase": buildGasPurchaseSignRequest({
+      signerId: SIGNER,
+      quote: {
+        depositAddress: DEPOSIT,
+        amountInRaw: "53459",
+        amountOutRaw: "1000",
+        tokenId: "nep141:usdt.tether-token.near",
+        nativeAssetId: "nep141:wrap.near",
+      },
+      withdrawalAmountRaw: "5000000",
+      deadlineSecs: NOW + 600,
+      nonce: NONCE_BYTES,
+    }),
+    "stock swap": buildStockSwapSignRequest({
+      signerId: SIGNER,
+      heldRaw: BigInt(10) ** BigInt(30),
+      nowMs: NOW_MS,
+      nonce: NONCE_BYTES,
+      quote: {
+        side: "buy",
+        stock: STOCK_TEST_ASSETS[0],
+        funding: STOCK_TEST_FUNDING_ASSETS[0],
+        originAsset: STOCK_TEST_FUNDING_ASSETS[0].id,
+        destinationAsset: STOCK_TEST_ASSETS[0].id,
+        accountId: SIGNER,
+        maxTradeUsd: null,
+        depositAddress: DEPOSIT,
+        amountInRaw: "10000000",
+        amountOutRaw: "1",
+        minAmountOutRaw: "1",
+        amountInUsd: 10,
+        amountOutUsd: 10,
+        costBps: 10,
+        requestedDeadlineMs: NOW_MS + 10 * 60_000,
+        quoteDeadlineMs: NOW_MS + 10 * 60_000,
+        timeEstimateSecs: 10,
+        signature: "ed25519:x",
+        quotedAtMs: NOW_MS - 10_000,
+      },
+    }),
+  });
+
+  it("passes every envelope the app builds, in NEP-413 and in EVM's text, after the simulation", async () => {
+    for (const [name, request] of Object.entries(appRequests())) {
+      for (const [standard, payload] of Object.entries(wire(request))) {
+        const view = outflowView();
+        await expect(verifier(view, payload), `${name} (${standard})`).resolves.toEqual({
+          ok: true,
+          signerId: SIGNER,
+          replayKey: `${SIGNER}:${"07".repeat(32)}`,
+        });
+        expect(view).toHaveBeenCalledWith(INTENTS, "simulate_intents", { signed: [payload] });
+      }
+    }
+  });
+
+  // Operator, 2026-11-19 (after cross-review): the HOT natives the Withdraw screen offers pay
+  // their fee in kind, a lone `mt_withdraw` with no swap and no solver quote.
+  it("passes every HOT withdrawal the screen offers (natives, fee in kind), as the app builds it", async () => {
+    const destinations: Record<string, string> = {
+      "ton:mainnet": "UQCv4mTYxbLOKZBDL_b_jckLV3ev0SLA-demExEBdbkivm0W",
+      "stellar:mainnet": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    };
+    const offered = Object.entries(withdrawalRegistry).filter(
+      ([id, row]) => row.bridgeRoute === "hot-omni" && isTokenAvailable(id)
+    );
+    expect(offered).toHaveLength(5);
+    for (const [tokenId, row] of offered) {
+      const request = withdraw({
+        tokenId,
+        chainId: row.chainId,
+        qty: 10,
+        heldRaw: BigInt(10) ** BigInt(40),
+        destinationAddress: destinations[row.chainId] ?? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        hotFee: { relayerFeeRaw: "1000", blockNumber: "123", nativeAssetId: tokenId, payment: "in-kind", swap: null },
+      });
+      expect(request.quoteHashes, tokenId).toEqual([]);
+      for (const [standard, payload] of Object.entries(wire(request))) {
+        await expect(verifier(outflowView(), payload), `${tokenId} (${standard})`).resolves.toMatchObject({ ok: true });
+      }
+    }
+  });
+
+  it("passes a 1Click transfer of every token the stock screen trades", () => {
+    for (const { id } of [...STOCK_TEST_FUNDING_ASSETS, ...STOCK_TEST_ASSETS]) {
+      const message = { intents: [{ intent: "transfer", receiver_id: DEPOSIT, tokens: { [id]: "1" } }] };
+      expect(isAppOutflow(message), id).toBe(true);
+    }
+  });
+
+  it("refuses what the simulation refuses, with the contract's reason", async () => {
+    const view = outflowView({ simulate_intents: panic("insufficient balance or overflow") });
+    await expect(verifier(view, wire(appRequests().omft).erc191)).resolves.toEqual({
+      ok: false,
+      code: "would-fail",
+      reason: "insufficient balance or overflow",
+    });
+  });
+
+  it("refuses a reported invariant violation", async () => {
+    const view = outflowView({ simulate_intents: value({ invariant_violated: { unmatched_deltas: [] } }) });
+    await expect(verifier(view, wire(appRequests().conversion).nep413)).resolves.toMatchObject({
+      ok: false,
+      code: "would-fail",
+    });
+  });
+
+  it("says check-failed when no node answered the simulation", async () => {
+    const view = outflowView({ simulate_intents: new Error("fetch failed") });
+    await expect(verifier(view, wire(appRequests().conversion).erc191)).resolves.toMatchObject({
+      ok: false,
+      code: "check-failed",
+    });
+  });
+
+  it("refuses a deadline about to pass or past a day, before the simulation", async () => {
+    for (const deadlineSecs of [NOW + 10, NOW - 60, NOW + OUTFLOW_DEADLINE_CAP_SECS + 60]) {
+      const view = outflowView();
+      const verdict = await verifier(view, wire(withdraw({ deadlineSecs })).nep413);
+      expect(verdict, String(deadlineSecs)).toMatchObject({ ok: false, code: "would-fail" });
+      expect(view).not.toHaveBeenCalled();
+    }
+  });
+
+  /** One `intents` list as the app's EVM text would carry it, re-serialised canonically. */
+  function withIntents(intents: unknown[]) {
+    const parsed = JSON.parse(withdraw({}).erc191Message) as Record<string, unknown>;
+    parsed.intents = intents;
+    return { standard: "erc191", payload: JSON.stringify(parsed, null, 2), signature: "secp256k1:x" };
+  }
+  const NEAR_NATIVE = {
+    intent: "ft_withdraw",
+    token: "usdt.tether-token.near",
+    receiver_id: "bob.near",
+    amount: "1000000",
+    min_gas: "17050000000000",
+  };
+  const TRANSFER = { intent: "transfer", receiver_id: DEPOSIT, tokens: { "nep141:usdt.tether-token.near": "1" } };
+  const TRON_USDT = "tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near";
+  const HOT_WITHDRAW = {
+    intent: "mt_withdraw",
+    receiver_id: "bridge-refuel.hot.tg",
+    amounts: ["1000000"],
+    token_ids: ["1100_111bzQBB5v7AhLyPMDwS8uJgQV24KaAPXtwyVWu2KXbbfQU6NXRCz"],
+    token: "v2_1.omni.hot.tg",
+    msg: '{"receiver_id":"x","amount_native":"1000","block_number":123}',
+    min_gas: "91300000000000",
+  };
+
+  it.each([
+    ["two intents", [NEAR_NATIVE, NEAR_NATIVE]],
+    ["no intent", []],
+    ["a token the app does not know", [{ ...NEAR_NATIVE, token: "junk.attacker.near" }]],
+    ["a storage_deposit the app never sets", [{ ...NEAR_NATIVE, storage_deposit: "1250000000000000000000" }]],
+    ["a min_gas the app does not sign", [{ ...NEAR_NATIVE, min_gas: "290000000000000" }]],
+    ["a msg on a near-native withdrawal", [{ ...NEAR_NATIVE, msg: "{}" }]],
+    ["an omft memo with a receiver other than the token", [{ ...NEAR_NATIVE, memo: "WITHDRAW_TO:x" }]],
+    [
+      "an omni msg to a contract other than the bridge",
+      [{ ...NEAR_NATIVE, receiver_id: "attacker.near", msg: "{}", min_gas: "37400000000000" }],
+    ],
+    [
+      "an omft memo past the cap",
+      [{ ...NEAR_NATIVE, token: TRON_USDT, receiver_id: TRON_USDT, memo: `WITHDRAW_TO:${"T".repeat(250)}` }],
+    ],
+    [
+      "an omni msg past the cap",
+      [{ ...NEAR_NATIVE, token: "zec.omft.near", receiver_id: "omni.bridge.near", msg: "x".repeat(1025), min_gas: "37400000000000" }],
+    ],
+    ["a zero amount", [{ ...NEAR_NATIVE, amount: "0" }]],
+    ["a transfer to a named account", [{ ...TRANSFER, receiver_id: "attacker.near" }]],
+    ["a transfer with a msg", [{ ...TRANSFER, msg: "{}" }]],
+    ["a transfer with a memo", [{ ...TRANSFER, memo: "x" }]],
+    [
+      "a transfer of two tokens",
+      [{ ...TRANSFER, tokens: { "nep141:usdt.tether-token.near": "1", "nep141:wrap.near": "1" } }],
+    ],
+    ["a transfer of a token the app does not know", [{ ...TRANSFER, tokens: { [JUNK]: "1" } }]],
+    [
+      "a native_withdraw with a field the app does not set",
+      [{ intent: "native_withdraw", receiver_id: "bob.near", amount: "1", memo: "x" }],
+    ],
+    [
+      "HOT's fee swap and withdrawal",
+      [
+        { intent: "token_diff", diff: { "nep141:usdt.tether-token.near": "-1" } },
+        { intent: "mt_withdraw", token: "v2_1.omni.hot.tg", receiver_id: "bridge-refuel.hot.tg", token_ids: ["x"], amounts: ["1"] },
+      ],
+    ],
+    ["an auth_call alone", [{ intent: "auth_call", contract_id: VAULT, msg: "{}" }]],
+    ["an mt_withdraw to another receiver", [{ ...HOT_WITHDRAW, receiver_id: "attacker.near" }]],
+    ["an mt_withdraw of another contract", [{ ...HOT_WITHDRAW, token: "attacker.near" }]],
+    ["an mt_withdraw with another min_gas", [{ ...HOT_WITHDRAW, min_gas: "290000000000000" }]],
+    ["an mt_withdraw of a HOT token the app does not know", [{ ...HOT_WITHDRAW, token_ids: ["999_junk"] }]],
+    ["an mt_withdraw whose lists differ in length", [{ ...HOT_WITHDRAW, amounts: ["1", "2"] }]],
+    ["an mt_withdraw of three tokens", [{ ...HOT_WITHDRAW, token_ids: Array(3).fill(HOT_WITHDRAW.token_ids[0]), amounts: ["1", "1", "1"] }]],
+    ["an mt_withdraw with a field the app does not set", [{ ...HOT_WITHDRAW, memo: "x" }]],
+  ])("refuses %s, without asking the simulation", async (_name, intents) => {
+    const view = outflowView();
+    await expect(verifier(view, withIntents(intents))).resolves.toMatchObject({ ok: false, code: "would-fail" });
+    expect(view).not.toHaveBeenCalled();
+  });
+
+  it("refuses a withdrawal signed for another contract", async () => {
+    const view = outflowView();
+    const parsed = JSON.parse(withdraw({}).erc191Message) as Record<string, unknown>;
+    parsed.verifying_contract = VAULT;
+    const payload = { standard: "erc191", payload: JSON.stringify(parsed, null, 2), signature: "secp256k1:x" };
+    await expect(verifier(view, payload)).resolves.toMatchObject({ ok: false, code: "would-fail" });
+    expect(view).not.toHaveBeenCalled();
   });
 });

@@ -119,8 +119,7 @@ describe("validateNewPortfolioDraft", () => {
       expect(reasonOf(withRows())).toBe("no-rows");
     });
 
-    // Fewer tokens are offerable (D-389) than the vault takes, so the cap is checked before
-    // the tokens: 33 rows are refused as too many whatever they hold.
+    // The cap is checked before the tokens: 33 rows are refused as too many whatever they hold.
     // D-528: the editor and saving stop at the app's 10; a stored draft is read against the vault's 32.
     it("accepts 10 tokens and refuses 11 (the app's cap)", () => {
       const offerable = depositableTokens.filter((t) => isPortfolioOfferable(t.id)).map((t) => t.id);
@@ -130,11 +129,13 @@ describe("validateNewPortfolioDraft", () => {
       expect(reasonOf(withRows(...eleven))).toBe("too-many-rows");
     });
 
-    it("reading a stored draft: every offerable token at once passes, 33 does not (the vault's cap)", () => {
+    // D-581 took the offerable set (38) past the vault's 32, so "every offerable token" is now
+    // the first 32 of them.
+    it("reading a stored draft: 32 offerable tokens pass, 33 do not (the vault's cap)", () => {
       const offerable = depositableTokens.filter((t) => isPortfolioOfferable(t.id)).map((t) => t.id);
-      expect(offerable).toHaveLength(29);
-      // 28 × 3.25 + 9 = 100.00
-      const all = offerable.map((id, i) => row(id, i === 28 ? 9 : 3.25));
+      expect(offerable).toHaveLength(38);
+      // 31 × 3.1 + 3.9 = 100.00
+      const all = offerable.slice(0, 32).map((id, i) => row(id, i === 31 ? 3.9 : 3.1));
       expect(validateNewPortfolioDraft(withRows(...all), [], MAX_TOKENS_PER_PORTFOLIO).ok).toBe(true);
       const ids = depositableTokens.slice(0, 33).map((t) => t.id);
       const rows33 = ids.map((id, i) => row(id, i === 32 ? 0.8 : 3.1));

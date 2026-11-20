@@ -560,20 +560,22 @@ describe("WithdrawalModal", () => {
 });
 
 // ── Block 5.4: the fee shown on step 4 ─────────────────────────────────────────
-// USDT on Arbitrum — the `omft` route the wet test runs. 6 decimals, registry fee 5300
-// base units (0.0053 USDT).
-const USDT_ARB = "nep141:arb-0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9.omft.near";
+// An EVM destination, used by the routes below that leave to an EVM chain.
 const ARB_ADDRESS = "0x195d287fB6E1fbBaaC18cB6C7DB0050388Ed8B00";
+// USDT on Tron — since D-584 the one `omft` route with a live fee, read off the destination:
+// 0.81 if it holds USDT, 1.53 if not. The registry carries the 1.53.
+const USDT_TRON = "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near";
+const TRON_ADDRESS = "TMPUeGeNvHxThYZ9TLStGG369ZxqXNBSHd";
 
 async function reachStep4(props: Partial<React.ComponentProps<typeof WithdrawalModal>> = {}) {
-  mockBalance.mockReturnValue(new Map([[USDT_ARB, 10]]));
-  mockPrices.mockReturnValue({ prices: { [USDT_ARB]: { usdPrice: 1 } } });
+  mockBalance.mockReturnValue(new Map([[USDT_TRON, 10]]));
+  mockPrices.mockReturnValue({ prices: { [USDT_TRON]: { usdPrice: 1 } } });
   renderModal(props);
   pickSingleNetworkToken("USDT");
   fireEvent.change(screen.getByLabelText("Destination address"), {
-    target: { value: ARB_ADDRESS },
+    target: { value: TRON_ADDRESS },
   });
-  fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1" } });
+  fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5" } });
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
   // Let the mount-time quote settle before anything is asserted.
   await act(async () => {});
@@ -588,23 +590,23 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
 
   // The flag-off guarantee, at the level where it is easiest to break by accident: with no
   // live route the screen must not reach the network at all.
-  it("does not ask the bridge for a fee when the token has no live route", async () => {
+  it("does not ask for a fee when the token has no live route", async () => {
     await reachStep4({ isRealRoute: () => false });
     expect(mockFee).not.toHaveBeenCalled();
-    expect(screen.getByText("0.0053 USDT")).toBeTruthy();
+    expect(screen.getByText("1.53 USDT")).toBeTruthy();
   });
 
   it("shows the live fee instead of the registry snapshot when the route is live", async () => {
-    mockFee.mockResolvedValue(feeResult({ feeRaw: "12000", source: "live" }));
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "810000", source: "live" }));
     await reachStep4({ isRealRoute: () => true });
     expect(mockFee).toHaveBeenCalled();
-    expect(screen.getByText("0.012 USDT")).toBeTruthy();
+    expect(screen.getByText("0.81 USDT")).toBeTruthy();
   });
 
   it("keeps the registry snapshot when the live quote cannot be had", async () => {
-    mockFee.mockResolvedValue(feeResult({ feeRaw: "5300", source: "registry" }));
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "1530000", source: "registry" }));
     await reachStep4({ isRealRoute: () => true });
-    expect(screen.getByText("0.0053 USDT")).toBeTruthy();
+    expect(screen.getByText("1.53 USDT")).toBeTruthy();
     // Labelled as an estimate, since that is what a snapshot is.
     expect(screen.getByText(/Estimated/)).toBeTruthy();
   });
@@ -613,17 +615,17 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
   // the withdrawal and asks again, rather than quietly delivering less than promised.
   it("blocks the confirm and asks again when the fee went up", async () => {
     const onConfirmed = vi.fn();
-    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "5300", source: "live" }));
+    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "810000", source: "live" }));
     await reachStep4({ isRealRoute: () => true, onConfirmed });
 
-    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "9000", source: "live" }));
+    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "1530000", source: "live" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
     });
 
     expect(onConfirmed).not.toHaveBeenCalled();
     expect(screen.getByText(/network fee went up/)).toBeTruthy();
-    expect(screen.getByText("0.009 USDT")).toBeTruthy();
+    expect(screen.getByText("1.53 USDT")).toBeTruthy();
 
     // The second click is the re-confirmation, against the number now on screen.
     await act(async () => {
@@ -637,7 +639,7 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
   // SECOND envelope, with its own nonce and its own wallet prompt — two real withdrawals.
   it("signs once when the confirm button is clicked twice during the fee re-check", async () => {
     const onConfirmed = vi.fn();
-    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "5300", source: "live" }));
+    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "810000", source: "live" }));
     await reachStep4({ isRealRoute: () => true, onConfirmed });
 
     // A re-check held open, so BOTH clicks get to suspend inside the window before either
@@ -659,7 +661,7 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => {
-      release({ quote: { feeRaw: "5300", source: "live" } });
+      release({ quote: { feeRaw: "810000", source: "live" } });
     });
     expect(onConfirmed).toHaveBeenCalledOnce();
   });
@@ -668,18 +670,18 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
   // nothing at all. The screen used to render "you will receive 0" with the button still live.
   it("refuses to confirm an amount the fee would swallow whole", async () => {
     const onConfirmed = vi.fn();
-    mockFee.mockResolvedValue(feeResult({ feeRaw: "5300", source: "live" }));
-    mockBalance.mockReturnValue(new Map([[USDT_ARB, 10]]));
-    mockPrices.mockReturnValue({ prices: { [USDT_ARB]: { usdPrice: 1 } } });
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "1530000", source: "live" }));
+    mockBalance.mockReturnValue(new Map([[USDT_TRON, 10]]));
+    mockPrices.mockReturnValue({ prices: { [USDT_TRON]: { usdPrice: 1 } } });
     renderModal({ isRealRoute: () => true, onConfirmed });
     pickSingleNetworkToken("USDT");
     fireEvent.change(screen.getByLabelText("Destination address"), {
-      target: { value: ARB_ADDRESS },
+      target: { value: TRON_ADDRESS },
     });
-    // 0.001 USDT against a 0.0053 fee: above the bridge's own 1-base-unit minimum, below what
-    // it costs to send. The step-3 floor already accounts for the fee, so this cannot even
-    // reach step 4 — which is the point.
-    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "0.001" } });
+    // 1 USDT against a 1.53 fee: at the bridge's own 1 USDT minimum, below what it costs to
+    // send. The step-3 floor already accounts for the fee, so this cannot even reach step 4 —
+    // which is the point.
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1" } });
     await act(async () => {});
 
     expect(screen.getByText(/Minimum withdrawal/)).toBeTruthy();
@@ -692,10 +694,10 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
   // A cheaper withdrawal needs no permission: the user receives more than the screen said.
   it("does not block when the fee went down", async () => {
     const onConfirmed = vi.fn();
-    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "5300", source: "live" }));
+    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "1530000", source: "live" }));
     await reachStep4({ isRealRoute: () => true, onConfirmed });
 
-    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "2000", source: "live" }));
+    mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "810000", source: "live" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
     });
@@ -710,15 +712,15 @@ describe("WithdrawalModal — step 4 fee (block 5.4)", () => {
     vi.useFakeTimers();
     try {
       const onConfirmed = vi.fn();
-      mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "5300", source: "live" }));
-      mockBalance.mockReturnValue(new Map([[USDT_ARB, 10]]));
-      mockPrices.mockReturnValue({ prices: { [USDT_ARB]: { usdPrice: 1 } } });
+      mockFee.mockResolvedValueOnce(feeResult({ feeRaw: "810000", source: "live" }));
+      mockBalance.mockReturnValue(new Map([[USDT_TRON, 10]]));
+      mockPrices.mockReturnValue({ prices: { [USDT_TRON]: { usdPrice: 1 } } });
       renderModal({ isRealRoute: () => true, onConfirmed });
       pickSingleNetworkToken("USDT");
       fireEvent.change(screen.getByLabelText("Destination address"), {
-        target: { value: ARB_ADDRESS },
+        target: { value: TRON_ADDRESS },
       });
-      fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1" } });
+      fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5" } });
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
       await act(async () => {});
 
@@ -2604,7 +2606,8 @@ describe("WithdrawalModal — asset search", () => {
 });
 
 // D-387 (b): a Bitcoin address read off a QR code is all uppercase. The step lowercases it once,
-// and that lowercase form is what the field, the fee, the review step and the confirm carry.
+// and that lowercase form is what the field, the review step and the confirm carry. (It was also
+// what the live fee was asked for, until `omft` lost its live fee with the PoA API — D-584.)
 describe("WithdrawalModal — uppercase bech32 from a QR code (D-387 b)", () => {
   const BTC = "nep141:btc.omft.near";
   const BTC_P2WPKH = "bc1q7sp49suxx62yeqa0lq0vx8ngwvhkc0v7wm7sd8";
@@ -2623,7 +2626,7 @@ describe("WithdrawalModal — uppercase bech32 from a QR code (D-387 b)", () => 
     pickSingleNetworkToken("BTC");
   }
 
-  it("signs, quotes and shows the lowercase form of an all-uppercase address", async () => {
+  it("signs and shows the lowercase form of an all-uppercase address", async () => {
     const onConfirmed = vi.fn();
     openBtc({ isRealRoute: () => true, onConfirmed });
     fireEvent.change(screen.getByLabelText("Destination address"), {
@@ -2635,7 +2638,6 @@ describe("WithdrawalModal — uppercase bech32 from a QR code (D-387 b)", () => 
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     });
 
-    expect(mockFee).toHaveBeenCalledWith(expect.objectContaining({ destinationAddress: BTC_P2WPKH }));
     expect(screen.getByText(`${BTC_P2WPKH.slice(0, 8)}…${BTC_P2WPKH.slice(-6)}`)).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
@@ -2876,5 +2878,40 @@ describe("WithdrawalModal — ZEC through the Omni Bridge (D-580)", () => {
     expect(
       screen.getByRole("button", { name: "Confirm withdrawal" }).hasAttribute("disabled")
     ).toBe(true);
+  });
+});
+
+// D-586: the last-used token used to jump to the top of the list. USD value decides the order;
+// the last-used one keeps its badge where its value puts it (operator, 2026-11-19).
+describe("WithdrawalModal — tokens ordered by USD value (D-586)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  // Two available tokens from different asset groups, with the ticker each row reads.
+  const twoHeld = () => {
+    const seen = new Set<string>();
+    const out: { id: string; key: string; ticker: string }[] = [];
+    for (const tk of tokenRegistry) {
+      const key = tk.assetName ?? tk.symbol;
+      if (!isTokenAvailable(tk.id) || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ id: tk.id, key, ticker: tk.symbol.split("(")[0].trim() });
+      if (out.length === 2) break;
+    }
+    return out;
+  };
+
+  it("the last-used token keeps its badge but sits where its USD value puts it", () => {
+    const [small, big] = twoHeld();
+    mockBalance.mockReturnValue(new Map([[small.id, 1], [big.id, 100]]));
+    mockPrices.mockReturnValue({ prices: { [small.id]: { usdPrice: 1 }, [big.id]: { usdPrice: 1 } } });
+    localStorage.setItem("last-used-withdrawal-token", small.key);
+    renderModal();
+    const rows = screen.getAllByRole("listitem");
+    expect(rows.map((li) => li.querySelector("p")?.textContent)).toEqual([big.ticker, small.ticker]);
+    expect(rows[1].textContent).toContain(bridgeTranslations.en.lastUsed);
   });
 });

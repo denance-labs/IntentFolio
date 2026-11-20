@@ -6,7 +6,6 @@ import { submitWithdraw, type NearDestinationProbe, type WithdrawPublisher } fro
 import {
   waitForWithdrawDelivery,
   waitForWithdrawSettlement,
-  type DeliveryWaiter,
   type SettlementWaiter,
 } from "./withdraw-poll";
 import {
@@ -22,7 +21,7 @@ import { withdrawalDestinations } from "./withdrawal-registry";
 const ownChain = (tokenId: string): string =>
   withdrawalDestinations(tokenId)[0] ?? "near:mainnet";
 
-// Settlement and delivery, with both SDK waiters injected. The line these tests defend is
+// Settlement and delivery, with every waiter injected. The line these tests defend is
 // the one between them: before settlement the balance is intact, after it the funds are
 // out. Every timeout assertion below is really an assertion about which side of that line
 // the user is told they are on.
@@ -34,7 +33,6 @@ const DEADLINE_SECS = 1_800_000_000;
 const NONCE = new Uint8Array(32).fill(7);
 
 const USDC_ARB = "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near";
-const USDC_ARB_CONTRACT = "arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near";
 const USDT_NEAR = "nep141:usdt.tether-token.near";
 const USDT_TON = "nep245:v2_1.omni.hot.tg:1117_3tsdfyziyc7EJbP2aULWSKU4toBaAcN4FdTgfm5W1mC4ouR";
 const USDC_POLYGON = "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L";
@@ -174,107 +172,68 @@ describe("waitForWithdrawSettlement", () => {
   });
 });
 
-describe("waitForWithdrawDelivery — omft crosses the bridge", () => {
-  it("returns the destination tx, keyed on the registry's own contract id", async () => {
-    const waiter = vi.fn<DeliveryWaiter>(async () => ({
-      destinationTxHash: "0xArbTx",
-      chain: "eth:42161",
-    }));
-
+describe("waitForWithdrawDelivery — omft is handed to a bridge nobody can watch (D-584)", () => {
+  it("returns the hand-off at once: no wait, no network, no deadline to run out", async () => {
+    // `fetch` throws (beforeEach): the PoA Bridge API this used to poll closed on 2026-11-11.
     const delivery = await waitForWithdrawDelivery({
-      tokenId: USDC_ARB,
-      chainId: ownChain(USDC_ARB),
-      route: "omft",
-      txHash: TX_HASH,
-      waitForDelivery: waiter,
-    });
-
-    expect(delivery).toEqual({ kind: "bridge", destinationTxHash: "0xArbTx", chain: "eth:42161" });
-    // The bridge matches on `nep141:${near_token_id}`; anything else silently never matches
-    // and the withdrawal would look stuck forever.
-    expect(waiter.mock.calls[0][0].withdrawalCriteria).toEqual({
-      assetId: `nep141:${USDC_ARB_CONTRACT}`,
-    });
-    expect(waiter.mock.calls[0][0].txHash).toBe(TX_HASH);
-  });
-
-  it("calls every post-settlement failure LEFT-BALANCE, because the money is already out", async () => {
-    const promise = waitForWithdrawDelivery({
       tokenId: USDC_ARB,
       chainId: ownChain(USDC_ARB),
       route: "omft",
       txHash: TX_HASH,
       timeoutMs: 5,
-      waitForDelivery: hangs<{ destinationTxHash: string; chain: string }>(),
     });
 
-    await expect(promise).rejects.toThrow(WithdrawDeliveryUnconfirmedError);
-    await promise.catch((e: WithdrawDeliveryUnconfirmedError) => {
-      expect(e.fundsState).toBe("left-balance");
-      expect(e.txHash).toBe(TX_HASH);
-      expect(e.message).toMatch(/no delivery within 5ms/);
-      // Never a loss claim: the bridge may still deliver.
-      expect(e.message).toMatch(/may still arrive/i);
-    });
+    // Never `bridge` (which claims a destination transaction) and never a throw (which the
+    // caller turns into "Not confirmed", an open question nothing can ever close).
+    expect(delivery).toEqual({ kind: "bridge-handoff", chain: "eth:42161" });
   });
 
-  it("treats a bridge error the same way — there is no safe failure after settlement", async () => {
-    const promise = waitForWithdrawDelivery({
-      tokenId: USDC_ARB,
-      chainId: ownChain(USDC_ARB),
+  it("still reports the hand-off when the caller has already navigated away", async () => {
+    // The settlement happened before this call: aborting the watch changes nothing about it.
+    const delivery = await waitForWithdrawDelivery({
+      tokenId: "nep141:btc.omft.near",
+      chainId: ownChain("nep141:btc.omft.near"),
       route: "omft",
       txHash: TX_HASH,
-      waitForDelivery: async () => {
-        throw new Error("POA bridge didn't return withdrawal matching criteria");
-      },
+      signal: AbortSignal.abort(),
     });
-    await promise.catch((e: WithdrawDeliveryUnconfirmedError) => {
-      expect(e.fundsState).toBe("left-balance");
-    });
-    await expect(promise).rejects.toThrow(WithdrawDeliveryUnconfirmedError);
+    expect(delivery).toEqual({ kind: "bridge-handoff", chain: "btc:mainnet" });
   });
 });
 
 describe("waitForWithdrawDelivery — near-native has no second wait", () => {
   it("treats an omft token sent to NEAR as near-native too (D-384)", async () => {
-    const waiter = vi.fn<DeliveryWaiter>();
     const delivery = await waitForWithdrawDelivery({
       tokenId: "nep141:sol.omft.near",
       chainId: "near:mainnet",
       route: "near-native",
       txHash: TX_HASH,
-      waitForDelivery: waiter,
     });
+    // Not the `omft` hand-off: on NEAR the settlement IS the delivery.
     expect(delivery).toEqual({ kind: "near-settlement" });
-    expect(waiter).not.toHaveBeenCalled();
   });
 
   it("returns immediately without touching the bridge", async () => {
-    const waiter = vi.fn<DeliveryWaiter>();
     const delivery = await waitForWithdrawDelivery({
       tokenId: USDT_NEAR,
       chainId: ownChain(USDT_NEAR),
       route: "near-native",
       txHash: TX_HASH,
-      waitForDelivery: waiter,
     });
 
     // The settlement IS the delivery: the funds never leave NEAR, so there is no bridge to
     // ask and a pending-delivery state would be a lie.
     expect(delivery).toEqual({ kind: "near-settlement" });
-    expect(waiter).not.toHaveBeenCalled();
   });
 });
 
 describe("waitForWithdrawDelivery — hot-omni crosses HOT's own bridge", () => {
-  it("returns the third variant, never the PoA one, and never touches the PoA waiter", async () => {
-    const poa = vi.fn<DeliveryWaiter>();
+  it("returns HOT's own variant, with the destination transaction", async () => {
     const delivery = await waitForWithdrawDelivery({
       tokenId: USDC_POLYGON,
       chainId: ownChain(USDC_POLYGON),
       route: "hot-omni",
       txHash: TX_HASH,
-      waitForDelivery: poa,
       hotDelivery: hotDeps({
         indexerWithdrawals: async () => [{ nonce: HOT_NONCE, hash: "aabbcc" }],
       }),
@@ -288,7 +247,6 @@ describe("waitForWithdrawDelivery — hot-omni crosses HOT's own bridge", () => 
       chain: "eth:137",
       nonce: HOT_NONCE,
     });
-    expect(poa).not.toHaveBeenCalled();
   });
 
   it("reports a delivery HOT confirms but cannot name, rather than calling it undelivered", async () => {
@@ -372,7 +330,7 @@ describe("the whole 5.2 chain, per route", () => {
   };
   const settle: SettlementWaiter = async ({ intentHash }) => ({ txHash: TX_HASH, intentHash });
 
-  it("omft: sign → publish → settle → bridge delivery", async () => {
+  it("omft: sign → publish → settle → handed to the bridge", async () => {
     const request = buildWithdrawSignRequest({
       signerId: SIGNER_ID,
       tokenId: USDC_ARB,
@@ -402,12 +360,11 @@ describe("the whole 5.2 chain, per route", () => {
       chainId: ownChain(USDC_ARB),
       route,
       txHash: settlement.txHash,
-      waitForDelivery: async () => ({ destinationTxHash: "0xArbTx", chain: "eth:42161" }),
     });
 
     expect(request.amount).toBe("1500000");
     expect(settlement.txHash).toBe(TX_HASH);
-    expect(delivery).toEqual({ kind: "bridge", destinationTxHash: "0xArbTx", chain: "eth:42161" });
+    expect(delivery).toEqual({ kind: "bridge-handoff", chain: "eth:42161" });
   });
 
   it("near-native: sign → publish → settle, and that is the end of it", async () => {
@@ -440,7 +397,6 @@ describe("the whole 5.2 chain, per route", () => {
       chainId: ownChain(USDT_NEAR),
       route,
       txHash: settlement.txHash,
-      waitForDelivery: vi.fn<DeliveryWaiter>(),
     });
 
     expect(route).toBe("near-native");

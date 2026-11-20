@@ -2,8 +2,9 @@
 // Source: PoA bridge supported_tokens + per-chain queries (bridge.chaindefuser.com/rpc)
 // as of 2026-06-08. Each entry maps one IntentFolio token to its withdrawal destination.
 // The date stays 2026-06-08 on purpose: it is NOT a global re-measure date. Only some
-// entries have been re-measured since (USDT-TRON in 4.2, the two Stellar ones in 4.4);
-// each says so at its own definition.
+// entries have been re-measured since (USDT-TRON in 4.2 and D-584, the two Stellar ones in
+// 4.4); each says so at its own definition. The `omft` fees were re-checked 2026-11-19 against
+// 1Click quotes (046 §3): identical, except USDT-TRON's and the Solana/Aptos ones (not measured).
 //
 // Rules (locked in 6.0):
 //   - One chain per token (its native chain, inferred from the token-id prefix).
@@ -22,11 +23,13 @@
 //   "omni"        – NEP-141 token migrated from PoA to the Omni Bridge, sent STRAIGHT to Omni:
 //                   ft_withdraw intent → `omni.bridge.near` with the destination in `msg`. Its
 //                   fee is signed and only live (omni-bridge.ts). ZEC only (D-580).
+//   "one-click"   – Omni token (`…omdep.near`) that leaves through 1Click as ITSELF: a Converting
+//                   Withdrawal whose Delivery Token is the held token (conversion-routes.ts). Never
+//                   a direct envelope. BNB Chain, Polygon and Avalanche (D-581, plan 045).
 //
 // Fee fields are in the token's own base units (same precision as the token decimals).
-// Use getWithdrawalEstimate(nearTokenId, dummyAddress, chain) to get a live fee for
-// OMFT tokens before the user enters their destination address.
-// HOT Omni tokens: getWithdrawalEstimate is unsupported; use withdrawalFeeRaw directly.
+// `omft` fees are final here: the PoA bridge's live estimate closed with its API (D-584). See
+// withdrawal-fee.ts for the routes that do have a live quote.
 
 import { chainRegistry } from "./chain-registry";
 import {
@@ -35,11 +38,11 @@ import {
   VAULT_CONTRACT_ID,
 } from "@/features/wallet/config/network";
 
-export type BridgeRoute = "omft" | "hot-omni" | "near-native" | "near-unwrap" | "omni";
+export type BridgeRoute = "omft" | "hot-omni" | "near-native" | "near-unwrap" | "omni" | "one-click";
 
 export type WithdrawalEntry = {
   chainId: string;
-  nearTokenId: string;  // near_token_id for getWithdrawalEstimate (no "nep141:" prefix)
+  nearTokenId: string;  // the NEP-141 contract account (no "nep141:" prefix)
   withdrawalFeeRaw: string;
   minWithdrawalRaw: string;
   bridgeRoute: BridgeRoute;
@@ -137,10 +140,12 @@ export const withdrawalRegistry: Record<string, WithdrawalEntry> = {
   // bridge floor for this token is a whole USDT, and withdraw-envelope compares the NET
   // against it. At "1" the app signed withdrawals that settle BELOW the floor, which the
   // bridge keeps silently — so a fix here is a loss window closing, not a limit tightening.
-  // With fee 1e6 too, the smallest useful withdrawal is 2 USDT gross to deliver 1 USDT.
+  // The fee depends on the destination (D-584, `tron-usdt-fee.ts`): 0.81 if it already holds
+  // USDT, 1.53 if not. This is the 1.53 — what shows before the destination is read, or if the
+  // read fails — so the smallest useful withdrawal here is 2.53 USDT gross to deliver 1 USDT.
   "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near": {
     chainId: "tron:mainnet", nearTokenId: "tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",
-    withdrawalFeeRaw: "1000000", minWithdrawalRaw: "1000000", bridgeRoute: "omft",
+    withdrawalFeeRaw: "1530000", minWithdrawalRaw: "1000000", bridgeRoute: "omft",
   },
   "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near": {
     chainId: "sol:mainnet", nearTokenId: "sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near",
@@ -261,6 +266,51 @@ export const withdrawalRegistry: Record<string, WithdrawalEntry> = {
     withdrawalFeeRaw: "0", minWithdrawalRaw: "1", bridgeRoute: "hot-omni",
   },
 
+  // ── BNB Chain / Polygon / Avalanche — Omni ids (D-581, plan 045) ─────────────
+  // NEAR Intents moved these from the HOT ids above to `…omdep.near` (changelog 2026-11-09);
+  // quotes and deposits use these now. Not `omft`: PoA lists them, but none of the nine has the
+  // `WITHDRAW_RELAYER_ADDRESS` the legacy `WITHDRAW_TO:` path forwards through (read 2026-11-13;
+  // `sol.omft.near` has it), so a PoA-shaped withdrawal would never reach the chain. They leave
+  // through 1Click as themselves, the way near.com withdraws them. The fee is 1Click's live
+  // `withdrawFee`; these figures are its 2026-11-13 reading rounded up, and only bound the quote
+  // (2x, `NETWORK_FEE_CEILING_MULTIPLE`). The minimum is 1Click's own "try at least".
+  "nep141:bnb.omdep.near": {
+    chainId: "eth:56", nearTokenId: "bnb.omdep.near",
+    withdrawalFeeRaw: "16000000000000", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near": {
+    chainId: "eth:56", nearTokenId: "bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near",
+    withdrawalFeeRaw: "10100000000000000", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near": {
+    chainId: "eth:56", nearTokenId: "bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near",
+    withdrawalFeeRaw: "10100000000000000", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:pol.omdep.near": {
+    chainId: "eth:137", nearTokenId: "pol.omdep.near",
+    withdrawalFeeRaw: "115000000000000000", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near": {
+    chainId: "eth:137", nearTokenId: "pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near",
+    withdrawalFeeRaw: "10100", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near": {
+    chainId: "eth:137", nearTokenId: "pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near",
+    withdrawalFeeRaw: "10100", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:avax.omdep.near": {
+    chainId: "eth:43114", nearTokenId: "avax.omdep.near",
+    withdrawalFeeRaw: "2020000000000000", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near": {
+    chainId: "eth:43114", nearTokenId: "avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near",
+    withdrawalFeeRaw: "16700", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+  "nep141:avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near": {
+    chainId: "eth:43114", nearTokenId: "avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near",
+    withdrawalFeeRaw: "16700", minWithdrawalRaw: "1", bridgeRoute: "one-click",
+  },
+
   // ── Liquid Staking ─────────────────────────────────────────────────────────
   "nep141:meta-pool.near": {
     chainId: "near:mainnet", nearTokenId: "meta-pool.near",
@@ -358,6 +408,29 @@ export const NEAR_REGISTRABLE_OMFT: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The `one-click` natives a NEAR account can hold as themselves (D-581): `bnb.omdep.near`,
+ * `pol.omdep.near` and `avax.omdep.near` are plain NEP-141 tokens named BNB, POL and AVAX, with a
+ * public `storage_deposit` (Near-One/omni-bridge `near/omni-token`, deployed 0.4.3; 0.00125 NEAR).
+ * 1Click does not deliver them to a NEAR account ("recipient is not valid", 2026-11-15), so that
+ * destination is the plain `ft_withdraw` D-384 already uses for SOL and APT. The HOT ids they
+ * replaced were NEP-245, which a NEAR wallet does not show — why the natives were out of the
+ * catalog (D-396). The stables are not here: they reach NEAR as USDT/USDC(NEAR) by converting.
+ */
+export const NEAR_REGISTRABLE_ONE_CLICK: ReadonlySet<string> = new Set([
+  "nep141:bnb.omdep.near",                                          // BNB
+  "nep141:pol.omdep.near",                                          // POL
+  "nep141:avax.omdep.near",                                         // AVAX
+]);
+
+/** Whether a NEAR account is a destination for this row besides its own chain (D-384, D-581). */
+function offersNearDestination(tokenId: string, entry: WithdrawalEntry): boolean {
+  return (
+    (entry.bridgeRoute === "omft" && NEAR_REGISTRABLE_OMFT.has(tokenId)) ||
+    (entry.bridgeRoute === "one-click" && NEAR_REGISTRABLE_ONE_CLICK.has(tokenId))
+  );
+}
+
+/**
  * The withdrawal route for a token, sent to a destination chain.
  *
  * With no `chainId`, or with the row's own chain, this is the registry row. With
@@ -375,11 +448,7 @@ export const NEAR_REGISTRABLE_OMFT: ReadonlySet<string> = new Set([
 export function getWithdrawalEntry(tokenId: string, chainId?: string): WithdrawalEntry | undefined {
   const entry = withdrawalRegistry[tokenId];
   if (!entry || chainId === undefined || chainId === entry.chainId) return entry;
-  if (
-    chainId === NEAR_DESTINATION_CHAIN_ID &&
-    entry.bridgeRoute === "omft" &&
-    NEAR_REGISTRABLE_OMFT.has(tokenId)
-  ) {
+  if (chainId === NEAR_DESTINATION_CHAIN_ID && offersNearDestination(tokenId, entry)) {
     // Cached, so the derived entry keeps one identity like a registry row does: components
     // read it during render and hooks list it as a dependency, and a fresh object on every
     // call re-ran those hooks without end.
@@ -437,7 +506,7 @@ export function unreceivableNearDestination(
 export function withdrawalDestinations(tokenId: string): string[] {
   const entry = withdrawalRegistry[tokenId];
   if (!entry) return [];
-  return entry.bridgeRoute === "omft" && NEAR_REGISTRABLE_OMFT.has(tokenId)
+  return offersNearDestination(tokenId, entry)
     ? [entry.chainId, NEAR_DESTINATION_CHAIN_ID]
     : [entry.chainId];
 }

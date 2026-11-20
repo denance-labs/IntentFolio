@@ -21,7 +21,14 @@ import {
  * and a flood on the public withdrawal-record route must not be able to take the connections
  * an Allocate needs — a connection timeout there cancels the Allocate (ADR-0025 §2).
  */
-export type OpsDbSlot = "allocate" | "withdraw" | "trade" | "verdict" | "history" | "history-read";
+export type OpsDbSlot =
+  | "allocate"
+  | "withdraw"
+  | "trade"
+  | "verdict"
+  | "history"
+  | "history-read"
+  | "deposit-address";
 
 /** The withdrawal record is best-effort and one INSERT per withdrawal: it needs little. */
 const WITHDRAW_MAX_CONNECTIONS = 1;
@@ -52,6 +59,9 @@ const HISTORY_READ_QUERY_TIMEOUT_MS = 3_000;
 const READ_ONLY_SLOTS: ReadonlySet<OpsDbSlot> = new Set(["trade", "verdict"]);
 
 function sizeFor(config: OpsDbConfig, slot: OpsDbSlot): OpsDbConfig {
+  // Two indexed statements per call; a create also waits on 1Click, but never holds a connection
+  // while it does (`deposit-address-service.ts`).
+  if (slot === "deposit-address") return { ...config, maxConnections: 1 };
   if (slot === "withdraw") return { ...config, maxConnections: WITHDRAW_MAX_CONNECTIONS };
   if (slot === "history") return { ...config, maxConnections: HISTORY_MAX_CONNECTIONS };
   if (slot === "history-read") {
@@ -137,4 +147,15 @@ export function resolveHistoryReaderDb(env: Record<string, string | undefined> =
   const config = readOpsDbConfig(env, HISTORY_READER_URL_VAR);
   if (!config.ok) return { ok: false, issues: config.issues };
   return { ok: true, db: getOpsDbPool(config.config, "history-read") };
+}
+
+/**
+ * Receive's deposit-address route (D-584, migration 013): the history writer's credential, which
+ * 013 grants SELECT and INSERT on `account_deposit_address`, in a pool of its own so a burst of
+ * Receive opens cannot take the recorder's connections.
+ */
+export function resolveDepositAddressDb(env: Record<string, string | undefined> = process.env): OpsDbHandle {
+  const config = readOpsDbConfig(env, HISTORY_WRITER_URL_VAR);
+  if (!config.ok) return { ok: false, issues: config.issues };
+  return { ok: true, db: getOpsDbPool(config.config, "deposit-address") };
 }

@@ -211,6 +211,21 @@ describe("withdraw-record-sink — flag on", () => {
     expect(sent.map((s) => s.method)).toEqual(["POST"]);
   });
 
+  // D-584: the table's CHECK has no `sent`; the route refused it with a 400 on every `omft` close.
+  it("sends an `omft` close (`sent`) as `settled`, a status the table accepts, and keeps `sent` locally", async () => {
+    const { sent } = recordingFetch();
+    const { sink, store } = await loadSink(true);
+    const { WITHDRAW_WIRE_STATUSES } = await import("./withdraw-records-types");
+    const id = sink.recordPendingWithdraw(direct, SIGNED);
+
+    sink.updateWithdrawRecord(id, { status: "sent", txHash: "Gx1" });
+    await drain();
+
+    expect(sent[1]).toMatchObject({ method: "PATCH", body: { id, status: "settled", txHash: "Gx1" } });
+    expect(WITHDRAW_WIRE_STATUSES).toContain(sent[1].body.status);
+    expect(store.getWithdrawRecord(id)).toMatchObject({ status: "sent" });
+  });
+
   it("mirrors a re-check's verdict only when the guarded write happened", async () => {
     const { sent } = recordingFetch();
     const { sink, store } = await loadSink(true);

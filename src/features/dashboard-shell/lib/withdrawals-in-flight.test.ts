@@ -38,6 +38,12 @@ describe("countWithdrawalsInFlight", () => {
       .toBe(0);
   });
 
+  // D-584: an `omft` withdrawal handed to the bridge is over — nothing will ever say more.
+  it("does not count a withdrawal that was sent, nor offer to hide it", () => {
+    expect(countWithdrawalsInFlight([row({ status: "SENT" })])).toBe(0);
+    expect(canDismissWithdrawal(row({ status: "SENT", ts: 0 }), Date.now())).toBe(false);
+  });
+
   it("does not count a conversion 1Click refunded: the money is back, nothing is in flight", () => {
     expect(countWithdrawalsInFlight([row({ status: "REFUNDED" })])).toBe(0);
   });

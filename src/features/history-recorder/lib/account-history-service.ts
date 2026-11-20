@@ -10,7 +10,8 @@
 //     those carry no account (D-015);
 //   - `intents.near`'s: `account_movement` (009), deposits and withdrawals with the memo the
 //     honest flows carry (`deposit` / `withdraw`): anyone can mint a token of their own to an
-//     account with any memo;
+//     account with any memo. A withdrawal carries the destination-chain tx once the solver
+//     closed it as delivered (`withdraw_direct_outcome`, 012, D-582); until then it has none;
 //   - Converting Withdrawals (028-8, D-423): a `transfer_out` whose receiver is the deposit
 //     address of a conversion IntentFolio recorded for that account and the solver closed
 //     (`withdraw_conversion_outcome`, 010: a view over 006 with `delivered` / `refunded` only, the oldest
@@ -84,8 +85,15 @@ const TX_HASH_RE = /^[0-9A-Za-z]{1,64}$/;
 /** `before=`: the last key of the previous page, `<ms>_<tx hash>`. */
 const BEFORE_RE = /^(\d{1,15})_([0-9A-Za-z]{1,64})$/;
 
-/** The memo each kind carries in the honest flows (028-4 (a): 55 / 17 / 6, no other seen). */
-const MOVEMENT_FILTER = `((kind = 'deposit' AND memo = 'deposit') OR (kind = 'withdrawal' AND memo = 'withdraw'))`;
+/**
+ * The movements shown. A bridge deposit or withdrawal by the memo its kind carries in the honest
+ * flows (028-4 (a): 55 / 17 / 6, no other seen). A deposit to a 1Click address set (D-584) is the
+ * `transfer_in` from one of the account's OWN sets' internal accounts (solver 013 + 015): any
+ * other incoming transfer (an unallocate, a swap's leg, a refund) is stored and not shown.
+ * `$2` is the account in every query that uses it.
+ */
+const MOVEMENT_FILTER = `((kind = 'deposit' AND memo = 'deposit') OR (kind = 'withdrawal' AND memo = 'withdraw')
+    OR (kind = 'transfer_in' AND counterparty IN (SELECT internal_account FROM account_deposit_address WHERE account_id = $2)))`;
 
 /**
  * A conversion's `transfer_out` and its outcome. `c.signer_id = $2`, never `= m.account_id`:
@@ -95,6 +103,16 @@ const MOVEMENT_FILTER = `((kind = 'deposit' AND memo = 'deposit') OR (kind = 'wi
 const CONVERSION_JOIN = `account_movement m
     JOIN withdraw_conversion_outcome c ON c.signer_id = $2 AND c.deposit_address = m.counterparty
    WHERE $5 AND m.account_id = $2 AND m.kind = 'transfer_out'`;
+
+/**
+ * A direct withdrawal and where it landed (D-582, solver migration 012): the destination-chain
+ * tx of a `delivered` verdict, matched by the settlement tx and the token. At most one row per
+ * (signer, tx, token), so a movement is never doubled; none, and it reads as before ("Sent").
+ * `o.signer_id = $2` for the same collation reason as the conversion join.
+ */
+const DIRECT_OUTCOME_JOIN = `account_movement m
+    LEFT JOIN withdraw_direct_outcome o
+      ON m.kind = 'withdrawal' AND o.signer_id = $2 AND o.tx_hash = m.tx_hash AND o.token_id = m.token_id`;
 
 export const CURSOR_SQL = `
 SELECT backfill_done, last_ok_at, last_run_at,
@@ -144,12 +162,13 @@ SELECT 'vault' AS source, tx_hash, block_ts, block_height, receipt_id, log_index
    AND ($4::text IS NULL OR raw #>> '{data,0,portfolio_id}' = $4)
    AND block_ts >= $7 AND tx_hash = ANY($6::text[])
 UNION ALL
-SELECT 'intents', tx_hash, block_ts, block_height, receipt_id, log_index,
-       entry_index, token_index, kind,
-       jsonb_build_object('account_id', account_id, 'token', token_id, 'amount', amount::text)
-  FROM account_movement
- WHERE $5 AND account_id = $2 AND ${MOVEMENT_FILTER}
-   AND block_ts >= $7 AND tx_hash = ANY($6::text[])
+SELECT 'intents', m.tx_hash, m.block_ts, m.block_height, m.receipt_id, m.log_index,
+       m.entry_index, m.token_index, CASE WHEN m.kind = 'transfer_in' THEN 'deposit' ELSE m.kind END,
+       jsonb_strip_nulls(jsonb_build_object('account_id', m.account_id, 'token', m.token_id, 'amount', m.amount::text,
+                                            'destination_tx', o.destination_tx))
+  FROM ${DIRECT_OUTCOME_JOIN}
+ WHERE $5 AND m.account_id = $2 AND ${MOVEMENT_FILTER}
+   AND m.block_ts >= $7 AND m.tx_hash = ANY($6::text[])
 UNION ALL
 SELECT 'conversion', m.tx_hash, m.block_ts, m.block_height, m.receipt_id, m.log_index,
        m.entry_index, m.token_index, 'conversion',

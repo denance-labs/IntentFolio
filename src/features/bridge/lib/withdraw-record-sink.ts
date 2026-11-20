@@ -85,7 +85,10 @@ function toCreateBody(record: WithdrawRescueRecord, signedPayload: unknown): Cre
  */
 function toPatchBody(id: string, patch: RecordPatch): PatchWithdrawRecordBody | null {
   const body: PatchWithdrawRecordBody = { id };
-  if (patch.status !== undefined && patch.status !== "dismissed") {
+  if (patch.status === "sent") {
+    // D-584: the table has no `sent` (006's CHECK); what the browser knows is that it settled.
+    body.status = "settled";
+  } else if (patch.status !== undefined && patch.status !== "dismissed") {
     body.status = patch.status as WithdrawWireStatus;
   }
   if (patch.intentHash) body.intentHash = patch.intentHash;

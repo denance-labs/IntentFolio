@@ -8,6 +8,7 @@ import {
   nearTokenArrival,
   NEAR_DESTINATION_CHAIN_ID,
   NEAR_REGISTRABLE_OMFT,
+  NEAR_REGISTRABLE_ONE_CLICK,
   _validateChainIds,
 } from "./withdrawal-registry";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
@@ -93,9 +94,11 @@ describe("tron:mainnet withdrawal floors (measured against mainnet)", () => {
   const USDT_TRON = "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near";
   const TRX = "nep141:tron.omft.near";
 
+  // D-584: the fee is the empty-address one (1.53); a destination holding USDT pays 0.81, and
+  // that is read live (tron-usdt-fee.ts). The registry carries the figure that never over-promises.
   it("USDT-TRC20 carries the bridge's own floor, not a placeholder", () => {
     const entry = getWithdrawalEntry(USDT_TRON);
-    expect(entry?.withdrawalFeeRaw).toBe("1000000");
+    expect(entry?.withdrawalFeeRaw).toBe("1530000");
     expect(entry?.minWithdrawalRaw).toBe("1000000");
   });
 
@@ -107,10 +110,10 @@ describe("tron:mainnet withdrawal floors (measured against mainnet)", () => {
 
   // The number the operator has to fund against. Stated as arithmetic so it cannot drift away
   // from the two rows above without this going red.
-  it("the smallest USDT-TRC20 withdrawal that delivers the bridge floor is 2 USDT gross", () => {
+  it("the smallest USDT-TRC20 withdrawal that delivers the bridge floor is 2.53 USDT gross", () => {
     const entry = getWithdrawalEntry(USDT_TRON);
     const gross = BigInt(entry!.withdrawalFeeRaw) + BigInt(entry!.minWithdrawalRaw);
-    expect(gross).toBe(BigInt(2_000_000));
+    expect(gross).toBe(BigInt(2_530_000));
   });
 });
 
@@ -234,7 +237,9 @@ describe("withdrawal destinations (D-384)", () => {
 
   it("offers NEAR after the native chain only on the omft rows a NEAR account can register with", () => {
     for (const [id, entry] of Object.entries(withdrawalRegistry)) {
-      const offersNear = entry.bridgeRoute === "omft" && NEAR_REGISTRABLE_OMFT.has(id);
+      const offersNear =
+        (entry.bridgeRoute === "omft" && NEAR_REGISTRABLE_OMFT.has(id)) ||
+        (entry.bridgeRoute === "one-click" && NEAR_REGISTRABLE_ONE_CLICK.has(id));
       expect(withdrawalDestinations(id), id).toEqual(
         offersNear ? [entry.chainId, NEAR_DESTINATION_CHAIN_ID] : [entry.chainId]
       );

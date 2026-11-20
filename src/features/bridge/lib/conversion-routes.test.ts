@@ -28,6 +28,9 @@ const USDT_NEAR = "nep141:usdt.tether-token.near";
 const USDT_ETH = "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near";
 const USDT_TRON = "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near";
 const USDT_POL = "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr";
+const USDT_POL_OMNI = "nep141:pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near";
+const USDT_OP = "nep245:v2_1.omni.hot.tg:10_359RPSJVdTxwTJT9TyGssr2rFoWo";
+const BNB_OMNI = "nep141:bnb.omdep.near";
 const SOL = "nep141:sol.omft.near";
 const APT = "nep141:aptos.omft.near";
 const WBTC = "nep141:2260fac5e5542a773aa44fbcfedf7c193bc2c599.factory.bridge.near";
@@ -115,7 +118,7 @@ describe("delivery table — invariants (plan 020 §5.2)", () => {
       counts[family] = (counts[family] ?? 0) + 1;
       expect(conversionFamily(token.id), token.id).toBe(family);
     }
-    expect(counts).toEqual({ ETH: 3, BTC: 2, USDC: 12, USDT: 11 });
+    expect(counts).toEqual({ ETH: 3, BTC: 2, USDC: 15, USDT: 14 });
   });
 
   it.each([
@@ -131,10 +134,37 @@ describe("delivery table — invariants (plan 020 §5.2)", () => {
 });
 
 describe("withdrawalPlan", () => {
-  it("sends every Delivery Token directly on its own chain", () => {
+  it("sends every Delivery Token on its own chain directly, or through 1Click as itself", () => {
     for (const { chainId, tokenId } of allDelivery) {
-      expect(withdrawalPlan(tokenId, chainId), tokenId).toEqual({ kind: "direct", chainId });
+      const expected =
+        withdrawalRegistry[tokenId].bridgeRoute === "one-click"
+          ? { kind: "conversion", chainId, family: conversionFamily(tokenId), deliveryTokenId: tokenId, destinationAsset: tokenId }
+          : { kind: "direct", chainId };
+      expect(withdrawalPlan(tokenId, chainId), tokenId).toEqual(expected);
     }
+  });
+
+  // D-581: the Omni ids leave through 1Click as themselves; a native has no family at all.
+  it("delivers a one-click native to its own chain as itself, and to NEAR directly as its NEP-141", () => {
+    expect(withdrawalPlan(BNB_OMNI, "eth:56")).toEqual({
+      kind: "conversion",
+      chainId: "eth:56",
+      family: null,
+      deliveryTokenId: BNB_OMNI,
+      destinationAsset: BNB_OMNI,
+    });
+    expect(withdrawalPlan(BNB_OMNI, "near:mainnet")).toEqual({ kind: "direct", chainId: "near:mainnet" });
+    expect(deliveryDestinations(BNB_OMNI)).toEqual(["eth:56", "near:mainnet"]);
+  });
+
+  it("converts an old HOT USDT on Polygon into the Omni id on Polygon (measured: 1Click quotes it)", () => {
+    expect(withdrawalPlan(USDT_POL, "eth:137")).toEqual({
+      kind: "conversion",
+      chainId: "eth:137",
+      family: "USDT",
+      deliveryTokenId: USDT_POL_OMNI,
+      destinationAsset: USDT_POL_OMNI,
+    });
   });
 
   // The four journeys of plan 020 §6, one by one.
@@ -197,8 +227,8 @@ describe("withdrawalPlan", () => {
   });
 
   it("refuses a convertible token's own chain when the family is not delivered there", () => {
-    // USDT on Polygon → Polygon: 1Click does not quote it and the direct route needs D-257.
-    expect(withdrawalPlan(USDT_POL, "eth:137")).toEqual({ kind: "none" });
+    // USDT on Optimism → Optimism: 1Click does not quote the HOT id and the direct route needs D-257.
+    expect(withdrawalPlan(USDT_OP, "eth:10")).toEqual({ kind: "none" });
   });
 
   it.each([
@@ -222,9 +252,10 @@ describe("deliveryDestinations — the order the destination picker lists", () =
     ["ETH on NEAR", ETH_NEAR, ["near:mainnet", "eth:1", "eth:42161"]],
     ["ETH on Arbitrum", ETH_ARB, ["eth:42161", "near:mainnet", "eth:1"]],
     ["nBTC", NBTC, ["near:mainnet", "btc:mainnet"]],
-    ["USDT on Ethereum", USDT_ETH, ["eth:1", "near:mainnet", "eth:42161", "tron:mainnet", "sol:mainnet"]],
-    // No direct route of its own, so it starts at NEAR.
-    ["USDT on Polygon", USDT_POL, ["near:mainnet", "eth:1", "eth:42161", "tron:mainnet", "sol:mainnet"]],
+    ["USDT on Ethereum", USDT_ETH, ["eth:1", "near:mainnet", "eth:42161", "tron:mainnet", "sol:mainnet", "eth:56", "eth:137", "eth:43114"]],
+    // The old HOT id has no row of its own, so it starts at NEAR; Polygon is reached by converting.
+    ["USDT on Polygon (old HOT id)", USDT_POL, ["near:mainnet", "eth:1", "eth:42161", "tron:mainnet", "sol:mainnet", "eth:56", "eth:137", "eth:43114"]],
+    ["USDT on Polygon (Omni id)", USDT_POL_OMNI, ["eth:137", "near:mainnet", "eth:1", "eth:42161", "tron:mainnet", "sol:mainnet", "eth:56", "eth:43114"]],
   ])("%s", (_name, held, expected) => {
     expect(deliveryDestinations(held)).toEqual(expected);
   });

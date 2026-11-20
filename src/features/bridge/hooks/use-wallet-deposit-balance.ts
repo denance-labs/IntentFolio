@@ -11,7 +11,7 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { readWalletDepositBalance, readWalletHoldings, walletDepositTarget } from "../lib/near-wallet-deposit";
 import { readEvmWalletHoldings, type EvmWalletToken } from "../lib/evm-wallet-holdings";
-import { getDepositAddress } from "../lib/bridge-client";
+import { getDepositAddress } from "../lib/deposit-address-client";
 import {
   estimateNativeDepositFee,
   parseEvmDepositAddress,
@@ -100,7 +100,7 @@ export function useEvmDepositBalance(params: { token: EvmWalletToken; owner: str
 }
 
 /**
- * The bridge's deposit address for this account on this chain — the one the QR tab shows. Fixed
+ * The deposit address for this account on this chain (`/api/deposit-address`, D-584) — the one the QR tab shows. Fixed
  * per (account, chain), so it is read once a page. Asked when the tab opens, never in the click.
  */
 export function useEvmDepositAddress(params: { intentsAccountId: string; chainId: string; enabled: boolean }) {

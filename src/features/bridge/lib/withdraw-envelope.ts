@@ -295,6 +295,9 @@ function buildDirectIntent(
       throw new Error("hot-omni withdrawals are built by buildHotWithdrawIntents");
     case "omni":
       throw new Error("omni withdrawals are built by buildOmniWithdrawIntent");
+    // D-581: a `one-click` token only ever leaves as a Converting Withdrawal (conversion-envelope.ts).
+    case "one-click":
+      throw new Error("one-click withdrawals go through 1Click, never a direct envelope");
   }
 }
 

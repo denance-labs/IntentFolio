@@ -99,6 +99,9 @@ export type WithdrawalStatusKind =
   | "TX_BROADCASTED"
   | "SETTLED"
   | "DELIVERED"
+  // `omft` only (D-584): settled and handed to a bridge nobody can watch. Resolved, and neither
+  // DELIVERED's claim nor UNCONFIRMED's open question.
+  | "SENT"
   | "UNCONFIRMED"
   | "FAILED"
   // A Converting Withdrawal 1Click sent back to the General Balance (plan 020 §5.4). Resolved,

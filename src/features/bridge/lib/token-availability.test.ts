@@ -23,12 +23,12 @@ describe("day-1 allowlist", () => {
   // The numbers the operator locked. They are asserted rather than described because the
   // whole point of the block is that the enabled set is a decision, not a side effect: a
   // row that changes side has to change this line too.
-  it("enables 40 of the 56 withdrawal rows, leaving 16 not available yet", () => {
-    expect(Object.keys(withdrawalRegistry)).toHaveLength(56);
-    expect(DAY_ONE_TOKEN_IDS.size).toBe(40);
+  it("enables 49 of the 65 withdrawal rows, leaving 16 not available yet", () => {
+    expect(Object.keys(withdrawalRegistry)).toHaveLength(65);
+    expect(DAY_ONE_TOKEN_IDS.size).toBe(49);
   });
 
-  it("splits 12 near-native / 21 omft / 1 omni / 5 hot-omni / 1 near-unwrap", () => {
+  it("splits 12 near-native / 21 omft / 1 omni / 9 one-click / 5 hot-omni / 1 near-unwrap", () => {
     const byRoute: Record<string, number> = {};
     for (const id of DAY_ONE_TOKEN_IDS) {
       const route = routeOf(id) ?? "unknown";
@@ -38,6 +38,7 @@ describe("day-1 allowlist", () => {
       "near-native": 12,
       omft: 21,
       omni: 1,
+      "one-click": 9,
       "hot-omni": 5,
       "near-unwrap": 1,
     });
@@ -192,7 +193,9 @@ describe("deposit/withdrawal invariant", () => {
 // D-396 (018.plan §"Decisiones del operador (s203)"): the 16 assets with no NEAR version.
 describe("curated catalog", () => {
   it("leaves out exactly the 16 assets with no NEAR version", () => {
-    const symbols = [...NO_NEAR_VERSION_TOKEN_IDS].map((id) => getTokenById(id)?.symbol.split("(")[0].trim());
+    // The HOT ids of BNB, POL and AVAX; their Omni ids reach a NEAR wallet and are in (D-581).
+    expect(NO_NEAR_VERSION_TOKEN_IDS.size).toBe(16);
+    const symbols = [...new Set([...NO_NEAR_VERSION_TOKEN_IDS].map((id) => getTokenById(id)?.symbol.split("(")[0].trim()))];
     expect(symbols.sort()).toEqual(
       ["AAVE", "ADA", "APT", "ARB", "AVAX", "BNB", "DAI", "DOGE", "GRAM", "LINK", "LTC", "POL", "SUI", "TRX", "UNI", "XLM"]
     );

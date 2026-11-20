@@ -102,7 +102,18 @@ export type WithdrawPublishErrorCode =
   | "INSUFFICIENT_BALANCE"
   | "PUBLIC_KEY_NOT_EXIST"
   | "UNKNOWN_ERROR"
-  | "INVALID_SALT";
+  | "INVALID_SALT"
+  // Ours, not upstream's (D-589): IntentFolio's own relay proved the intent did not execute —
+  // it refused before sending, or `execute_intents` reverted. Unlike UNKNOWN_ERROR, whose reason
+  // is an opaque string, this one is evidence: see NOT_EXECUTED_REASON_PREFIX.
+  | "NOT_EXECUTED";
+
+/**
+ * How own-relay-publish.ts starts a FAILED reason it can prove: nothing executed. Only that
+ * module writes it; `parsePublishFailureCode` reads it after upstream's own patterns, so a
+ * contract reason inside it ("insufficient balance…", "nonce was already used") keeps its code.
+ */
+export const NOT_EXECUTED_REASON_PREFIX = "not executed: ";
 
 /**
  * The relay refused the intent. Definitive and safe: a rejected intent never executes, so

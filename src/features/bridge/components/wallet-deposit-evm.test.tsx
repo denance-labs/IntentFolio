@@ -31,7 +31,11 @@ vi.mock("@/features/vault/context/real-allocate-context", () => ({
   useSendTransactionAs: vi.fn(() => sender.value),
 }));
 
-vi.mock("../lib/bridge-client", () => ({ getDepositAddress: vi.fn(), getDepositStatus: vi.fn() }));
+vi.mock("../lib/deposit-watch", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/deposit-watch")>()),
+  fetchHistoryEvents: vi.fn(),
+}));
+vi.mock("../lib/deposit-address-client", () => ({ getDepositAddress: vi.fn() }));
 
 vi.mock("../lib/near-wallet-deposit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/near-wallet-deposit")>();
@@ -64,7 +68,8 @@ vi.mock("../lib/evm-wallet-deposit", async (importOriginal) => {
 });
 
 import { ReceiveModal } from "./receive-modal";
-import { getDepositAddress, getDepositStatus } from "../lib/bridge-client";
+import { fetchHistoryEvents } from "../lib/deposit-watch";
+import { getDepositAddress } from "../lib/deposit-address-client";
 import { readEvmWalletHoldings } from "../lib/evm-wallet-holdings";
 import { estimateNativeDepositFee, readEvmDepositBalance } from "../lib/evm-wallet-deposit";
 import { resetWalletDepositPhases } from "../hooks/use-wallet-deposit-phase";
@@ -73,25 +78,11 @@ const big = (v: string) => BigInt(v);
 const USDC_BASE = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
 const ETH_ARB = "nep141:arb.omft.near";
 
-function completed(txHash: string = HASH) {
-  return {
-    deposits: [
-      {
-        tx_hash: txHash,
-        chain: "eth:8453",
-        defuse_asset_identifier: "eth:8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-        near_token_id: "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
-        decimals: 6,
-        amount: 5000000,
-        account_id: EVM_LOGIN.toLowerCase(),
-        address: DEPOSIT,
-        status: "COMPLETED" as const,
-      },
-    ],
-    total: 1,
-    limit: 50,
-    offset: 0,
-  };
+/** The history of the session account before (empty) and after 1Click credits the 5 USDC. */
+function historyThenCredited() {
+  vi.mocked(fetchHistoryEvents)
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([{ event: "intents:deposit", txHash: "CreditTx", ts: 0, data: { token: USDC_BASE, amount: "5000000" } }]);
 }
 
 let minDeposit: Record<string, Record<string, string>>;
@@ -150,8 +141,8 @@ beforeEach(() => {
       : { available: big("50000000000000000"), native: big("50000000000000000") }
   );
   vi.mocked(estimateNativeDepositFee).mockResolvedValue({ fee: big("122000000000000"), gasLimit: null });
-  vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT, chain: "eth:8453" });
-  vi.mocked(getDepositStatus).mockResolvedValue(completed());
+  vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT });
+  historyThenCredited();
   chain.receipt = async (_chainId, hash) => ({ kind: "success", txHash: hash });
   vi.stubGlobal(
     "fetch",
@@ -188,7 +179,7 @@ describe("depositing USDC from Base", () => {
     expect(decodeFunctionData({ abi: erc20Abi, data: tx.data }).args).toEqual([DEPOSIT, big("5000000")]);
     // The deposit address is the session account's, on the token's chain: the QR tab's.
     expect(getDepositAddress).toHaveBeenCalledWith(EVM_LOGIN.toLowerCase(), "eth:8453");
-    expect(getDepositStatus).toHaveBeenCalledWith(EVM_LOGIN.toLowerCase());
+    expect(fetchHistoryEvents).toHaveBeenCalledWith(EVM_LOGIN.toLowerCase());
   });
 
   it("under the bridge's minimum: says so, and no deposit", async () => {
@@ -243,7 +234,7 @@ describe("depositing USDC from Base", () => {
     await screen.findByText(/couldn't confirm the deposit yet/);
     expect(screen.queryByLabelText("Amount to deposit")).toBeNull();
     expect(screen.getByRole("button", { name: "I checked my funding account: make another deposit" })).toBeTruthy();
-    expect(getDepositStatus).not.toHaveBeenCalled();
+    expect(fetchHistoryEvents).not.toHaveBeenCalled();
   });
 
   it("a second click while the wallet is open sends nothing more", async () => {
@@ -276,7 +267,7 @@ describe("depositing USDC from Base", () => {
 
 describe("depositing ETH from Arbitrum", () => {
   it("Max leaves the gas behind, and the value sent is that exact figure", async () => {
-    vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT, chain: "eth:42161" });
+    vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT });
     renderModal();
     await openFromRow("ETH", "Arbitrum");
     // 0.05 − 0.000122 = 0.049878
@@ -293,7 +284,7 @@ describe("depositing ETH from Arbitrum", () => {
   });
 
   it("a gas limit the fee names goes to the wallet with the deposit (Ethereum's case)", async () => {
-    vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT, chain: "eth:42161" });
+    vi.mocked(getDepositAddress).mockResolvedValue({ address: DEPOSIT });
     vi.mocked(estimateNativeDepositFee).mockResolvedValue({ fee: big("122000000000000"), gasLimit: big("22000") });
     renderModal();
     await openFromRow("ETH", "Arbitrum");

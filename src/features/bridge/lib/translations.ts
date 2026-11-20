@@ -235,6 +235,7 @@ export const bridgeTranslations = {
     withdrawHoldsDeliveryToken: "You already have {ticker} on {chain} in your balance: withdrawing that one skips the conversion.",
     // Step 4. Outcome terms only: what leaves, what arrives, what it costs, and the way back.
     conversionNote: "On the way, your {ticker} on {from} becomes {deliveryTicker} on {to}. If that can't be completed, it comes back to your funding account.",
+    deliveryRefundNote: "If it can't be delivered, it comes back to your funding account.",
     // Appended only when the quote states a refund cost above zero (measured 0 so far).
     conversionRefundCost: "(less up to {amount} {ticker})",
     conversionSendLabel: "You send",
@@ -438,6 +439,7 @@ export const bridgeTranslations = {
     withdrawArrivesAs: "Se entrega como {ticker} de {chain}, con un costo de conversión",
     withdrawHoldsDeliveryToken: "Ya tienes {ticker} de {chain} en tu saldo: retirando ese te ahorras la conversión.",
     conversionNote: "En el camino, tu {ticker} de {from} se convierte en {deliveryTicker} de {to}. Si no se puede completar, vuelve a tu cuenta de fondos.",
+    deliveryRefundNote: "Si no se puede entregar, vuelve a tu cuenta de fondos.",
     conversionRefundCost: "(menos un costo de hasta {amount} {ticker})",
     conversionSendLabel: "Envías",
     conversionArrivesLabel: "Llega",

@@ -46,6 +46,7 @@ import {
 import { WithdrawError, WithdrawPublishUnknownError, type WithdrawFundsState } from "./withdraw-errors";
 import { recordPendingWithdraw, updateWithdrawRecord } from "./withdraw-record-sink";
 import { nonceToBase64 } from "./withdraw-publication-check";
+import { unconfirmedPublishTxHash } from "./own-relay-publish";
 
 export type ConversionWithdrawStage =
   | "preparing"
@@ -88,6 +89,11 @@ export type RunConversionWithdrawParams = {
    * record the same withdrawal after a reload.
    */
   onRecordId?: (recordId: string) => void;
+  /**
+   * The NEAR settlement transaction, the moment it is observed — as on a direct withdrawal
+   * (`RunRealWithdrawParams.onSettled`). Without it the Converting row showed no hash until a reload.
+   */
+  onSettled?: (txHash: string) => void;
   /** Envelope tuning; injectable so tests are deterministic. `nowMs` is C2's clock. */
   envelope?: { nonce?: Uint8Array; nowMs?: number };
   /** The exact balance C1 checks against (D-303). Defaults to the direct withdrawal's read. */
@@ -173,9 +179,11 @@ export async function runConversionWithdraw(
     e: unknown,
     fundsState: WithdrawFundsState,
     intentHash: string | null,
-    txHash: string | null
+    knownTxHash: string | null
   ) => {
-    updateWithdrawRecord(recordId, { error: describeError(e) });
+    // The own relay (D-589) names the transaction even when it cannot prove the outcome: kept.
+    const txHash = knownTxHash ?? unconfirmedPublishTxHash(e);
+    updateWithdrawRecord(recordId, txHash === null ? { error: describeError(e) } : { error: describeError(e), txHash });
     stage("published-unconfirmed");
     return new RealWithdrawUnconfirmedError(
       describeError(e),
@@ -246,6 +254,7 @@ export async function runConversionWithdraw(
     throw unconfirmed(e, fundsState, intentHash, observedTxHash);
   }
   updateWithdrawRecord(recordId, { status: "settled", txHash: settlement.txHash });
+  p.onSettled?.(settlement.txHash);
 
   // ── The leg 1Click owns. From here every outcome is `left-balance` or resolved.
   stage("converting");

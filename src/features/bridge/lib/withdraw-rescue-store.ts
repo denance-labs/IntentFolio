@@ -57,6 +57,11 @@ export type WithdrawRecordStatus =
   | "settled"
   /** Delivered on the destination chain (or on NEAR, for `near-native`). Resolved. */
   | "delivered"
+  /**
+   * `omft` only (D-584): settled and handed to the PoA bridge, whose status API closed. Resolved
+   * — nothing will ever say more — but never a claim that it arrived.
+   */
+  | "sent"
   /** Definitively did not move the funds — only ever set from `fundsState: "untouched"`. */
   | "failed"
   /** Conversions only: 1Click sent the money back to the General Balance. Resolved. */
@@ -67,7 +72,7 @@ export type WithdrawRecordStatus =
    */
   | "dismissed";
 
-const RESOLVED: readonly WithdrawRecordStatus[] = ["delivered", "failed", "refunded", "dismissed"];
+const RESOLVED: readonly WithdrawRecordStatus[] = ["delivered", "sent", "failed", "refunded", "dismissed"];
 
 /**
  * How long a record must stay open before the user may close it by hand (023 §4.3). Long past

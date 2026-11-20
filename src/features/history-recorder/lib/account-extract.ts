@@ -5,9 +5,12 @@
 //     names the account (NEP-245 `owner_id` / `old_owner_id` / `new_owner_id`; NEAR Intents
 //     `account_id` / `receiver_id`), stored as logged, byte for byte;
 //   - `account_movement`: the account's own entries in those lines — `deposit` (`mt_mint`),
-//     `withdrawal` (`mt_burn`) and `transfer_out` (a `transfer` the account signed). Not the
-//     NEP-245 `mt_transfer` legs: most of them are legs of swaps, and a solver's batch nets them
-//     (028-4). Incoming transfers and swaps get no movement; their lines are kept raw;
+//     `withdrawal` (`mt_burn`), `transfer_out` (a `transfer` the account signed) and
+//     `transfer_in` (an NEP-245 `mt_transfer` the account RECEIVED; solver migration 015). Not
+//     the outgoing `mt_transfer` legs: most of them are legs of swaps, and a solver's batch nets
+//     them (028-4). Every incoming one is kept, because a deposit to a 1Click address set arrives
+//     as one (D-584): which of them are deposits is decided when reading. The receiver's side of a
+//     dip4 `transfer` and swaps get no movement; their lines are kept raw;
 //   - the vault's own rows of the same transaction, from `extractTx` (008), unchanged.
 //
 // The trust rules are `history-extract.ts`'s, applied to `intents.near`: what its envelope says
@@ -58,7 +61,7 @@ export type IntentsLine = {
   line: string;
 };
 
-export type MovementKind = "deposit" | "withdrawal" | "transfer_out";
+export type MovementKind = "deposit" | "withdrawal" | "transfer_out" | "transfer_in";
 
 /** One `account_movement` row. */
 export type Movement = {
@@ -69,7 +72,7 @@ export type Movement = {
   kind: MovementKind;
   tokenId: string;
   amount: string;
-  /** `transfer_out` only: the transfer's `receiver_id`. */
+  /** `transfer_out`: the transfer's `receiver_id`; `transfer_in`: the entry's `old_owner_id`. */
   counterparty: string | null;
   memo: string | null;
   /** `transfer_out` only, when the event carries one. */
@@ -187,6 +190,38 @@ export function extractAccountTx(tx: FastNearTx, accountId: string, vaultId: str
               tokenId,
               amount: u128(amounts[tokenIndex], `${where} amount`),
               counterparty: null,
+              memo: memoOf(entry.memo),
+              intentHash: null,
+            });
+          });
+        });
+      }
+
+      // An `mt_transfer` the account received. Only the receiver gets a row, so 009's key (no
+      // account) still names one row: an entry has one `new_owner_id` (015 "The key stays").
+      if (standard === "nep245" && event === "mt_transfer") {
+        entries.forEach((entry, entryIndex) => {
+          if (entry.new_owner_id !== accountId) return;
+          const tokens = entry.token_ids;
+          const amounts = entry.amounts;
+          if (!Array.isArray(tokens) || !Array.isArray(amounts) || tokens.length === 0 || tokens.length !== amounts.length) {
+            throw new HistoryShapeError(`${where}: mt_transfer entry ${entryIndex} without matching tokens and amounts`);
+          }
+          const counterparty = storableId(entry.old_owner_id, 2, 128);
+          tokens.forEach((token, tokenIndex) => {
+            const tokenId = storableId(token, 1, 256);
+            if (tokenId === null || counterparty === null) {
+              skipped.push(`${where} entry ${entryIndex} token ${tokenIndex}: mt_transfer field not storable`);
+              return;
+            }
+            movements.push({
+              ...base,
+              entryIndex,
+              tokenIndex,
+              kind: "transfer_in",
+              tokenId,
+              amount: u128(amounts[tokenIndex], `${where} amount`),
+              counterparty,
               memo: memoOf(entry.memo),
               intentHash: null,
             });

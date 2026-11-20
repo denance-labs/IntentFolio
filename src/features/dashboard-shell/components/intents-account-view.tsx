@@ -14,13 +14,13 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { getTokenById, getTokenByNearTokenId } from "@/features/market/lib/token-registry";
+import { getTokenById } from "@/features/market/lib/token-registry";
 import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
 import type { TokenDefinition } from "@/features/market/types";
 import { formatUsd, formatTokenAmount, formatCrypto } from "@/features/portfolio-editor/lib/format";
-import { chainRegistry, dismissedWithdrawTxHashes, isDepositCredited, type DepositStatusEntry } from "@/features/bridge";
+import { chainRegistry, dismissedWithdrawTxHashes } from "@/features/bridge";
 import { nearTokenArrival } from "@/features/bridge/lib/withdrawal-registry";
 import type { ContractEvent, WithdrawalInFlightRecord, PendingUnallocationRecord } from "@/features/intents-account/mock-contract/types";
 import { mockContract } from "@/features/intents-account/mock-contract";
@@ -296,17 +296,13 @@ function AccountTotals({
   );
 }
 
-const DEPOSIT_STATUS_STYLES: Record<string, string> = {
-  PENDING:   "border-amber-500/40 bg-amber-500/10 text-amber-300",
-  COMPLETED: "border-blue-500/40 bg-blue-500/10 text-blue-300",
-  CREDITED:  "border-accent/40 bg-accent/10 text-accent",
-};
-
 const WITHDRAWAL_STATUS_STYLES: Record<string, string> = {
   PENDING:        "border-amber-500/40 bg-amber-500/10 text-amber-300",
   TX_BROADCASTED: "border-accent/40 bg-accent/10 text-accent",
   SETTLED:        "border-accent/60 bg-accent/15 text-accent",
   DELIVERED:      "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+  // D-584: final but unobserved, so neither a delivery's green nor an open question's amber.
+  SENT:           "border-slate-400/40 bg-slate-400/10 text-slate-200",
   // Amber, never red: "not confirmed" is an open question, not a failure (005.plan §8 5.4).
   UNCONFIRMED:    "border-amber-400/50 bg-amber-400/10 text-amber-200",
   // FAILED only ever means the funds never left (`fundsState: "untouched"`), so it is told as where
@@ -389,7 +385,6 @@ const UNALLOCATION_STATUS_STYLES: Record<string, string> = {
 };
 
 type ActivityFeedItem =
-  | { kind: "deposit"; ts: number; deposit: DepositStatusEntry }
   | { kind: "withdrawal"; ts: number; withdrawal: WithdrawalInFlightRecord }
   | { kind: "unallocation"; ts: number; unallocation: PendingUnallocationRecord };
 
@@ -442,60 +437,6 @@ function ActivityIcon({ kind }: { kind: ActivityIconKind }) {
   );
 }
 
-function DepositRow({ deposit, t }: { deposit: DepositStatusEntry; t: typeof shellTranslations.en }) {
-  const token = getTokenByNearTokenId(deposit.near_token_id);
-  const chain = chainRegistry[deposit.chain];
-  const explorerUrl = chain ? chain.explorerTxUrl(deposit.tx_hash) : null;
-  const statusStyle = DEPOSIT_STATUS_STYLES[deposit.status] ?? DEPOSIT_STATUS_STYLES.PENDING;
-  const statusLabel =
-    deposit.status === "CREDITED"
-      ? t.depositStatusCredited
-      : deposit.status === "COMPLETED"
-        ? t.depositStatusCompleted
-        : t.depositStatusPending;
-
-  const qty = deposit.amount / Math.pow(10, deposit.decimals);
-  const symbol = token?.symbol ?? truncateHash(deposit.near_token_id);
-
-  return (
-    <div className="flex items-center justify-between gap-3 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <ActivityIcon kind="deposit" />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          {/* D-561: in the card the chip leaves little room on a phone (A-4a). Never cut: the amount
-              drops to its own line whole, its unit with it. */}
-          <p className="text-sm font-medium text-slate-100">
-            <span className="mr-1.5 text-slate-400">{t.historyEventDeposit}</span>
-            <span className="inline-block max-w-full break-words">
-              {formatCrypto(qty)} {symbol}
-            </span>
-          </p>
-          <p className="text-xs text-slate-400">
-            {chain?.displayName ?? deposit.chain}
-            {" · "}
-            {explorerUrl ? (
-              <a
-                href={explorerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={t.depositViewOnExplorer}
-                className="font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
-              >
-                {truncateHash(deposit.tx_hash)}
-              </a>
-            ) : (
-              <span className="font-mono">{truncateHash(deposit.tx_hash)}</span>
-            )}
-          </p>
-        </div>
-      </div>
-      <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusStyle}`}>
-        {statusLabel}
-      </span>
-    </div>
-  );
-}
-
 function WithdrawalRow({
   withdrawal,
   when,
@@ -530,6 +471,7 @@ function WithdrawalRow({
     withdrawal.status === "SETTLED"        ? (deliveryTicker ? t.withdrawalStatusConverting : t.withdrawalStatusSettled) :
     withdrawal.status === "REFUNDED"       ? t.withdrawalStatusRefunded :
     withdrawal.status === "DELIVERED"      ? t.withdrawalStatusDelivered :
+    withdrawal.status === "SENT"           ? t.activityDoneSent :
     withdrawal.status === "UNCONFIRMED"    ? t.withdrawalStatusUnconfirmed :
     withdrawal.status === "FAILED"         ? t.withdrawalStatusFailed :
     t.withdrawalStatusPending;
@@ -572,6 +514,12 @@ function WithdrawalRow({
         <>
           {" · "}
           <span className="font-mono">{t.withdrawalConversionCode.replace("{code}", conversionCode)}</span>
+        </>
+      )}
+      {withdrawal.status === "FAILED" && (
+        <>
+          {" · "}
+          <span className="whitespace-nowrap">{t.withdrawalStillInFunding}</span>
         </>
       )}
       {shownHash && (
@@ -792,7 +740,9 @@ function CompletedPortfolioRow({
 }
 
 // A finished deposit or withdrawal read from the chain. The symbol already names the network
-// ("USDT(NEAR)"), and the hash is the NEAR transaction, so it links to the NEAR explorer.
+// ("USDT(NEAR)"), and the hash is the NEAR transaction, so it links to the NEAR explorer — except
+// on a withdrawal the solver closed as delivered (D-582): then it is the destination chain's tx,
+// on that chain's explorer, as on the row in progress.
 function CompletedMovementRow({
   row,
   when,
@@ -802,47 +752,100 @@ function CompletedMovementRow({
   when: string;
   t: typeof shellTranslations.en;
 }) {
+  const [open, setOpen] = useState(false);
   const symbol = getTokenById(row.tokenId)?.symbol ?? row.tokenId;
   const deposit = row.kind === "deposit";
+  const destination = row.destination;
+  const destinationChain = destination ? chainRegistry[destination.chainId] : undefined;
+  // A delivered withdrawal has two transactions: both go under "Show details", one per line, and
+  // the collapsed line carries none — beside the button, even one hash was cut to a character at
+  // 390 px, and two together broke the line into 2-3 lines (020-3 QA).
+  const txLines = destination && destinationChain
+    ? [
+        { label: NEAR_EXPLORER.displayName, hash: row.txHash, href: NEAR_EXPLORER.explorerTxUrl(row.txHash) },
+        { label: destinationChain.displayName, hash: destination.txHash, href: destinationChain.explorerTxUrl(destination.txHash) },
+      ]
+    : null;
   return (
     // Date on the second line, as on the rows in progress (017-8): beside the label it cut
     // the symbol at 390 px.
-    <div className="flex items-center gap-3 py-3">
-      <ActivityIcon kind={deposit ? "deposit" : "withdrawal"} />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <p className="break-words text-sm font-medium text-slate-100">
-          <span className="mr-1.5 text-slate-400">
-            {deposit ? t.historyEventDeposit : t.historyEventWithdrawal}
-          </span>
-          {formatCrypto(row.qty)} {symbol}
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
-          {/* A direct withdrawal is only "Sent": the chain confirms it left, not that it arrived. */}
-          {deposit ? (
-            <DoneLabel label={t.depositStatusCredited} tone="success" iconOnlyOnPhone />
-          ) : (
-            <DoneLabel label={t.activityDoneSent} tone="neutral" />
-          )}
-          <span aria-hidden="true" className={deposit ? AFTER_ICON_ONLY : undefined}>·</span>
-          <span className="shrink-0">{when}</span>
-          <span aria-hidden="true">·</span>
-          <a
-            href={NEAR_EXPLORER.explorerTxUrl(row.txHash)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={t.depositViewOnExplorer}
-            className="min-w-0 truncate font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <ActivityIcon kind={deposit ? "deposit" : "withdrawal"} />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="break-words text-sm font-medium text-slate-100">
+              <span className="mr-1.5 text-slate-400">
+                {deposit ? t.historyEventDeposit : t.historyEventWithdrawal}
+              </span>
+              {formatCrypto(row.qty)} {symbol}
+            </p>
+            <p className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
+              {/* A direct withdrawal is "Sent" until the solver confirms where it landed (D-582). */}
+              {deposit ? (
+                <DoneLabel label={t.depositStatusCredited} tone="success" iconOnlyOnPhone />
+              ) : destination ? (
+                <DoneLabel label={t.withdrawalStatusDelivered} tone="success" />
+              ) : (
+                <DoneLabel label={t.activityDoneSent} tone="neutral" />
+              )}
+              <span aria-hidden="true" className={deposit ? AFTER_ICON_ONLY : undefined}>·</span>
+              <span className="shrink-0">{when}</span>
+              {!txLines && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <a
+                    href={NEAR_EXPLORER.explorerTxUrl(row.txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t.depositViewOnExplorer}
+                    className="min-w-0 truncate font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
+                  >
+                    {truncateHash(row.txHash)}
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+        {txLines && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="shrink-0 rounded text-[11px] text-slate-400 underline-offset-2 transition hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
-            {truncateHash(row.txHash)}
-          </a>
-        </p>
+            {open ? t.historyEventHideDetails : t.historyEventShowDetails}
+          </button>
+        )}
       </div>
+      {txLines && open && (
+        // Under the text, past the 32 px icon and its 12 px gap.
+        <dl className="mt-2 grid gap-1 pl-11 text-xs text-slate-400">
+          {txLines.map((line) => (
+            <div key={line.label} className="flex min-w-0 items-center gap-1.5">
+              <dt className="shrink-0">{line.label}</dt>
+              <span aria-hidden="true">·</span>
+              <dd className="min-w-0 truncate">
+                <a
+                  href={line.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={t.depositViewOnExplorer}
+                  className="font-mono underline-offset-2 hover:text-accent hover:underline"
+                >
+                  {truncateHash(line.hash)}
+                </a>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }
 
 function RecentActivityFeed({
-  deposits,
   withdrawals,
   unallocations,
   history,
@@ -852,7 +855,6 @@ function RecentActivityFeed({
   lang,
   t,
 }: {
-  deposits: DepositStatusEntry[];
   withdrawals: WithdrawalInFlightRecord[];
   unallocations: PendingUnallocationRecord[];
   history: ActivityHistoryState;
@@ -868,9 +870,7 @@ function RecentActivityFeed({
 
   const joined = joinActivity({
     completed: history.status === "ready" ? history.completed : [],
-    historyRead: history.status === "ready",
     withdrawals: history.status === "ready" ? withHistoryConversions(withdrawals, history.conversions) : withdrawals,
-    bridgeDeposits: deposits.map((d) => ({ credited: isDepositCredited(d.status), entry: d })),
   });
   // D-440: a conversion that is over is a finished row too, filed by date with the chain's.
   const finished = finishedTimeline(joined.completed, joined.withdrawals.filter(isFinishedConversion));
@@ -879,7 +879,6 @@ function RecentActivityFeed({
   const items: ActivityFeedItem[] = [
     ...unallocations.map((u) => ({ kind: "unallocation" as const, ts: u.ts, unallocation: u })),
     ...inProgress.map((w) => ({ kind: "withdrawal" as const, ts: w.ts, withdrawal: w })),
-    ...joined.bridgeDeposits.map((d) => ({ kind: "deposit" as const, ts: 0, deposit: d.entry })),
   ];
 
   const ready = history.status === "ready" ? history : null;
@@ -905,13 +904,7 @@ function RecentActivityFeed({
         {/* In progress first, each with its status chip; then what is finished, with its date
             where the chip would be — the two stay told apart (D-364 1). */}
         {items.map((item) =>
-          item.kind === "deposit" ? (
-            <DepositRow
-              key={`deposit:${item.deposit.tx_hash}:${item.deposit.chain}`}
-              deposit={item.deposit}
-              t={t}
-            />
-          ) : item.kind === "unallocation" ? (
+          item.kind === "unallocation" ? (
             <UnallocationRow
               key={`unallocation:${item.unallocation.unallocationId}`}
               unallocation={item.unallocation}
@@ -1064,7 +1057,6 @@ export function IntentsAccountView({
   onOpenPortfolio,
   signedOut = false,
   onConnect,
-  deposits = [],
   pendingWithdrawals = [],
   pendingUnallocations = [],
   onDismissWithdrawal,
@@ -1087,7 +1079,6 @@ export function IntentsAccountView({
    */
   signedOut?: boolean;
   onConnect?: () => void;
-  deposits?: DepositStatusEntry[];
   pendingWithdrawals?: WithdrawalInFlightRecord[];
   pendingUnallocations?: PendingUnallocationRecord[];
   /** D-463 (023-B): «Hide» on a withdrawal open for over a day that nothing could close. */
@@ -1175,6 +1166,10 @@ export function IntentsAccountView({
       otherRows.push(row);
     }
   }
+  // D-586: largest USD value first, as the Withdraw and Add funds pickers already list them.
+  // `sort` is stable, so equal values (and unpriced tokens, at $0, last) keep the catalog order.
+  curatedRows.sort((a, b) => b.usd - a.usd);
+  otherRows.sort((a, b) => b.usd - a.usd);
 
   // A held stock's USD figures are hand-written while its price read is down: say so, as D-179 does.
   const holdsStock =
@@ -1187,12 +1182,10 @@ export function IntentsAccountView({
   // moving they may not show it yet — say so, and only then.
   const showInTransitNote = hasMovementsInProgress({
     pendingAllocates: pendingAllocates?.length ?? 0,
-    deposits,
     unallocations: pendingUnallocations,
   });
   const activityFeed = (
     <RecentActivityFeed
-      deposits={deposits}
       withdrawals={pendingWithdrawals}
       unallocations={pendingUnallocations}
       history={history}

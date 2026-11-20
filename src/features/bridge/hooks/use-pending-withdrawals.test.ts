@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { StrictMode } from "react";
 import { renderHook, cleanup, act } from "@testing-library/react";
 import { mockContract } from "@/features/intents-account/mock-contract";
-import { dismissWithdrawal, usePendingWithdrawals } from "./use-pending-withdrawals";
+import { dismissWithdrawal, usePendingWithdrawals, VERDICT_REREAD_MS } from "./use-pending-withdrawals";
 import {
   clearWithdrawRecords,
   DISMISS_AFTER_MS,
@@ -112,6 +112,18 @@ describe("mockContract withdrawal tracking", () => {
 
 const USDT_ARB = "nep141:arb-0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9.omft.near";
 const ACCOUNT = "alice.near";
+
+/**
+ * Omni Bridge (`omni`), the one direct route whose wait can still answer `bridge` with a
+ * destination tx. An `omft` record cannot land DELIVERED any more (D-584): see the SENT tests.
+ */
+const ZEC = "nep141:zec.omft.near";
+const ZEC_OMNI = {
+  tokenId: ZEC,
+  route: "omni" as const,
+  chainId: "zec:mainnet",
+  destinationAddress: "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K",
+};
 
 function seedRescueRecord(
   overrides: Partial<Extract<Parameters<typeof recordPendingWithdraw>[0], { route: unknown }>> = {}
@@ -242,12 +254,12 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
   });
 
   it("resumes the delivery wait for a settled record and lands it DELIVERED", async () => {
-    const id = seedRescueRecord();
+    const id = seedRescueRecord(ZEC_OMNI);
     updateWithdrawRecord(id, { status: "settled", txHash: "NEARTX123" });
     const resumeDelivery = vi.fn().mockResolvedValue({
       kind: "bridge",
       destinationTxHash: "0xDESTINATION",
-      chain: "eth:42161",
+      chain: "zec:mainnet",
     });
     const onDelivered = vi.fn();
 
@@ -259,10 +271,10 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
     // Resumed from the record alone — everything the wait needs survived the reload.
     expect(resumeDelivery).toHaveBeenCalledOnce();
     expect(resumeDelivery.mock.calls[0][0]).toMatchObject({
-      tokenId: USDT_ARB,
-      route: "omft",
-      // With the token, the chain names the route: an omft token can also go to NEAR (D-384).
-      chainId: "eth:42161",
+      tokenId: ZEC,
+      route: "omni",
+      // With the token, the chain names the route: a bridged token can also go to NEAR (D-384).
+      chainId: "zec:mainnet",
       txHash: "NEARTX123",
     });
     expect(result.current[0]).toMatchObject({
@@ -293,6 +305,59 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
 
     expect(result.current[0].status).toBe("DELIVERED");
     expect(listWithdrawRecords().find((r) => r.id === id)).toMatchObject({ status: "delivered" });
+  });
+
+  // D-584: the PoA Bridge API closed, so the real wait hands an `omft` record off at once. It also
+  // closes the records the closed API had left "Not confirmed", which sat open in the strip.
+  it("closes a settled omft record as SENT through the real wait, without a delivered toast", async () => {
+    const id = seedRescueRecord();
+    updateWithdrawRecord(id, {
+      status: "settled",
+      txHash: "NEARTX123",
+      error: "Withdrawal settled in NEARTX123 but delivery was not confirmed: 403",
+    });
+    const onDelivered = vi.fn();
+
+    const { result } = renderHook(() => usePendingWithdrawals({ intentsAccountId: ACCOUNT, onDelivered }));
+    // Hydrated from the error as the open question it was…
+    expect(result.current[0].status).toBe("UNCONFIRMED");
+    await act(async () => {});
+
+    // …and closed by the resume as sent: never DELIVERED, and nothing that says "delivered".
+    expect(result.current[0].status).toBe("SENT");
+    expect(onDelivered).not.toHaveBeenCalled();
+    expect(listWithdrawRecords().find((r) => r.id === id)).toMatchObject({ status: "sent" });
+    expect(listUnresolvedWithdrawRecords()).toEqual([]);
+  });
+
+  // Cross-review (D-584): an earlier build closed an `omft` publish the relay called "executed" as
+  // settled with NO transaction — invisible to the delivery resume, which needs one.
+  it("closes an omft record settled without a transaction as SENT, and leaves other routes alone", async () => {
+    const stranded = "Executed on NEAR (nonce used); settlement tx unknown, delivery not checkable";
+    const id = seedRescueRecord();
+    updateWithdrawRecord(id, { status: "settled", error: stranded });
+    const hotId = seedRescueRecord({
+      tokenId: "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L",
+      route: "hot-omni",
+      chainId: "eth:137",
+    });
+    updateWithdrawRecord(hotId, { status: "settled", error: stranded });
+    const onDelivered = vi.fn();
+    const resumeDelivery = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePendingWithdrawals({ intentsAccountId: ACCOUNT, onDelivered, resumeDelivery })
+    );
+    await act(async () => {});
+
+    const status = (rid: string) => result.current.find((r) => r.intentId === rid)?.status;
+    expect(status(id)).toBe("SENT");
+    expect(listWithdrawRecords().find((r) => r.id === id)).toMatchObject({ status: "sent" });
+    // A watched bridge with no tx stays the open question it is.
+    expect(status(hotId)).toBe("UNCONFIRMED");
+    expect(listWithdrawRecords().find((r) => r.id === hotId)).toMatchObject({ status: "settled" });
+    expect(onDelivered).not.toHaveBeenCalled();
+    expect(resumeDelivery).not.toHaveBeenCalled();
   });
 
   it("leaves an unanswered resume UNCONFIRMED, never FAILED", async () => {
@@ -337,12 +402,12 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
     // StrictMode is on for every `npm run dev` (Next sets it by default), which is exactly
     // where the real-money runs get watched. The first pass started the wait, the cleanup
     // aborted it, and the second pass returned early — so D-259 was unobservable in dev.
-    const id = seedRescueRecord();
+    const id = seedRescueRecord(ZEC_OMNI);
     updateWithdrawRecord(id, { status: "settled", txHash: "NEARTX123" });
     const resumeDelivery = vi.fn().mockResolvedValue({
       kind: "bridge",
       destinationTxHash: "0xDESTINATION",
-      chain: "eth:42161",
+      chain: "zec:mainnet",
     });
 
     const { result } = renderHook(
@@ -484,17 +549,17 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
   });
 
   it("closes another account's record without announcing it", async () => {
-    const id = seedRescueRecord({ signerId: "bob.near" });
+    const id = seedRescueRecord({ ...ZEC_OMNI, signerId: "bob.near" });
     updateWithdrawRecord(id, { status: "settled", txHash: "NEARTX123" });
     // Tracked in memory under bob, the way a previous session on this browser would have left
     // it. Without this the record is findable under NOBODY and the test passes for the wrong
     // reason — it has to be reachable by the signer to prove the lookup uses the shown account.
     mockContract.trackWithdrawal(id, {
       accountId: "bob.near",
-      tokenId: USDT_ARB,
+      tokenId: ZEC,
       qty: 0.5,
-      chainId: "eth:42161",
-      destinationAddress: "0x195d287fB6E1fbBaaC18cB6C7DB0050388Ed8B00",
+      chainId: "zec:mainnet",
+      destinationAddress: ZEC_OMNI.destinationAddress,
       ts: Date.now(),
       status: "SETTLED",
       isReal: true,
@@ -503,7 +568,7 @@ describe("usePendingWithdrawals — rehydration resolves against the chain (D-25
     const resumeDelivery = vi.fn().mockResolvedValue({
       kind: "bridge",
       destinationTxHash: "0xDESTINATION",
-      chain: "eth:42161",
+      chain: "zec:mainnet",
     });
 
     renderHook(() =>
@@ -905,10 +970,10 @@ describe("usePendingWithdrawals — conversions resume through 1Click (020-2)", 
   });
 
   it("never sends a direct withdrawal to 1Click", async () => {
-    const id = seedRescueRecord();
+    const id = seedRescueRecord(ZEC_OMNI);
     updateWithdrawRecord(id, { status: "settled", txHash: "NEARTX123" });
     const resumeConversion = vi.fn();
-    const resumeDelivery = vi.fn().mockResolvedValue({ kind: "bridge", destinationTxHash: "0xD", chain: "eth:42161" });
+    const resumeDelivery = vi.fn().mockResolvedValue({ kind: "bridge", destinationTxHash: "0xD", chain: "zec:mainnet" });
 
     renderHook(() => usePendingWithdrawals({ intentsAccountId: ACCOUNT, resumeConversion, resumeDelivery }));
     await act(async () => {});
@@ -1109,13 +1174,13 @@ describe("usePendingWithdrawals — an unanswered publish is re-checked (D-463)"
   });
 
   it("relay SETTLED: records the tx and carries on into the delivery wait", async () => {
-    const id = seedRescueRecord();
+    const id = seedRescueRecord(ZEC_OMNI);
     updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
     const checkPublishedWithdraw = vi.fn().mockResolvedValue({ kind: "settled", txHash: "NEARTX" });
     const resumeDelivery = vi.fn().mockResolvedValue({
       kind: "bridge",
       destinationTxHash: "0xDEST",
-      chain: "eth:42161",
+      chain: "zec:mainnet",
     });
 
     const { result } = renderHook(() =>
@@ -1124,7 +1189,7 @@ describe("usePendingWithdrawals — an unanswered publish is re-checked (D-463)"
     await act(async () => {});
 
     expect(resumeDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({ route: "omft", chainId: "eth:42161", txHash: "NEARTX" })
+      expect.objectContaining({ route: "omni", chainId: "zec:mainnet", txHash: "NEARTX" })
     );
     expect(result.current[0].status).toBe("DELIVERED");
     expect(listWithdrawRecords()[0]).toMatchObject({
@@ -1134,8 +1199,58 @@ describe("usePendingWithdrawals — an unanswered publish is re-checked (D-463)"
     });
   });
 
-  it("executed on a bridged route with no tx: settled + unconfirmed, and not asked again", async () => {
+  // No injected wait: the real one is what keeps an `omft` record from ever landing DELIVERED.
+  it("relay SETTLED on an omft route: records the tx and closes as SENT through the real wait", async () => {
     const id = seedRescueRecord();
+    updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
+    const checkPublishedWithdraw = vi.fn().mockResolvedValue({ kind: "settled", txHash: "NEARTX" });
+    const onDelivered = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePendingWithdrawals({ intentsAccountId: ACCOUNT, checkPublishedWithdraw, onDelivered })
+    );
+    await act(async () => {});
+
+    expect(result.current[0].status).toBe("SENT");
+    expect(listWithdrawRecords().find((r) => r.id === id)).toMatchObject({ status: "sent", txHash: "NEARTX" });
+    expect(onDelivered).not.toHaveBeenCalled();
+  });
+
+  it("executed on an omft route with no tx: closed as SENT, and not asked again (D-584)", async () => {
+    const id = seedRescueRecord();
+    updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
+    const checkPublishedWithdraw = vi.fn().mockResolvedValue({ kind: "executed" });
+    const resumeDelivery = vi.fn();
+    const onDelivered = vi.fn();
+
+    const first = renderHook(() =>
+      usePendingWithdrawals({ intentsAccountId: ACCOUNT, checkPublishedWithdraw, resumeDelivery, onDelivered })
+    );
+    await act(async () => {});
+
+    // Executed on NEAR is all an `omft` withdrawal can ever show: the same "sent" as the live path.
+    expect(first.result.current[0].status).toBe("SENT");
+    expect(listWithdrawRecords()[0]).toMatchObject({ status: "sent" });
+    expect(resumeDelivery).not.toHaveBeenCalled();
+    expect(onDelivered).not.toHaveBeenCalled();
+
+    // Next load: resolved, so nothing is checked again.
+    first.unmount();
+    mockContract._reset();
+    renderHook(() =>
+      usePendingWithdrawals({ intentsAccountId: ACCOUNT, checkPublishedWithdraw, resumeDelivery })
+    );
+    await act(async () => {});
+    expect(checkPublishedWithdraw).toHaveBeenCalledOnce();
+    expect(resumeDelivery).not.toHaveBeenCalled();
+  });
+
+  it("executed on a watched bridge with no tx: settled + unconfirmed, and not asked again", async () => {
+    const id = seedRescueRecord({
+      tokenId: "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L",
+      route: "hot-omni",
+      chainId: "eth:137",
+    });
     updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
     const checkPublishedWithdraw = vi.fn().mockResolvedValue({ kind: "executed" });
     const resumeDelivery = vi.fn();
@@ -1560,5 +1675,113 @@ describe("usePendingWithdrawals — the solver's verdict closes a record first (
 
     expect(resumeDelivery).not.toHaveBeenCalled();
     expect(listWithdrawRecords()[0]).toMatchObject({ status: "settled" });
+  });
+});
+
+// Reported by the solver session on 2026-11-19: three `never_executed` verdicts sat behind
+// «Not confirmed» in an open tab until a reload, because verdicts were read only on mount.
+describe("usePendingWithdrawals — an open tab picks up verdicts that arrive later", () => {
+  beforeEach(() => {
+    mockContract._reset();
+    clearWithdrawRecords();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    setVisibility("visible");
+    mockContract._reset();
+    clearWithdrawRecords();
+  });
+
+  function setVisibility(value: "visible" | "hidden") {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => value });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  /** A publish no one could confirm, whose verdict the solver writes only after mount. */
+  function seedUnconfirmed() {
+    const id = seedRescueRecord();
+    updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
+    let verdicts: Record<string, unknown> = {};
+    const readWithdrawVerdicts = vi.fn(async () => verdicts);
+    const judge = () => (verdicts = { [id]: { verdict: "never_executed" } });
+    const checkPublishedWithdraw = vi.fn(() => new Promise<never>(() => {}));
+    return { id, readWithdrawVerdicts, judge, checkPublishedWithdraw };
+  }
+
+  it("re-reads on return to the tab, closes the record, and restarts no other check", async () => {
+    const { readWithdrawVerdicts, judge, checkPublishedWithdraw } = seedUnconfirmed();
+    const onNeverExecuted = vi.fn();
+    renderHook(() =>
+      usePendingWithdrawals({
+        intentsAccountId: ACCOUNT,
+        readWithdrawVerdicts: readWithdrawVerdicts as never,
+        checkPublishedWithdraw,
+        onNeverExecuted,
+      })
+    );
+    await act(async () => {});
+    expect(listWithdrawRecords()[0]).toMatchObject({ status: "published" });
+
+    judge();
+    setVisibility("hidden");
+    await act(async () => {});
+    expect(readWithdrawVerdicts).toHaveBeenCalledOnce();
+
+    setVisibility("visible");
+    await act(async () => {});
+
+    expect(readWithdrawVerdicts).toHaveBeenCalledTimes(2);
+    expect(listWithdrawRecords()[0]).toMatchObject({ status: "failed" });
+    expect(onNeverExecuted).toHaveBeenCalledOnce();
+    expect(checkPublishedWithdraw).toHaveBeenCalledOnce();
+  });
+
+  it("re-reads on a timer while the tab is visible, never while hidden", async () => {
+    vi.useFakeTimers();
+    const { readWithdrawVerdicts, judge, checkPublishedWithdraw } = seedUnconfirmed();
+    renderHook(() =>
+      usePendingWithdrawals({
+        intentsAccountId: ACCOUNT,
+        readWithdrawVerdicts: readWithdrawVerdicts as never,
+        checkPublishedWithdraw,
+      })
+    );
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    judge();
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    await act(() => vi.advanceTimersByTimeAsync(VERDICT_REREAD_MS));
+    expect(readWithdrawVerdicts).toHaveBeenCalledOnce();
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    await act(() => vi.advanceTimersByTimeAsync(VERDICT_REREAD_MS));
+    expect(readWithdrawVerdicts).toHaveBeenCalledTimes(2);
+    expect(listWithdrawRecords()[0]).toMatchObject({ status: "failed" });
+
+    // Nothing open any more: the timer keeps running but asks nothing.
+    await act(() => vi.advanceTimersByTimeAsync(VERDICT_REREAD_MS));
+    expect(readWithdrawVerdicts).toHaveBeenCalledTimes(2);
+  });
+
+  it("reaches a record opened after mount, and stops listening once the page closes", async () => {
+    const readWithdrawVerdicts = vi.fn().mockResolvedValue({});
+    const { unmount } = renderHook(() =>
+      usePendingWithdrawals({ intentsAccountId: ACCOUNT, readWithdrawVerdicts })
+    );
+    await act(async () => {});
+    expect(readWithdrawVerdicts).not.toHaveBeenCalled();
+
+    const id = seedRescueRecord();
+    updateWithdrawRecord(id, { status: "published", intentHash: "INTENTHASH" });
+    setVisibility("visible");
+    await act(async () => {});
+    expect(readWithdrawVerdicts).toHaveBeenCalledWith([id]);
+
+    unmount();
+    setVisibility("visible");
+    await act(async () => {});
+    expect(readWithdrawVerdicts).toHaveBeenCalledOnce();
   });
 });

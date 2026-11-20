@@ -86,15 +86,16 @@ vi.mock("@/features/bridge", () => ({
     return props.open ? <div>receive-open</div> : null;
   },
   WithdrawalModal: () => null,
-  useRecentDeposits: (hooks: { onCredited: (deposit: unknown) => void }) => {
-    state.depositHooks = hooks;
-    return { deposits: [] };
-  },
   usePendingWithdrawals: (hooks: Record<string, (record: unknown) => void>) => {
     state.withdrawalHooks = hooks;
     return [];
   },
   dismissWithdrawal: () => false,
+}));
+vi.mock("@/features/bridge/hooks/use-deposit-watch", () => ({
+  useDepositWatch: (hooks: { onCredited: (deposit: unknown) => void }) => {
+    state.depositHooks = hooks;
+  },
 }));
 vi.mock("@/features/wallet/hooks/use-intents-balances", () => ({
   intentsBalancesQueryKey: (id: string) => ["intents-balances", id],
@@ -359,15 +360,16 @@ describe("DashboardShell — telling the history", () => {
     expect(told()).toEqual([[ACCOUNT, null]]);
   });
 
-  it("a bridge deposit asks for a catch-up: its hash is the origin chain's", () => {
+  it("a Receive deposit, read off the history, asks for a catch-up with no hash: the history already has it", () => {
     renderShell();
     act(() =>
       state.depositHooks!.onCredited({
-        near_token_id: "nep141:wrap.near",
-        amount: 10 ** 24,
-        decimals: 24,
-        chain: "eth:1",
-        tx_hash: "0x" + "ab".repeat(32),
+        key: "CreditTx:near:mainnet",
+        tokenId: "near",
+        chainId: "near:mainnet",
+        amountRaw: "1000000000000000000000000",
+        txHash: "CreditTx",
+        ts: 0,
       })
     );
     expect(told()).toEqual([[ACCOUNT, null]]);

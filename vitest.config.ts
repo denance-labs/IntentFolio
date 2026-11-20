@@ -11,5 +11,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Default is cores - 1 (15 on the dev machine): two parallel runs
+    // exhausted WSL's memory and froze every session. Keep this low.
+    maxWorkers: 4,
   }
 });

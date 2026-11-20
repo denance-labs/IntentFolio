@@ -17,6 +17,7 @@ import {
 import { toRegistryTokenId } from "@/features/market/lib/intents-token-id";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { chainRegistry } from "@/features/bridge/lib/chain-registry";
+import { getWithdrawalEntry } from "@/features/bridge/lib/withdrawal-registry";
 import type {
   WithdrawalInFlightRecord,
   WithdrawalStatusKind,
@@ -65,7 +66,27 @@ export type CompletedActivity =
       qty: number;
       /** Base units as the chain wrote them, for the joins. */
       amount: string;
+      /**
+       * Only on a withdrawal the solver closed as delivered (D-582): the tx on the chain it
+       * landed on. Absent, the row says only that it left ("Sent").
+       */
+      destination?: { chainId: string; txHash: string };
     };
+
+/** A destination tx the row may link: the solver's own filter (`DESTINATION_TX_RE`), again. */
+const DESTINATION_TX_RE = /^[0-9A-Za-z+/=_-]{16,128}$/;
+
+/**
+ * Where a withdrawal landed, if the history says so. The chain is the token's own withdrawal
+ * chain from the registry, never the record's: a destination tx only exists on the bridge
+ * routes (`omft`, `omni`), which deliver to that chain alone; a withdrawal to NEAR has none.
+ */
+function destinationOf(tokenId: string, raw: unknown): { chainId: string; txHash: string } | undefined {
+  if (typeof raw !== "string" || !DESTINATION_TX_RE.test(raw)) return undefined;
+  const entry = getWithdrawalEntry(tokenId);
+  if (!entry || (entry.bridgeRoute !== "omft" && entry.bridgeRoute !== "omni")) return undefined;
+  return Object.hasOwn(chainRegistry, entry.chainId) ? { chainId: entry.chainId, txHash: raw } : undefined;
+}
 
 /** Rows per "show more" step, here and in a portfolio's History (D-364 5). */
 export const ACTIVITY_PAGE_SIZE = 20;
@@ -106,6 +127,7 @@ export function toCompletedActivity(events: ChainHistoryEvent[], names: Readonly
       const tokenId = toRegistryTokenId(String(e.data.token ?? ""));
       const qty = quantityOf(tokenId, e.data.amount);
       if (qty === null) continue;
+      const destination = e.event === ACCOUNT_WITHDRAWAL_EVENT ? destinationOf(tokenId, e.data.destination_tx) : undefined;
       rows.push({
         kind: e.event === ACCOUNT_DEPOSIT_EVENT ? "deposit" : "withdrawal",
         id: `${e.txHash}:${e.index}`,
@@ -114,6 +136,7 @@ export function toCompletedActivity(events: ChainHistoryEvent[], names: Readonly
         tokenId,
         qty,
         amount: String(e.data.amount),
+        ...(destination && { destination }),
       });
       continue;
     }
@@ -239,26 +262,19 @@ function movements(completed: CompletedActivity[], kind: ChainMovement["kind"]):
  *
  *   - a withdrawal still tracked hides its chain row by the NEAR transaction hash until the
  *     tracker says DELIVERED — the burn lands at settlement, while the bridge may still be
- *     delivering, and "in progress" is the truth until then. Once DELIVERED the chain row wins.
- *     The tracked row learns the hash at settlement (`onSettled`, 028-7), not at delivery;
- *   - a bridge deposit the bridge reports credited is the history's once it has been read: the
- *     history database records every deposit for every browser (028-7), and its row may sit on
- *     a page not loaded yet, or before the floor (decision 7) — the bridge lists its last
- *     deposits whatever their age, with no time to tell them apart. Only the pending ones stay.
- * A deposit from the NEAR wallet needs no join any more (D-490): the local ledger's row is gone.
+ *     delivering, and "in progress" is the truth until then. Once DELIVERED (or SENT) the chain row wins.
+ *     The tracked row learns the hash at settlement (`onSettled`, 028-7), not at delivery.
+ * Deposits need no join: the NEAR wallet's local ledger row is gone (D-490), and so is PoA's
+ * deposit list (its Bridge API closed, D-584) — the history has them all.
  *
  * Before the history read lands nothing is hidden, so the feed degrades to today's lists.
  */
-export function joinActivity<B extends { credited: boolean }>(params: {
+export function joinActivity(params: {
   completed: CompletedActivity[];
-  /** The history read has landed (`completed` is what it holds so far). */
-  historyRead: boolean;
   withdrawals: WithdrawalInFlightRecord[];
-  bridgeDeposits: B[];
 }): {
   completed: CompletedActivity[];
   withdrawals: WithdrawalInFlightRecord[];
-  bridgeDeposits: B[];
 } {
   const withdrawalRows = movements(params.completed, "withdrawal");
   const hiddenChainRows = new Set<string>();
@@ -266,17 +282,15 @@ export function joinActivity<B extends { credited: boolean }>(params: {
   const withdrawals = params.withdrawals.filter((w) => {
     const onChain = w.txHash ? withdrawalRows.filter((m) => m.txHash === w.txHash) : [];
     if (onChain.length === 0) return true;
-    if (w.status === "DELIVERED") return false;
+    // SENT (D-584) hands over the same way: it is final, and the chain row says the same "Sent".
+    if (w.status === "DELIVERED" || w.status === "SENT") return false;
     onChain.forEach((m) => hiddenChainRows.add(m.id));
     return true;
   });
 
-  const bridgeDeposits = params.historyRead ? params.bridgeDeposits.filter((d) => !d.credited) : params.bridgeDeposits;
-
   return {
     completed: params.completed.filter((r) => !hiddenChainRows.has(r.id)),
     withdrawals,
-    bridgeDeposits,
   };
 }
 

@@ -8,6 +8,10 @@
 //   - what paging takes away comes back: names, a rename's previous name, an edit's detail;
 //   - a `transfer_out` is a Converting Withdrawal only with a conversion record for that
 //     account and address the solver closed (010's view: final verdicts only, the oldest wins);
+//   - a direct withdrawal carries its destination tx only from a delivered verdict of that
+//     account, tx and token (012's view, D-582);
+//   - a deposit to a 1Click address set (D-584) is the `transfer_in` from one of the account's
+//     own sets (013 + 015), and no other incoming transfer is shown;
 //   - a first visit follows the account after answering, and `expect` records before it.
 //
 //   cd ../intentfolio-solver && docker compose -f db/local/docker-compose.yml up -d && yarn db:migrate:local
@@ -23,7 +27,9 @@ import { HISTORY_READER_URL_VAR, HISTORY_WRITER_URL_VAR } from "@/features/vault
 import type { AccountTxRow, FastNearTx } from "@/features/vault/lib/vault-history-client";
 import {
   ACCOUNT_CONVERSION_EVENT,
+  ACCOUNT_DEPOSIT_EVENT,
   ACCOUNT_STORAGE_COST_EVENT,
+  ACCOUNT_WITHDRAWAL_EVENT,
   extractAccountEvents,
   type ChainHistoryEvent,
 } from "@/features/vault/lib/vault-history";
@@ -42,6 +48,7 @@ import {
   EDIT,
   EDIT_ALLOCATE_INTO,
   FAILED_TRANSFER,
+  RDA_DEPOSIT,
   RECEIVED_WITHDRAWAL,
   TRANSFER_HEX,
   UNALLOCATE,
@@ -298,6 +305,90 @@ suite("account history read — against a real Postgres 16, as the reader role",
     // A portfolio's History never shows it.
     const portfolio = ok((await read(account, vault, { portfolio: "p_000000000000" })).body);
     expect(portfolio.events.some((e) => e.event === ACCOUNT_CONVERSION_EVENT)).toBe(false);
+  });
+
+  it("a deposit to a 1Click address set (D-584): shown only once the internal account it came from is one of THIS account's sets", async () => {
+    const account = `u${tag()}.test.near`;
+    const vault = `v${tag()}.test.near`;
+    const internal = randomBytes(32).toString("hex");
+    const swaps = {
+      [NEAR]: account,
+      [`"executor_id":"${REAL_VAULT}"`]: `"executor_id":"${vault}"`,
+      "73a18e04c7c535a31e2682bd47ee68732095542b0f7ba56624216921f76735a7": internal,
+    };
+    const suffix = tag();
+    const [rda, unallocate] = [RDA_DEPOSIT, UNALLOCATE].map((tx) => rekey(tx, swaps, suffix));
+    await recorded([rda, unallocate], account, vault);
+    const deposits = async () => ok((await read(account, vault)).body).events.filter((e) => e.event === ACCOUNT_DEPOSIT_EVENT);
+    const insertSet = (accountId: string, internalAccount: string) =>
+      owner.query("INSERT INTO account_deposit_address (account_id, internal_account, chain_addresses) VALUES ($1, $2, '[{}]'::jsonb)", [
+        accountId,
+        internalAccount,
+      ]);
+
+    // Recorded, not shown: the account has no set yet; then a set of ANOTHER account's.
+    const stored = await owner.query("SELECT kind, counterparty FROM account_movement WHERE account_id = $1 ORDER BY counterparty", [account]);
+    expect(stored.rows.filter((r) => r.kind === "transfer_in").map((r) => r.counterparty).sort()).toEqual([internal, REAL_VAULT].sort());
+    expect(await deposits()).toEqual([]);
+    await insertSet(`x${tag()}.test.near`, randomBytes(32).toString("hex"));
+    expect(await deposits()).toEqual([]);
+
+    // Its own set: the deposit, with the token and amount 1Click credited; the vault's transfer
+    // back (an unallocate) is still not a deposit.
+    await insertSet(account, internal);
+    expect(await deposits()).toEqual([
+      expect.objectContaining({
+        txHash: rda.transaction.hash,
+        data: { account_id: account, token: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", amount: "494880" },
+      }),
+    ]);
+  });
+
+  it("a direct withdrawal's destination tx (D-582): only from a delivered verdict of that account, tx and token; the oldest wins", async () => {
+    const { account, vault, txs } = newCase();
+    await recorded(txs, account, vault);
+    const withdrawals = async () =>
+      ok((await read(account, vault)).body).events.filter((e) => e.event === ACCOUNT_WITHDRAWAL_EVENT);
+    const before = await withdrawals();
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((e) => !("destination_tx" in e.data))).toBe(true);
+    const [target] = before;
+    const token = String(target.data.token);
+
+    const insertRecord = async (signer: string, tokenId: string, receivedAt: string) => {
+      const id = randomUUID();
+      await owner.query(
+        `INSERT INTO withdraw_record (id, kind, signer_id, token_id, amount, chain_id, route, destination_address,
+                                      nonce, deadline, signed_payload, created_at, received_at)
+         VALUES ($1, 'direct', $2, $3, '1', 'zec:mainnet', 'omni', 't1destination',
+                 'nonce', now() + interval '1 hour', '{}'::jsonb, $4::timestamptz, $4::timestamptz)`,
+        [id, signer, tokenId, receivedAt]
+      );
+      return id;
+    };
+    const verdict = (id: string, v: string, tx: string | null, destinationTx: string | null) =>
+      owner.query(`INSERT INTO withdraw_verdict (record_id, verdict, detail) VALUES ($1, $2, $3::jsonb)`, [
+        id,
+        v,
+        JSON.stringify({ tx, destinationTx, block: null, checks: [] }),
+      ]);
+
+    // Another account's, another token's, or another tx's delivered verdict matches nothing.
+    await verdict(await insertRecord(`x${tag()}.test.near`, token, "2026-10-15T00:00:00Z"), "delivered", target.txHash, "otheraccountdesttx");
+    await verdict(await insertRecord(account, "nep141:other.near", "2026-10-15T00:00:00Z"), "delivered", target.txHash, "othertokendesttx00");
+    await verdict(await insertRecord(account, token, "2026-10-15T00:00:00Z"), "delivered", "SomeOtherTx", "othertxdesttx0000");
+    // `settled` is not an outcome.
+    const genuine = await insertRecord(account, token, "2026-10-15T00:00:01Z");
+    await verdict(genuine, "settled", target.txHash, null);
+    expect(await withdrawals()).toEqual(before);
+
+    await verdict(genuine, "delivered", target.txHash, "zcashdestinationtx01");
+    const after = await withdrawals();
+    expect(after).toHaveLength(before.length);
+    expect(after.find((e) => e.txHash === target.txHash)?.data).toEqual({ ...target.data, destination_tx: "zcashdestinationtx01" });
+    // A later record of the same transfer never doubles the row nor replaces the first.
+    await verdict(await insertRecord(account, token, "2026-10-15T00:00:02Z"), "delivered", target.txHash, "zcashdestinationtx02");
+    expect(await withdrawals()).toEqual(after);
   });
 
   it(`pages of ${PAGE_TXS} transactions: \`next\` walks every one once, newest first; a mint with another memo is never shown`, async () => {

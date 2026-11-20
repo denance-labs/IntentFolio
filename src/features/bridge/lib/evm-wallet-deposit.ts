@@ -12,9 +12,12 @@
 //     network switch, the wallet refusing for lack of gas. Anything else after the click may have
 //     been broadcast, so it is `unconfirmed` and asks the user to check before depositing again.
 //   - A receipt decides the chain's part: `reverted` moved nothing but gas.
-//   - The bridge decides the rest: `credited` once it lists this transaction as completed. If it
-//     has not within the watch, the deposit is `sent`, on its way; the dashboard's deposit poller
-//     credits and announces it when it lands (the same path as a QR deposit).
+//   - The account's history decides the rest (D-584: PoA's API, which listed the transaction,
+//     closed): `credited` once it shows a deposit of this token that was not there when the chain
+//     confirmed. It cannot name the EVM transaction (1Click credits from its own account), so a
+//     deposit already listed at the first read is never taken for this one. If none appears
+//     within the watch, the deposit is `sent`, on its way; the dashboard's deposit watch
+//     announces it when it lands (the same path as a QR deposit).
 
 import {
   encodeFunctionData,
@@ -26,8 +29,7 @@ import {
 } from "viem";
 import type { EvmTransactionRequest } from "@/features/login-wallet/types";
 import { EvmChainSwitchError, EvmChainSwitchTimeoutError } from "@/features/login-wallet/lib/evm-send-errors";
-import { getDepositStatus, type DepositStatusEntry } from "./bridge-client";
-import { isDepositCredited } from "./deposit-status";
+import { creditedDeposits, fetchHistoryEvents, type CreditedDeposit } from "./deposit-watch";
 import { evmDepositClient } from "./evm-rpc";
 import { EVM_WALLET_TOKENS, defaultEvmHoldingReads, type EvmHoldingReads, type EvmWalletToken } from "./evm-wallet-holdings";
 
@@ -191,6 +193,7 @@ export type EvmDepositResult =
   | { kind: "failed"; cause: EvmDepositFailureCause; txHash: Hex | null }
   | { kind: "unconfirmed"; txHash: Hex | null; message: string }
   | { kind: "sent"; txHash: Hex }
+  /** `amount`: what the history shows credited, in base units (1Click may keep a fee). */
   | { kind: "credited"; txHash: Hex; amount: bigint };
 
 /** Results after which sending again is safe: each one proves nothing moved. */
@@ -249,9 +252,10 @@ export type EvmReceiptOutcome =
 export const EVM_RECEIPT_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * How long the bridge is watched after the chain confirmed: 15 minutes. Measured in the real-money
- * test (2026-10-26), from the block to the credit: ~11 s on Arbitrum, ~70 s on Ethereum (twice).
- * Past it the deposit is `sent`, not lost: the dashboard's poller credits it.
+ * How long the history is watched after the chain confirmed: 15 minutes. Measured in the real-money
+ * tests, from the block to the credit: ~11 s on Arbitrum, ~70 s on Ethereum (2026-10-26, PoA);
+ * under 2 min on Base through a 1Click address set (2026-11-15). Past it the deposit is `sent`,
+ * not lost: the dashboard's deposit watch announces it.
  */
 export const BRIDGE_WATCH_ATTEMPTS = 60;
 export const BRIDGE_WATCH_INTERVAL_MS = 15_000;
@@ -278,14 +282,10 @@ async function defaultWaitForReceipt(chainId: string, hash: Hex): Promise<EvmRec
   }
 }
 
-/** Same hash, whatever case or prefix the bridge writes it in. */
-function sameHash(a: string, b: string): boolean {
-  return a.toLowerCase().replace(/^0x/, "") === b.toLowerCase().replace(/^0x/, "");
-}
-
-async function defaultFindDeposit(intentsAccountId: string, hash: Hex): Promise<DepositStatusEntry | null> {
-  const { deposits } = await getDepositStatus(intentsAccountId);
-  return deposits.find((d) => sameHash(d.tx_hash, hash)) ?? null;
+/** The deposits of `tokenId` on the account's newest history page, or null when it could not be read. */
+async function defaultFindDeposits(intentsAccountId: string, tokenId: string): Promise<CreditedDeposit[] | null> {
+  const events = await fetchHistoryEvents(intentsAccountId);
+  return events === null ? null : creditedDeposits(events).filter((d) => d.tokenId === tokenId);
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -293,7 +293,7 @@ const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(reso
 export type RunEvmWalletDepositInput = {
   token: EvmWalletToken;
   tx: EvmTransactionRequest;
-  /** What was signed, in base units: what `credited` reports. */
+  /** What was signed, in base units. */
   amount: bigint;
   /** Whose funding account the deposit address credits. */
   intentsAccountId: string;
@@ -303,7 +303,7 @@ export type RunEvmWalletDepositInput = {
   /** The chain confirmed it: the funds left the wallet. */
   onConfirmed?: (hash: Hex) => void;
   waitForReceipt?: (chainId: string, hash: Hex) => Promise<EvmReceiptOutcome>;
-  findDeposit?: (intentsAccountId: string, hash: Hex) => Promise<DepositStatusEntry | null>;
+  findDeposits?: (intentsAccountId: string, tokenId: string) => Promise<CreditedDeposit[] | null>;
   sleep?: (ms: number) => Promise<void>;
 };
 
@@ -341,15 +341,20 @@ export async function runEvmWalletDeposit(input: RunEvmWalletDepositInput): Prom
   const minedHash = receipt.txHash;
   input.onConfirmed?.(minedHash);
 
-  const find = input.findDeposit ?? defaultFindDeposit;
+  const find = input.findDeposits ?? defaultFindDeposits;
   const sleep = input.sleep ?? realSleep;
+  // The deposits of this token the first successful read lists are someone else's moment: only
+  // one that appears after it is this deposit. One that lands before that read stays `sent`.
+  let before: Set<string> | null = null;
   for (let attempt = 0; attempt < BRIDGE_WATCH_ATTEMPTS; attempt++) {
-    const entry = await find(input.intentsAccountId, minedHash).catch(() => null);
-    if (entry && isDepositCredited(entry.status)) {
-      return { kind: "credited", txHash: minedHash, amount: input.amount };
-    }
-    if (entry?.status === "FAILED") {
-      return { kind: "unconfirmed", txHash: minedHash, message: "The bridge reported the deposit as failed" };
+    const found = await find(input.intentsAccountId, input.token.tokenId).catch(() => null);
+    if (found !== null) {
+      if (before === null) {
+        before = new Set(found.map((d) => d.key));
+      } else {
+        const arrived = found.find((d) => !before!.has(d.key));
+        if (arrived) return { kind: "credited", txHash: minedHash, amount: BigInt(arrived.amountRaw) };
+      }
     }
     await sleep(BRIDGE_WATCH_INTERVAL_MS);
   }

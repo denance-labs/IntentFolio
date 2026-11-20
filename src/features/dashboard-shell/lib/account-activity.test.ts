@@ -101,6 +101,31 @@ describe("toCompletedActivity", () => {
     expect(rows[0]).toMatchObject({ kind: "deposit", tokenId: "near", qty: 1 });
   });
 
+  it("a withdrawal carries where it landed only with a destination tx on a bridge route (D-582)", () => {
+    const raw = (event: string, token: string, destination_tx: unknown, index: number): ChainHistoryEvent => ({
+      txHash: `h${index}`,
+      index: 0,
+      ts: 1,
+      event,
+      data: { account_id: USER, token, amount: "500000", destination_tx },
+    });
+    const ZEC_TX = "0ca4c1687d8e3b0f2a9e4c51b7d3a6f8e2c9b0a1d4f7e3c6b9a2d5f8e1c4b7a0";
+    const rows = toCompletedActivity([
+      raw("intents:withdrawal", "nep141:zec.omft.near", ZEC_TX, 0),
+      // No verdict yet: as before, only "Sent".
+      raw("intents:withdrawal", "nep141:zec.omft.near", undefined, 1),
+      // A NEAR token has no destination chain to link: ignored.
+      raw("intents:withdrawal", "nep141:usdt.tether-token.near", ZEC_TX, 2),
+      // Not a hash: never passed along as text.
+      raw("intents:withdrawal", "nep141:zec.omft.near", "<a href=x>", 3),
+      // A deposit never carries one.
+      raw("intents:deposit", "nep141:zec.omft.near", ZEC_TX, 4),
+    ]) as MovementRow[];
+    const byTx = new Map(rows.map((r) => [r.txHash, r.destination]));
+    expect(byTx.get("h0")).toEqual({ chainId: "zec:mainnet", txHash: ZEC_TX });
+    expect([1, 2, 3, 4].map((i) => byTx.get(`h${i}`))).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
   it("funds added and moved out in one transaction are an edit, not either one", () => {
     const e = (event: string, index: number): ChainHistoryEvent => ({
       txHash: "h",
@@ -152,7 +177,7 @@ describe("joinActivity", () => {
   const completed = toCompletedActivity(S217);
   const chainWithdrawal = completed.find((r): r is MovementRow => r.kind === "withdrawal")!;
   const chainDeposit = completed.find((r): r is MovementRow => r.kind === "deposit")!;
-  const none = { historyRead: true, withdrawals: [], bridgeDeposits: [] };
+  const none = { withdrawals: [] };
 
   const tracked = (status: WithdrawalInFlightRecord["status"]): WithdrawalInFlightRecord => ({
     intentId: "w1",
@@ -178,29 +203,31 @@ describe("joinActivity", () => {
     expect(out.completed.some((r) => r.id === chainWithdrawal.id)).toBe(true);
   });
 
+  // D-584: an `omft` withdrawal ends as sent — final, so the chain's own "Sent" row takes over.
+  it("once sent, the chain's row stays and the tracked one leaves", () => {
+    const out = joinActivity({ ...none, completed, withdrawals: [tracked("SENT")] });
+    expect(out.withdrawals).toEqual([]);
+    expect(out.completed.some((r) => r.id === chainWithdrawal.id)).toBe(true);
+  });
+
   it("a delivered withdrawal the chain read does not have yet stays tracked", () => {
     const out = joinActivity({ ...none, completed: [], withdrawals: [tracked("DELIVERED")] });
     expect(out.withdrawals).toHaveLength(1);
   });
 
-  const bridge = (amount: number, credited: boolean) => ({ amount, credited });
-
-  // 028-7: the bridge lists its last deposits whatever their age, with no time; the matching
-  // row may be on a page not loaded yet, or before the floor. Once read, the history has them.
-  it("once the history is read, a credited bridge deposit is the history's, matched or not; a pending one stays", () => {
-    const out = joinActivity({ ...none, completed, bridgeDeposits: [bridge(2457698, true), bridge(1, true), bridge(5, false)] });
-    expect(out.bridgeDeposits).toEqual([bridge(5, false)]);
-    expect(out.completed).toContain(chainDeposit);
+  it("a sent withdrawal the chain read does not have yet stays tracked", () => {
+    const out = joinActivity({ ...none, completed: [], withdrawals: [tracked("SENT")] });
+    expect(out.withdrawals).toHaveLength(1);
   });
 
   it("before the chain read lands nothing is hidden", () => {
-    const out = joinActivity({
-      completed: [],
-      historyRead: false,
-      withdrawals: [tracked("SETTLED")],
-      bridgeDeposits: [bridge(2457698, true)],
-    });
-    expect([out.withdrawals.length, out.bridgeDeposits.length]).toEqual([1, 1]);
+    const out = joinActivity({ completed: [], withdrawals: [tracked("SETTLED")] });
+    expect(out.withdrawals).toHaveLength(1);
+  });
+
+  it("a chain deposit passes through untouched", () => {
+    const out = joinActivity({ ...none, completed });
+    expect(out.completed).toContain(chainDeposit);
   });
 });
 

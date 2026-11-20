@@ -1,5 +1,4 @@
 import type { TokenDefinition } from "../types";
-import { toRegistryTokenId } from "./intents-token-id";
 import { STOCK_TOKENS } from "./stock-tokens";
 
 // Source: 1Click intent solver token catalog (https://1click.chaindefuser.com/v0/tokens)
@@ -108,10 +107,47 @@ export const tokenRegistry: TokenDefinition[] = [
     depositable: true,
     assetName: "USDC",
   },
+  // D-581: the Omni ids (`…omdep.near`) that replaced the HOT ones below on BNB Chain, Polygon
+  // and Avalanche. Listed BEFORE their HOT twins on purpose: `depositTokenIdFor` takes the first
+  // match for an (asset, chain) pair, and a deposit now lands as the Omni id. The HOT twins stay
+  // (balances may still hold them) and say "old" in their name.
+  {
+    id: "nep141:pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near",
+    symbol: "USDC(POL)",
+    name: "USDC (on Polygon)",
+    contractId: "pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near",
+    decimals: 6,
+    category: "Stable",
+    fallbackUsdPrice: 0.999546,
+    depositable: true,
+    assetName: "USDC",
+  },
+  {
+    id: "nep141:bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near",
+    symbol: "USDC(BSC)",
+    name: "USDC (on BNB Chain)",
+    contractId: "bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near",
+    decimals: 18,
+    category: "Stable",
+    fallbackUsdPrice: 0.999546,
+    depositable: true,
+    assetName: "USDC",
+  },
+  {
+    id: "nep141:avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near",
+    symbol: "USDC(AVAX)",
+    name: "USDC (on Avalanche)",
+    contractId: "avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near",
+    decimals: 6,
+    category: "Stable",
+    fallbackUsdPrice: 0.999546,
+    depositable: true,
+    assetName: "USDC",
+  },
   {
     id: "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L",
     symbol: "USDC(POL)",
-    name: "USDC (on Polygon)",
+    name: "USDC (on Polygon, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 6,
     category: "Stable",
@@ -122,7 +158,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r",
     symbol: "USDC(BSC)",
-    name: "USDC (on BNB Chain)",
+    name: "USDC (on BNB Chain, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 18,
     category: "Stable",
@@ -133,7 +169,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:43114_3atVJH3r5c4GqiSYmg9fECvjc47o",
     symbol: "USDC(AVAX)",
-    name: "USDC (on Avalanche)",
+    name: "USDC (on Avalanche, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 6,
     category: "Stable",
@@ -234,10 +270,47 @@ export const tokenRegistry: TokenDefinition[] = [
     depositable: true,
     assetName: "USDT",
   },
+  // D-581: the Omni ids (`…omdep.near`) that replaced the HOT ones below on BNB Chain, Polygon
+  // and Avalanche. Listed BEFORE their HOT twins on purpose: `depositTokenIdFor` takes the first
+  // match for an (asset, chain) pair, and a deposit now lands as the Omni id. The HOT twins stay
+  // (balances may still hold them) and say "old" in their name.
+  {
+    id: "nep141:pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near",
+    symbol: "USDT(POL)",
+    name: "USDT (on Polygon)",
+    contractId: "pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near",
+    decimals: 6,
+    category: "Stable",
+    fallbackUsdPrice: 0.999182,
+    depositable: true,
+    assetName: "USDT",
+  },
+  {
+    id: "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near",
+    symbol: "USDT(BSC)",
+    name: "USDT (on BNB Chain)",
+    contractId: "bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near",
+    decimals: 18,
+    category: "Stable",
+    fallbackUsdPrice: 0.999182,
+    depositable: true,
+    assetName: "USDT",
+  },
+  {
+    id: "nep141:avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near",
+    symbol: "USDT(AVAX)",
+    name: "USDT (on Avalanche)",
+    contractId: "avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near",
+    decimals: 6,
+    category: "Stable",
+    fallbackUsdPrice: 0.999182,
+    depositable: true,
+    assetName: "USDT",
+  },
   {
     id: "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr",
     symbol: "USDT(POL)",
-    name: "USDT (on Polygon)",
+    name: "USDT (on Polygon, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 6,
     category: "Stable",
@@ -248,7 +321,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g",
     symbol: "USDT(BSC)",
-    name: "USDT (on BNB Chain)",
+    name: "USDT (on BNB Chain, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 18,
     category: "Stable",
@@ -259,7 +332,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:43114_372BeH7ENZieCaabwkbWkBiTTgXp",
     symbol: "USDT(AVAX)",
-    name: "USDT (on Avalanche)",
+    name: "USDT (on Avalanche, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 6,
     category: "Stable",
@@ -500,10 +573,45 @@ export const tokenRegistry: TokenDefinition[] = [
     fallbackUsdPrice: 0.930426,
     depositable: true,
   },
+  // D-581: the Omni ids (`…omdep.near`) that replaced the HOT ones below on BNB Chain, Polygon
+  // and Avalanche. Listed BEFORE their HOT twins on purpose: `depositTokenIdFor` takes the first
+  // match for an (asset, chain) pair, and a deposit now lands as the Omni id. The HOT twins stay
+  // (balances may still hold them) and say "old" in their name.
+  {
+    id: "nep141:bnb.omdep.near",
+    symbol: "BNB",
+    name: "BNB (on BNB Chain)",
+    contractId: "bnb.omdep.near",
+    decimals: 18,
+    category: "Core",
+    fallbackUsdPrice: 631.6,
+    depositable: true,
+    assetName: "BNB",
+  },
+  {
+    id: "nep141:avax.omdep.near",
+    symbol: "AVAX",
+    name: "Avalanche (on Avalanche)",
+    contractId: "avax.omdep.near",
+    decimals: 18,
+    category: "Core",
+    fallbackUsdPrice: 8.09,
+    depositable: true,
+  },
+  {
+    id: "nep141:pol.omdep.near",
+    symbol: "POL",
+    name: "Polygon (on Polygon)",
+    contractId: "pol.omdep.near",
+    decimals: 18,
+    category: "Core",
+    fallbackUsdPrice: 0.086469,
+    depositable: true,
+  },
   {
     id: "nep245:v2_1.omni.hot.tg:56_11111111111111111111",
     symbol: "BNB",
-    name: "BNB (on BNB Chain)",
+    name: "BNB (on BNB Chain, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 18,
     category: "Core",
@@ -514,7 +622,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:43114_11111111111111111111",
     symbol: "AVAX",
-    name: "Avalanche (on Avalanche)",
+    name: "Avalanche (on Avalanche, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 18,
     category: "Core",
@@ -524,7 +632,7 @@ export const tokenRegistry: TokenDefinition[] = [
   {
     id: "nep245:v2_1.omni.hot.tg:137_11111111111111111111",
     symbol: "POL",
-    name: "Polygon (on Polygon)",
+    name: "Polygon (on Polygon, old)",
     contractId: "v2_1.omni.hot.tg",
     decimals: 18,
     category: "Core",
@@ -760,20 +868,6 @@ export const tokenRegistry: TokenDefinition[] = [
 
 export function getTokenById(id: string): TokenDefinition | null {
   return tokenRegistry.find((token) => token.id === id) ?? null;
-}
-
-// Derives the canonical Defuse asset id for a PoA bridge `near_token_id`. NEP-245 (HOT
-// Omni) ids embed the token id after a colon (`<contract>:<token_id>`); NEP-141 ids are
-// bare contract accounts. `contractId` alone can't disambiguate NEP-245 tokens — every
-// HOT Omni entry shares the same `v2_1.omni.hot.tg` contract (D-235).
-export function assetIdForNearTokenId(nearTokenId: string): string {
-  return nearTokenId.includes(":") ? `nep245:${nearTokenId}` : `nep141:${nearTokenId}`;
-}
-
-// Resolves a bridge `near_token_id` to its registry entry, or null if unknown. The bridge names
-// NEAR `wrap.near`, which the registry keys `near` (D-421).
-export function getTokenByNearTokenId(nearTokenId: string): TokenDefinition | null {
-  return getTokenById(toRegistryTokenId(assetIdForNearTokenId(nearTokenId)));
 }
 
 // Display ticker for a token id (Defuse asset id). Resolves through the registry; for a token

@@ -6,12 +6,13 @@ vi.mock("@/features/login-wallet", () => ({
   useLoginWallet: vi.fn(() => ({ intentsAccountId: "near:alice.near" })),
 }));
 
-vi.mock("../lib/bridge-client", () => ({
+vi.mock("../lib/deposit-address-client", () => ({
   getDepositAddress: vi.fn(),
 }));
 
 import { ReceiveModal } from "./receive-modal";
-import { getDepositAddress } from "../lib/bridge-client";
+import { getDepositAddress } from "../lib/deposit-address-client";
+import { depositExpectedSince } from "../lib/deposit-watch";
 
 const BRIDGE_ADDRESS = "0xbr1dge0000000000000000000000000000000000";
 
@@ -48,8 +49,6 @@ function rowLabels(): string[] {
 beforeEach(() => {
   vi.mocked(getDepositAddress).mockResolvedValue({
     address: BRIDGE_ADDRESS,
-    chain: "eth:1",
-    memo: undefined,
   });
   vi.stubGlobal(
     "fetch",
@@ -86,7 +85,7 @@ describe("ReceiveModal — chain step", () => {
     acknowledgeNetwork();
     expect(screen.getByText(BRIDGE_ADDRESS)).toBeTruthy();
     // The trap D-182 warned about: a single network must NOT imply a direct transfer.
-    expect(getDepositAddress).toHaveBeenCalledWith("near:alice.near", "sol:mainnet", undefined);
+    expect(getDepositAddress).toHaveBeenCalledWith("near:alice.near", "sol:mainnet");
   });
 
   // D-176. NEAR used to skip step 2 as a "direct transfer" and show `alice.near` — the
@@ -100,9 +99,16 @@ describe("ReceiveModal — chain step", () => {
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());
     acknowledgeNetwork();
 
-    expect(getDepositAddress).toHaveBeenCalledWith("near:alice.near", "near:mainnet", undefined);
+    expect(getDepositAddress).toHaveBeenCalledWith("near:alice.near", "near:mainnet");
     expect(screen.getByText(BRIDGE_ADDRESS)).toBeTruthy();
     expect(screen.queryByText("alice.near")).toBeNull();
+  });
+
+  it("showing an address starts the dashboard's deposit watch, on any network (D-584)", async () => {
+    expect(depositExpectedSince("near:alice.near")).toBeNull();
+    renderModal();
+    pickSingleNetwork("NEAR");
+    await waitFor(() => expect(depositExpectedSince("near:alice.near")).not.toBeNull());
   });
 
   // Regression: a chain held for one asset used to survive into the next — NEAR was
@@ -211,11 +217,11 @@ describe("ReceiveModal — chain step", () => {
 describe("ReceiveModal — deferred pairs (008 MVP allowlist)", () => {
   it("disables a deferred network but keeps it in the list", () => {
     renderModal();
-    fireEvent.click(row("USDC")); // 12 curated chains, 5 of them deferred
+    fireEvent.click(row("USDC")); // 12 curated chains, 4 of them deferred (Polygon left with D-581)
 
-    const polygon = row("Polygon");
-    expect(polygon.disabled).toBe(true);
-    expect(polygon.textContent).toContain("Not available yet");
+    const optimism = row("Optimism");
+    expect(optimism.disabled).toBe(true);
+    expect(optimism.textContent).toContain("Not available yet");
 
     // …and the live ones on that same list are untouched.
     const arbitrum = row("Arbitrum");
@@ -226,7 +232,7 @@ describe("ReceiveModal — deferred pairs (008 MVP allowlist)", () => {
   it("does not advance when a deferred network is clicked", () => {
     renderModal();
     fireEvent.click(row("USDC"));
-    fireEvent.click(row("Polygon"));
+    fireEvent.click(row("Optimism"));
     // Still on the network step: no acknowledgment checkbox, so no address is ever fetched.
     expect(screen.getByText("Select a network")).toBeTruthy();
     expect(screen.queryByRole("checkbox")).toBeNull();
@@ -240,12 +246,14 @@ describe("ReceiveModal — deferred pairs (008 MVP allowlist)", () => {
     fireEvent.click(row("USDC"));
 
     const labels = rowLabels();
-    const lastLive = Math.max(...["Arbitrum", "Base", "Ethereum", "NEAR", "Solana"].map((c) => labels.indexOf(c)));
-    const firstDeferred = Math.min(...["Aptos", "Polygon", "Stellar"].map((c) => labels.indexOf(c)));
+    const lastLive = Math.max(
+      ...["Arbitrum", "Avalanche", "Base", "BNB Chain", "Ethereum", "NEAR", "Polygon", "Solana"].map((c) => labels.indexOf(c))
+    );
+    const firstDeferred = Math.min(...["Aptos", "Optimism", "Stellar"].map((c) => labels.indexOf(c)));
     expect(firstDeferred).toBeGreaterThan(lastLive);
     // Alphabetical still holds inside each block.
     expect(labels.indexOf("Arbitrum")).toBeLessThan(labels.indexOf("Base"));
-    expect(labels.indexOf("Aptos")).toBeLessThan(labels.indexOf("Polygon"));
+    expect(labels.indexOf("Aptos")).toBeLessThan(labels.indexOf("Optimism"));
   });
 
   it("sinks a fully deferred asset below the selectable ones", () => {
@@ -294,12 +302,14 @@ describe("ReceiveModal — deferred pairs (008 MVP allowlist)", () => {
   // works (DOGE, BNB and DAI are all withdrawable), and it reads the same as every other gap.
   it("disables the assets with no NEAR version, with the one label", () => {
     renderModal();
-    for (const symbol of ["DAI", "DOGE", "BNB", "GRAM"]) {
+    for (const symbol of ["DAI", "DOGE", "GRAM"]) {
       const r = row(symbol);
       expect(r.disabled, symbol).toBe(true);
       expect(r.textContent, symbol).toContain("Not available yet");
     }
     expect(row("BTC").disabled).toBe(false);
+    // D-581: BNB's Omni id reaches a NEAR wallet as itself, so BNB came into the catalog.
+    expect(row("BNB").disabled).toBe(false);
   });
 });
 

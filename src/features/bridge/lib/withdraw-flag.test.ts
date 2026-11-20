@@ -99,9 +99,28 @@ describe("the Deposit-only set (D-201) — what opening the gate actually moved"
     const depositOnly = depositableTokens
       .map((token) => token.id)
       // A stock is never taken in: Receive does not offer it, and it leaves by being sold (plan 039).
-      .filter((tokenId) => !isStockToken(tokenId) && !gate({ ...signedIn, tokenId }));
+      // A `one-click` token never leaves directly: the conversion gate is its way out (next test).
+      .filter(
+        (tokenId) =>
+          !isStockToken(tokenId) &&
+          withdrawalRegistry[tokenId]?.bridgeRoute !== "one-click" &&
+          !gate({ ...signedIn, tokenId })
+      );
 
     expect(depositOnly).toEqual([]);
+  });
+
+  // D-581: the nine Omni ids leave through 1Click as themselves, so they need BOTH flags.
+  it("lets every one-click token out through the conversion gate, to its own chain", async () => {
+    const gate = await loadConversionGate({ real: "true", universal: "true" });
+    const oneClick = Object.keys(withdrawalRegistry).filter(
+      (tokenId) => withdrawalRegistry[tokenId].bridgeRoute === "one-click"
+    );
+    expect(oneClick).toHaveLength(9);
+    const stuck = oneClick.filter(
+      (heldTokenId) => !gate({ ...signedIn, heldTokenId, chainId: withdrawalRegistry[heldTokenId].chainId })
+    );
+    expect(stuck).toEqual([]);
   });
 
   it("counts all 15 hot-omni tokens executable: 11 EVM, Stellar's two, TON's two", async () => {
@@ -127,6 +146,7 @@ async function loadConversionGate(env: { real?: string; universal?: string }) {
 }
 
 const USDT_POL = "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr";
+const USDT_OP = "nep245:v2_1.omni.hot.tg:10_359RPSJVdTxwTJT9TyGssr2rFoWo";
 const NBTC = "nep141:nbtc.bridge.near";
 
 describe("isConversionRoute", () => {
@@ -168,6 +188,6 @@ describe("isConversionRoute", () => {
     expect(gate({ ...signedIn, heldTokenId: USDC_ARB, chainId: "eth:42161" })).toBe(false);
     // Not a family the delivery table converts, and a chain the family is not delivered to.
     expect(gate({ ...signedIn, heldTokenId: POL_NATIVE, chainId: "near:mainnet" })).toBe(false);
-    expect(gate({ ...signedIn, heldTokenId: USDT_POL, chainId: "eth:137" })).toBe(false);
+    expect(gate({ ...signedIn, heldTokenId: USDT_OP, chainId: "eth:10" })).toBe(false);
   });
 });

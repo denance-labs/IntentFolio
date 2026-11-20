@@ -1,7 +1,8 @@
 // Day-1 scope of the team testing MVP (008.plan §"Alcance del MVP de testeo del equipo",
-// LOCKED 2026-08-12). 40 of the 56 `withdrawalRegistry` rows are enabled; the other 16 are
+// LOCKED 2026-08-12). 49 of the 65 `withdrawalRegistry` rows are enabled; the other 16 are
 // shown as "Not available yet" and cannot be selected. (35 of 56 at the lock; XRP left the registry
-// with D-195, and BTC/DOGE/LTC came in with their validators, D-278.)
+// with D-195, BTC/DOGE/LTC came in with their validators, D-278, and the nine Omni ids of BNB
+// Chain, Polygon and Avalanche with D-581.)
 //
 // WHY THE CUT IS WHERE IT IS. Not by chain and not by token family, but by withdrawal route
 // and by native/non-native:
@@ -22,6 +23,11 @@
 //     would land first; it did not, and shipping them would have meant forwarding a typo to
 //     the bridge. Removed 2026-08-13, and back 2026-09-30 (017-4b) in the order that note
 //     asked for: base58check/bech32 validators first, then the three ids.
+//   - `one-click` (9) — BNB Chain, Polygon and Avalanche on their Omni ids (D-581): the three
+//     natives and USDC/USDT on each. 1Click delivers each as itself to an EVM address
+//     `validateAddress` checks; the solver's judge already reads that path (`/v0/status`). The
+//     natives also reach a NEAR wallet as themselves (`NEAR_REGISTRABLE_ONE_CLICK`), so unlike
+//     their HOT twins they ARE in the catalog below.
 //   - `hot-omni` (5 of 15) — natives only. `hot-fee.ts:652` returns `payment: "in-kind"` for
 //     the chain's native asset, so a native pays its gas in itself: one signature, no swap.
 //     The 10 non-native rows need the gas purchase (D-257) and wait for it.
@@ -97,6 +103,17 @@ export const DAY_ONE_TOKEN_IDS: ReadonlySet<string> = new Set([
 
   // ── omni (1) — ZEC straight to the Omni Bridge, to a t1/t3 address (D-580) ──
   "nep141:zec.omft.near",                                                    // ZEC
+
+  // ── one-click (9) — Omni ids delivered by 1Click as themselves (D-581) ───────
+  "nep141:bnb.omdep.near",                                                   // BNB
+  "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near",        // USDT (BSC)
+  "nep141:bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near",        // USDC (BSC)
+  "nep141:pol.omdep.near",                                                   // POL
+  "nep141:pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near",        // USDT (POL)
+  "nep141:pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near",        // USDC (POL)
+  "nep141:avax.omdep.near",                                                  // AVAX
+  "nep141:avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near",       // USDT (AVAX)
+  "nep141:avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near",       // USDC (AVAX)
 
   // ── hot-omni (5) — natives only; they pay gas in kind, so no purchase ────────
   "nep245:v2_1.omni.hot.tg:137_11111111111111111111",                        // POL

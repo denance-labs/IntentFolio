@@ -26,10 +26,9 @@
 
 import type { VaultSigner } from "@/features/vault/lib/vault-signer";
 import { buildGasPurchaseSignRequest, type GasPurchaseQuote } from "./gas-purchase";
-import { parsePublishResponse, PUBLISH_REQUEST_CONFIG, type WithdrawPublisher } from "./withdraw-submit";
+import { defaultWithdrawPublisher, parsePublishResponse, type WithdrawPublisher } from "./withdraw-submit";
 import { waitForWithdrawSettlement, type SettlementWaiter } from "./withdraw-poll";
 import { WithdrawError, type WithdrawFundsState } from "./withdraw-errors";
-import { solverRelay } from "@defuse-protocol/internal-utils";
 
 const ZERO = BigInt(0);
 
@@ -96,9 +95,6 @@ export type RunGasPurchaseParams = {
   /** Envelope tuning; injectable so tests are deterministic. */
   envelope?: { deadlineSecs?: number; nonce?: Uint8Array };
 };
-
-const defaultPublisher: WithdrawPublisher = (params) =>
-  solverRelay.httpClient.publishIntent(params, PUBLISH_REQUEST_CONFIG);
 
 function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -272,5 +268,5 @@ function publishWith(
   p: RunGasPurchaseParams,
   params: Parameters<WithdrawPublisher>[0]
 ): Promise<unknown> {
-  return (p.publish ?? defaultPublisher)(params);
+  return (p.publish ?? defaultWithdrawPublisher)(params);
 }

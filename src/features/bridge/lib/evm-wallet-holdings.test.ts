@@ -28,7 +28,9 @@ describe("EVM_WALLET_TOKENS", () => {
   it("is exactly the tokens Receive takes on an EVM chain", () => {
     const receivableOnEvm = depositableTokens
       .map((t) => t.id)
-      .filter((id) => withdrawalRegistry[id]?.chainId.startsWith("eth:") && isReceivable(id));
+      .filter((id) => withdrawalRegistry[id]?.chainId.startsWith("eth:") && isReceivable(id))
+      // D-583: the `one-click` chains (BNB Chain, Polygon, Avalanche) are not read from the wallet yet.
+      .filter((id) => withdrawalRegistry[id]?.bridgeRoute !== "one-click");
     expect(EVM_WALLET_TOKENS.map((t) => t.tokenId).sort()).toEqual([...receivableOnEvm].sort());
   });
 

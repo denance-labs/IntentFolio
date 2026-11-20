@@ -8,7 +8,6 @@ import { shellTranslations } from "../lib/translations";
 import { formatUsd } from "@/features/portfolio-editor/lib/format";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { mockContract } from "@/features/intents-account/mock-contract";
-import type { DepositStatusEntry } from "@/features/bridge";
 import type { WithdrawalInFlightRecord } from "@/features/intents-account/mock-contract/types";
 import { extractAccountEvents, type ChainHistoryEvent } from "@/features/vault/lib/vault-history";
 import {
@@ -388,24 +387,6 @@ describe("IntentsAccountView — a new account can build its portfolio first", (
     expect(buildFirst()).toBeNull();
   });
 
-  // D-412: a credited deposit with an empty balance — everything was withdrawn since, or the
-  // read has not caught up yet. Either way the banner would say funds arrived over nothing.
-  it("a credited deposit over an empty balance: no 'Create your first portfolio'", () => {
-    const deposit = {
-      tx_hash: "0xabc",
-      chain: "eth:1",
-      near_token_id: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near",
-      decimals: 6,
-      amount: 5_000_000,
-      status: "COMPLETED",
-      address: "0xdef",
-    } as unknown as DepositStatusEntry;
-    render(<IntentsAccountView onAddFunds={vi.fn()} onCreatePortfolio={vi.fn()} deposits={[deposit]} />);
-    expect(emptyState()).toBeTruthy();
-    expect(banner()).toBeNull();
-    expect(buildFirst()).toBeTruthy();
-  });
-
   it("not once funds are there: 'Create your first portfolio' is the way in", () => {
     state.balance = new Map([["near", 5]]);
     renderView();
@@ -515,6 +496,36 @@ describe("IntentsAccountView — Recent activity with the finished history", () 
     fireEvent.click(screen.getByRole("button", { name: t.activityShowMore }));
     expect(feed().getAllByText(t.historyEventDeposit)).toHaveLength(25);
     expect(screen.queryByRole("button", { name: t.activityShowMore })).toBeNull();
+  });
+
+  it("a delivered withdrawal (D-582): 'Delivered', and both transactions behind 'Show details'; a sent one keeps its hash", () => {
+    const ZEC_TX = "0ca4c1687d8e3b0f2a9e4c51b7d3a6f8e2c9b0a1d4f7e3c6b9a2d5f8e1c4b7a0";
+    const withdrawal = (txHash: string, ts: number, destination_tx?: string): ChainHistoryEvent => ({
+      txHash,
+      index: 0,
+      ts,
+      event: "intents:withdrawal",
+      data: { account_id: "pablofork.near", token: "nep141:zec.omft.near", amount: "500000", ...(destination_tx && { destination_tx }) },
+    });
+    ready([withdrawal("NearDeliveredTx1", 2_000, ZEC_TX), withdrawal("NearSentTx000002", 1_000)]);
+    render(<IntentsAccountView />);
+    const feed = within(screen.getByRole("region", { name: t.recentActivityHeading }));
+    expect(feed.getByText(t.withdrawalStatusDelivered)).toBeTruthy();
+    expect(feed.getByText(t.activityDoneSent)).toBeTruthy();
+    // One button: only the delivered row has two transactions. Collapsed, it shows no hash.
+    const toggle = feed.getByRole("button", { name: t.historyEventShowDetails });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const links = () => feed.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(links()).toEqual(["https://nearblocks.io/txns/NearSentTx000002"]);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.textContent).toBe(t.historyEventHideDetails);
+    expect(links()).toEqual([
+      "https://nearblocks.io/txns/NearDeliveredTx1",
+      `https://zcashblockexplorer.com/transactions/${ZEC_TX}`,
+      "https://nearblocks.io/txns/NearSentTx000002",
+    ]);
   });
 
   // 028-7: the history route's own states.
@@ -833,6 +844,15 @@ describe("IntentsAccountView — Converting Withdrawal rows (D-392, plan 020 §5
     expect(feed().queryByText(t.withdrawalStatusPending)).toBeNull();
   });
 
+  it("a withdrawal that never left says 'Not sent' and where the money is; other states do not", () => {
+    const { unmount } = render(<IntentsAccountView pendingWithdrawals={[row("FAILED")]} />);
+    expect(feed().getByText(t.withdrawalStatusFailed)).toBeTruthy();
+    expect(feed().getByText(t.withdrawalStillInFunding)).toBeTruthy();
+    unmount();
+    render(<IntentsAccountView pendingWithdrawals={[row("SETTLED")]} />);
+    expect(feed().queryByText(t.withdrawalStillInFunding)).toBeNull();
+  });
+
   it("an unconfirmed conversion shows the code to quote instead of the hash; other states do not", () => {
     const txHash = "9xT" + "1".repeat(40) + "abc";
     render(<IntentsAccountView pendingWithdrawals={[row("UNCONFIRMED", { txHash })]} />);
@@ -948,6 +968,16 @@ describe("IntentsAccountView — «Hide» on a withdrawal nothing could close (D
     expect(feed().queryByText(/couldn't confirm/)).toBeNull();
   });
 
+  // D-584: an `omft` withdrawal ends as sent — resolved, so neither a question nor a "Hide".
+  it("a SENT row says Sent, in the neutral style, never delivered, pending or unknown", () => {
+    render(<IntentsAccountView pendingWithdrawals={[row("SENT")]} onDismissWithdrawal={vi.fn()} />);
+    expect(feed().getByText(t.activityDoneSent).className).toContain("slate");
+    expect(feed().queryByText(t.withdrawalStatusDelivered)).toBeNull();
+    expect(feed().queryByText(t.withdrawalStatusPending)).toBeNull();
+    expect(feed().queryByText(/couldn't confirm/)).toBeNull();
+    expect(hide()).toBeNull();
+  });
+
   it("not before a full day, not on a mock row (the rest of the rule: withdrawals-in-flight.test)", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000 + DAY);
     render(<IntentsAccountView pendingWithdrawals={[row("UNCONFIRMED")]} onDismissWithdrawal={vi.fn()} />);
@@ -964,32 +994,6 @@ describe("IntentsAccountView — «Hide» on a withdrawal nothing could close (D
   });
 });
 
-// D-421 (a): the PoA bridge names NEAR `wrap.near`, which the registry keys `near`.
-describe("IntentsAccountView — a bridge deposit row names its token (D-421)", () => {
-  const depositRowText = (near_token_id: string) => {
-    const deposit = {
-      tx_hash: "0xabc",
-      chain: "near:mainnet",
-      near_token_id,
-      decimals: 24,
-      amount: 5e23,
-      status: "COMPLETED",
-      address: "alice.near",
-    } as unknown as DepositStatusEntry;
-    render(<IntentsAccountView onAddFunds={vi.fn()} onCreatePortfolio={vi.fn()} deposits={[deposit]} />);
-    // The onboarding step "Deposit" is a span too (029 B-19): only the activity row counts.
-    return screen.getByText(t.historyEventDeposit, { selector: "span:not([data-step-title])" }).parentElement?.textContent;
-  };
-
-  it("wrap.near reads as NEAR", () => {
-    expect(depositRowText("wrap.near")).toBe(`${t.historyEventDeposit}0.50 NEAR`);
-  });
-
-  it("an id the registry does not know still falls back to the id", () => {
-    expect(depositRowText("unknown.near")).toBe(`${t.historyEventDeposit}0.50 unknown.near`);
-  });
-});
-
 // D-524: each Funding account row shows what one token is worth; since D-561, labelled and under its name.
 describe("IntentsAccountView — the price of one token on each row (D-524)", () => {
   it("shows the unit price under the token, and nothing for a token without one", () => {
@@ -1003,6 +1007,34 @@ describe("IntentsAccountView — the price of one token on each row (D-524)", ()
     const price = tokens.getByText(`${t.myAccountTokenPrice} ${formatUsd(near.fallbackUsdPrice!)}`);
     expect(price.parentElement!.textContent).toContain("NEAR Protocol");
     expect(tokens.getAllByText(new RegExp(`^${t.myAccountTokenPrice} `))).toHaveLength(1);
+  });
+});
+
+// D-586: the list came in catalog order, so $8.64 of ZEC sat under $0.17 of USDT.
+describe("IntentsAccountView — tokens ordered by USD value (D-586)", () => {
+  const USDC_NEAR = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+
+  it("lists the largest USD value first, whatever the catalog order", () => {
+    const nearPrice = getTokenById("near")!.fallbackUsdPrice!;
+    // NEAR worth less than the USDC first, then more: the order follows the value, not the map.
+    state.balance = new Map([
+      ["near", 1],
+      [USDC_NEAR, nearPrice * 3],
+    ]);
+    renderView({ withPortfolios: true });
+    const symbols = () =>
+      within(screen.getByRole("region", { name: t.myAccountTokensHeading }))
+        .getAllByText(/^(NEAR|USDC\(NEAR\))$/)
+        .map((el) => el.textContent);
+    expect(symbols()).toEqual(["USDC(NEAR)", "NEAR"]);
+    cleanup();
+
+    state.balance = new Map([
+      [USDC_NEAR, 1],
+      ["near", 3 / nearPrice],
+    ]);
+    renderView({ withPortfolios: true });
+    expect(symbols()).toEqual(["NEAR", "USDC(NEAR)"]);
   });
 });
 

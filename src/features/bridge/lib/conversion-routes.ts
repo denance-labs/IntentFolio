@@ -19,13 +19,19 @@
 // registry, so a new family member shows up as a failing test that asks for a decision.
 //
 // WHAT IS LEFT OUT, AND WHERE IT IS WRITTEN DOWN (plan 020 §4)
-//   - USDC/USDT TO Polygon, BSC, Avalanche, Optimism, Stellar, TON, Sui or Aptos: 1Click does not
-//     quote "Polygon → Polygon" and the direct route needs the gas purchase (D-257). Those tokens
-//     are ORIGINS only.
+//   - USDC/USDT TO Optimism, Stellar, TON, Sui or Aptos: 1Click does not quote "Polygon → Polygon"
+//     for the HOT ids and the direct route needs the gas purchase (D-257). Those tokens are ORIGINS
+//     only. Polygon, BNB Chain and Avalanche came back with D-581: their Omni ids (`…omdep.near`)
+//     DO quote to themselves, so 1Click is their delivery (the `one-click` route, below).
 //   - WBTC (not BTC's family), SWEAT (no liquidity, `018`), changing family (D-425).
 
 import { getTokenById } from "@/features/market/lib/token-registry";
-import { withdrawalDestinations, NEAR_DESTINATION_CHAIN_ID } from "./withdrawal-registry";
+import {
+  getWithdrawalEntry,
+  withdrawalDestinations,
+  NEAR_DESTINATION_CHAIN_ID,
+} from "./withdrawal-registry";
+import { isTokenAvailable } from "./token-availability";
 
 export type ConvertibleFamily = "ETH" | "BTC" | "USDC" | "USDT";
 
@@ -58,6 +64,10 @@ export const DELIVERY_TABLE: Readonly<
     { chainId: "eth:42161", tokenId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near" },
     { chainId: "eth:8453", tokenId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near" },
     { chainId: "sol:mainnet", tokenId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near" },
+    // D-581: delivered by 1Click as themselves (`one-click`), not by a direct envelope.
+    { chainId: "eth:56", tokenId: "nep141:bnb-0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d.omdep.near" },
+    { chainId: "eth:137", tokenId: "nep141:pol-0x3c499c542cef5e3811e1192ce70d8cc03d5c3359.omdep.near" },
+    { chainId: "eth:43114", tokenId: "nep141:avax-0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e.omdep.near" },
   ],
   USDT: [
     { chainId: "near:mainnet", tokenId: "nep141:usdt.tether-token.near" },
@@ -65,6 +75,9 @@ export const DELIVERY_TABLE: Readonly<
     { chainId: "eth:42161", tokenId: "nep141:arb-0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9.omft.near" },
     { chainId: "tron:mainnet", tokenId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near" },
     { chainId: "sol:mainnet", tokenId: "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near" },
+    { chainId: "eth:56", tokenId: "nep141:bnb-0x55d398326f99059ff775485246999027b3197955.omdep.near" },
+    { chainId: "eth:137", tokenId: "nep141:pol-0xc2132d05d31c914a87c6611c10748aeb04b58e8f.omdep.near" },
+    { chainId: "eth:43114", tokenId: "nep141:avax-0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7.omdep.near" },
   ],
 };
 
@@ -164,7 +177,8 @@ export type WithdrawalPlan =
   | {
       kind: "conversion";
       chainId: string;
-      family: ConvertibleFamily;
+      /** `null` for a `one-click` native (BNB, POL, AVAX): it converts into nothing but itself. */
+      family: ConvertibleFamily | null;
       deliveryTokenId: string;
       /** What the 1Click quote asks for: the Delivery Token, or the pair's override. */
       destinationAsset: string;
@@ -174,6 +188,7 @@ export type WithdrawalPlan =
 /**
  * How `heldTokenId` leaves to `chainId` (plan 020 §5.2), in this order:
  *
+ *   0. it is a `one-click` token going to its own chain → conversion into itself (D-581);
  *   1. it IS that chain's Delivery Token → direct;
  *   2. it is not convertible and its route reaches the chain today → direct (SOL and APT to
  *      NEAR stay D-384's plain `ft_withdraw`);
@@ -186,6 +201,20 @@ export type WithdrawalPlan =
  */
 export function withdrawalPlan(heldTokenId: string, chainId: string): WithdrawalPlan {
   const family = conversionFamily(heldTokenId);
+  // 0. A `one-click` token to its own chain (D-581): 1Click delivers it as itself. Gated on the
+  //    day-1 allowlist HERE, unlike the rest of this function, because the conversion path asks
+  //    nothing else before going live — without this a registry row would be live money.
+  const entry = getWithdrawalEntry(heldTokenId);
+  if (entry?.bridgeRoute === "one-click" && entry.chainId === chainId) {
+    if (!isTokenAvailable(heldTokenId)) return { kind: "none" };
+    return {
+      kind: "conversion",
+      chainId,
+      family,
+      deliveryTokenId: heldTokenId,
+      destinationAsset: heldTokenId,
+    };
+  }
   if (family === null) {
     return withdrawalDestinations(heldTokenId).includes(chainId)
       ? { kind: "direct", chainId }
@@ -219,6 +248,8 @@ export function deliveryDestinations(heldTokenId: string): string[] {
 
 /** Base-unit decimals of a convertible token — what the G5 ceiling normalizes across (6/7/8/18). */
 export function conversionTokenDecimals(tokenId: string): number | null {
-  if (conversionFamily(tokenId) === null) return null;
+  if (conversionFamily(tokenId) === null && getWithdrawalEntry(tokenId)?.bridgeRoute !== "one-click") {
+    return null;
+  }
   return getTokenById(tokenId)?.decimals ?? null;
 }

@@ -17,7 +17,7 @@ vi.mock("@/features/login-wallet", () => ({
 vi.mock("@/features/vault/context/real-allocate-context", () => ({ useSendTransactionAs: () => vi.fn() }));
 // The step-1 wallet list (D-445) stays off: it is covered in wallet-deposit.test.tsx.
 vi.mock("../lib/wallet-deposit-flag", () => ({ WALLET_DEPOSIT_ENABLED: false, isWalletDepositRoute: () => true }));
-vi.mock("../lib/bridge-client", () => ({ getDepositAddress: vi.fn(() => new Promise(() => {})) }));
+vi.mock("../lib/deposit-address-client", () => ({ getDepositAddress: vi.fn(() => new Promise(() => {})) }));
 vi.mock("./wallet-deposit-panel", () => ({
   WalletDepositPanel: ({ onContinue }: { onContinue?: (credit: unknown) => void }) => (
     <div>

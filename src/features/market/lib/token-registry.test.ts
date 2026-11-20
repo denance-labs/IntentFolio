@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tokenRegistry, getTokenById, getTokenByNearTokenId, assetIdForNearTokenId, symbolForTokenId } from "./token-registry";
+import { tokenRegistry, getTokenById, symbolForTokenId } from "./token-registry";
 
 describe("tokenRegistry — sanity checks", () => {
   it("has no duplicate ids", () => {
@@ -65,50 +65,6 @@ describe("tokenRegistry — sanity checks", () => {
 
   it("getTokenById returns null for unknown id", () => {
     expect(getTokenById("nep141:does-not-exist.near")).toBeNull();
-  });
-});
-
-// D-235: the PoA bridge reports NEP-245 (HOT Omni) deposits as `<contract>:<token_id>`,
-// which never matched the registry's `contractId` (shared by every HOT Omni token). These
-// guard the shared resolver that both the dashboard and the activity feed now use instead.
-describe("assetIdForNearTokenId / getTokenByNearTokenId", () => {
-  it("derives a nep245 asset id for a HOT Omni near_token_id (has a colon)", () => {
-    expect(
-      assetIdForNearTokenId("v2_1.omni.hot.tg:1100_111bzQBB65GxAPAVoxqmMcgYo5oS3txhqs1Uh1cgahKQUeTUq1TJu")
-    ).toBe("nep245:v2_1.omni.hot.tg:1100_111bzQBB65GxAPAVoxqmMcgYo5oS3txhqs1Uh1cgahKQUeTUq1TJu");
-  });
-
-  it("derives a nep141 asset id for a bare contract near_token_id (no colon)", () => {
-    expect(assetIdForNearTokenId("usdc.near")).toBe("nep141:usdc.near");
-  });
-
-  it("resolves a real HOT Omni Stellar near_token_id to its registry entry", () => {
-    // This exact id is the registry's USDC(STELLAR) entry, not XLM's — the two Stellar
-    // HOT Omni ids differ only in their trailing token-id segment.
-    const token = getTokenByNearTokenId(
-      "v2_1.omni.hot.tg:1100_111bzQBB65GxAPAVoxqmMcgYo5oS3txhqs1Uh1cgahKQUeTUq1TJu"
-    );
-    expect(token?.symbol).toBe("USDC(STELLAR)");
-  });
-
-  it("resolves the HOT Omni XLM near_token_id", () => {
-    const token = getTokenByNearTokenId(
-      "v2_1.omni.hot.tg:1100_111bzQBB5v7AhLyPMDwS8uJgQV24KaAPXtwyVWu2KXbbfQU6NXRCz"
-    );
-    expect(token?.symbol).toBe("XLM");
-  });
-
-  it("resolves a NEP-141 near_token_id", () => {
-    const token = getTokenByNearTokenId("btc.omft.near");
-    expect(token?.symbol).toBe("BTC");
-  });
-
-  it("resolves the bridge's wrap.near to the registry's NEAR (D-421)", () => {
-    expect(getTokenByNearTokenId("wrap.near")?.id).toBe("near");
-  });
-
-  it("returns null for an unknown near_token_id", () => {
-    expect(getTokenByNearTokenId("does-not-exist.near")).toBeNull();
   });
 });
 

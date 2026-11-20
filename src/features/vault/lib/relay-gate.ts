@@ -12,7 +12,10 @@
 //     asking for more gas than the call carries simulates fine and reverts on-chain every time
 //     (cross-review s194). So the relay only pays for the exact Allocate the app builds
 //     (`buildAllocateSignRequest`): `[transfer → vault, auth_call → vault]`, no other field, and
-//     an `auth_call` msg whose allocations are exactly the transferred tokens;
+//     an `auth_call` msg whose allocations are exactly the transferred tokens — or, since the
+//     solver relay stopped answering (D-589), for the one-intent envelopes the app used to
+//     publish there: a withdrawal (`ft_withdraw`, `native_withdraw`, HOT's lone `mt_withdraw`)
+//     or a `transfer` to a 1Click deposit address (`isAppOutflow`);
 //   - the vault has no dry run, so the commit is checked here, step by step, in the vault's own
 //     order: signature (multi-payload-verify.ts), `verifying_contract`, V1 nonce deadline, the
 //     key belongs to the signer, the signer owns the portfolio, and the nonce is not burnt yet
@@ -40,6 +43,9 @@
 //
 // Attribution: see ATTRIBUTIONS.md #8 (the vault's commit check order and signer bind).
 
+import { HOT_BRIDGE_RECEIVER_ID, HOT_MIN_GAS, HOT_OMNI_CONTRACT_ID } from "@/features/bridge/lib/hot-envelope";
+import { OMNI_BRIDGE_CONTRACT_ID, OMNI_WITHDRAW_MIN_GAS } from "@/features/bridge/lib/omni-bridge";
+import { WITHDRAW_MIN_GAS } from "@/features/bridge/lib/withdraw-envelope";
 import { PORTFOLIO_NAME_MAX_LENGTH } from "@/features/dashboard-shell/lib/portfolio-validation";
 import { walletMatchesAccount } from "@/features/login-wallet/lib/identity";
 import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
@@ -57,6 +63,7 @@ import {
 } from "./change-set-preflight";
 import {
   extractDefuseEnvelope,
+  type DefuseEnvelope,
   formatSignerKey,
   implicitAccountId,
   isImplicitAccountId,
@@ -268,6 +275,140 @@ function offerProblem(ids: string[] | null): string | null {
   return foreign === undefined ? null : `${foreign} is not a token the app knows`;
 }
 
+const isPositiveAmount = (amount: unknown) => typeof amount === "string" && /^[1-9]\d*$/.test(amount);
+const FT_WITHDRAW_KEYS = ["intent", "token", "receiver_id", "amount", "min_gas"] as const;
+/**
+ * Far above what the app signs — an `omft` memo is `WITHDRAW_TO:` plus an address and a tag, an
+ * `omni` msg a small JSON with the recipient — and well below what would only cost gas to log.
+ */
+const MAX_OMFT_MEMO_LENGTH = 256;
+const MAX_OMNI_MSG_LENGTH = 1024;
+const isShortString = (value: unknown, max: number) => typeof value === "string" && value.length <= max;
+/** A 1Click deposit address: an implicit account, 64 lowercase hex (`DEPOSIT_ADDRESS_RE` in the builders). */
+const ONE_CLICK_DEPOSIT_ADDRESS = /^[0-9a-f]{64}$/;
+
+/**
+ * An `ft_withdraw` exactly as one of the app's three routes builds it (withdraw-envelope.ts,
+ * omni-bridge.ts), of a token the app knows, with the route's own `min_gas`. No
+ * `storage_deposit`: the app never sets it (it spends the user's wNEAR without refund).
+ */
+function isAppFtWithdraw(intent: Record<string, unknown>): boolean {
+  const { token, receiver_id: receiver, min_gas: minGas } = intent;
+  if (typeof token !== "string" || !APP_TOKEN_IDS.has(`nep141:${token}`)) return false;
+  if (typeof receiver !== "string" || receiver === "" || !isPositiveAmount(intent.amount)) return false;
+  // `omft`: the user rides in the memo and the receiver is the token itself.
+  if (hasExactKeys(intent, [...FT_WITHDRAW_KEYS, "memo"])) {
+    return receiver === token && isShortString(intent.memo, MAX_OMFT_MEMO_LENGTH) && minGas === WITHDRAW_MIN_GAS;
+  }
+  // `omni`: the receiver is the bridge and the user rides in the msg.
+  if (hasExactKeys(intent, [...FT_WITHDRAW_KEYS, "msg"])) {
+    return (
+      receiver === OMNI_BRIDGE_CONTRACT_ID &&
+      isShortString(intent.msg, MAX_OMNI_MSG_LENGTH) &&
+      minGas === OMNI_WITHDRAW_MIN_GAS
+    );
+  }
+  // `near-native`: the receiver is the user.
+  return hasExactKeys(intent, FT_WITHDRAW_KEYS) && minGas === WITHDRAW_MIN_GAS;
+}
+
+/**
+ * HOT's `mt_withdraw` exactly as `buildHotWithdrawIntents` builds it when it stands ALONE — the
+ * fee paid in kind or from a native balance, no swap (D-589, operator): HOT's contract and refuel
+ * receiver, its `min_gas`, one or two of the app's HOT tokens with an amount each, and the msg
+ * that names the destination. The swap form `[token_diff, mt_withdraw]` stays out: two intents.
+ */
+function isAppHotWithdraw(intent: Record<string, unknown>): boolean {
+  const { token_ids: ids, amounts } = intent;
+  if (!hasExactKeys(intent, ["intent", "receiver_id", "amounts", "token_ids", "token", "msg", "min_gas"])) return false;
+  if (intent.token !== HOT_OMNI_CONTRACT_ID || intent.receiver_id !== HOT_BRIDGE_RECEIVER_ID) return false;
+  if (intent.min_gas !== HOT_MIN_GAS || !isShortString(intent.msg, MAX_OMNI_MSG_LENGTH)) return false;
+  if (!Array.isArray(ids) || !Array.isArray(amounts) || ids.length !== amounts.length) return false;
+  return (
+    (ids.length === 1 || ids.length === 2) &&
+    ids.every((id) => typeof id === "string" && APP_TOKEN_IDS.has(`nep245:${HOT_OMNI_CONTRACT_ID}:${id}`)) &&
+    amounts.every(isPositiveAmount)
+  );
+}
+
+/**
+ * The one-intent envelopes the app used to publish through the solver relay and now sends here
+ * (D-589): a withdrawal — `ft_withdraw` (`omft`, `near-native`, `omni`), `native_withdraw`
+ * (`near-unwrap`) or HOT's lone `mt_withdraw` (`hot-omni`, fee in kind) — or ONE `transfer` of
+ * one token to a 1Click deposit address (a Converting Withdrawal, a gas purchase, a stock swap).
+ * No other field: a `msg` or `memo` on the transfer would make it a call. HOT's
+ * `[token_diff, mt_withdraw]` is not here — its fee swap needs a solver quote, so it cannot land
+ * without the solver relay.
+ *
+ * ⚠️ Abuse is CHEAP, not just bounded (cross-review D-589): one base unit transferred to an
+ * implicit account the signer controls, or withdrawn to their own NEAR account, loses them
+ * nothing and passes every check here — any implicit account passes as a deposit address, and
+ * telling 1Click's apart needs 1Click. What it costs is OUR gas (≤ 300 TGas a call), the process
+ * caps and the verifier keys' allowance (~200 calls a key), shared with the Allocate: scripted, it
+ * can exhaust the pool for everyone. The allowance watcher alerts before that; the fix is the
+ * user paying the gas inside the same envelope (048 bloque 5).
+ */
+export function isAppOutflow(message: Record<string, unknown>): boolean {
+  const intents = message.intents;
+  if (!hasExactKeys(message, ["intents"]) || !Array.isArray(intents) || intents.length !== 1) return false;
+  const [intent] = intents;
+  if (!isObject(intent)) return false;
+  switch (intent.intent) {
+    case "ft_withdraw":
+      return isAppFtWithdraw(intent);
+    case "mt_withdraw":
+      return isAppHotWithdraw(intent);
+    case "native_withdraw":
+      return (
+        hasExactKeys(intent, ["intent", "receiver_id", "amount"]) &&
+        typeof intent.receiver_id === "string" &&
+        intent.receiver_id !== "" &&
+        isPositiveAmount(intent.amount)
+      );
+    case "transfer": {
+      if (!hasExactKeys(intent, ["intent", "receiver_id", "tokens"]) || !isObject(intent.tokens)) return false;
+      const entries = Object.entries(intent.tokens);
+      return (
+        typeof intent.receiver_id === "string" &&
+        ONE_CLICK_DEPOSIT_ADDRESS.test(intent.receiver_id) &&
+        entries.length === 1 &&
+        APP_TOKEN_IDS.has(entries[0][0]) &&
+        isPositiveAmount(entries[0][1])
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * The longest the relay pays to publish a withdrawal or 1Click transfer for. The app signs 10
+ * minutes for a withdrawal and up to its 1Click quote's deadline for the rest; past a day it is
+ * not the app's (same cap as a commit's nonce).
+ */
+export const OUTFLOW_DEADLINE_CAP_SECS = 24 * 3600;
+
+/** Why an outflow's `deadline` (ISO text) is not one worth the gas, or null. */
+function outflowDeadlineProblem(deadline: unknown, nowSecs: number): string | null {
+  const ms = typeof deadline === "string" ? Date.parse(deadline) : Number.NaN;
+  if (!Number.isFinite(ms)) return "not a deadline the app signs";
+  const secs = Math.floor(ms / 1000);
+  if (secs < nowSecs + COMMIT_DEADLINE_MARGIN_SECS) return "the signature expired";
+  if (secs > nowSecs + OUTFLOW_DEADLINE_CAP_SECS) return "the signature deadline is too far ahead";
+  return null;
+}
+
+/** The simulation's refusal as a verdict, or null when it would execute. */
+function simulationRefusal(simulation: RelayViewResult): RelayGateVerdict | null {
+  if (simulation.kind === "panic") return wouldFail(simulation.message);
+  // An invariant violation is reported, not panicked, by the simulation; execution panics on it.
+  const violated = isObject(simulation.value) ? simulation.value.invariant_violated : undefined;
+  if (violated !== undefined && violated !== null) {
+    return wouldFail(`invariant violated: ${JSON.stringify(violated)}`);
+  }
+  return null;
+}
+
 /** Why a Setup's composition is past the app's cap (D-528), or null. Malformed is the vault's to refuse. */
 function compositionCapProblem(composition: unknown): string | null {
   return Array.isArray(composition) && growsPastAppTokenCap(0, composition.length)
@@ -444,7 +585,7 @@ export function createRelayGate({
   now?: () => number;
   log?: (line: string) => void;
 }): RelayGate {
-  async function checkAllocate(payload: unknown): Promise<RelayGateVerdict> {
+  async function checkVerifier(payload: unknown): Promise<RelayGateVerdict> {
     const envelope = extractDefuseEnvelope(payload);
     if (!envelope) return wouldFail("unreadable envelope");
     if (envelope.verifyingContract !== intentsId) {
@@ -452,9 +593,29 @@ export function createRelayGate({
     }
     const envelopeProblem = canonicalEnvelopeProblem(payload);
     if (envelopeProblem) return wouldFail(envelopeProblem);
-    if (!hasExactKeys(envelope.message, ["intents"]) || !isAllocateIntoVault(envelope.message, vaultId)) {
-      return wouldFail(`not the app's Allocate into ${vaultId}`);
+    if (hasExactKeys(envelope.message, ["intents"]) && isAllocateIntoVault(envelope.message, vaultId)) {
+      return checkAllocate(payload, envelope);
     }
+    if (isAppOutflow(envelope.message)) return checkOutflow(payload, envelope);
+    return wouldFail(`not the app's Allocate into ${vaultId}, withdrawal or 1Click transfer`);
+  }
+
+  /** A withdrawal or 1Click transfer (D-589): its deadline, then the simulation decides. */
+  async function checkOutflow(payload: unknown, envelope: DefuseEnvelope): Promise<RelayGateVerdict> {
+    const problem = outflowDeadlineProblem(envelope.deadline, Math.floor(now() / 1000));
+    if (problem) return wouldFail(problem);
+    let simulation: RelayViewResult;
+    try {
+      simulation = await view(intentsId, "simulate_intents", { signed: [payload] });
+    } catch (e) {
+      return checkFailed(`simulate_intents: ${describe(e)}`);
+    }
+    const refused = simulationRefusal(simulation);
+    if (refused) return refused;
+    return { ok: true, signerId: envelope.signerId, replayKey: `${envelope.signerId}:${hex(envelope.nonce)}` };
+  }
+
+  async function checkAllocate(payload: unknown, envelope: DefuseEnvelope): Promise<RelayGateVerdict> {
     const signerId = envelope.signerId;
     const { raw, deadline, nonce, op, body } = allocateMsg(envelope.message);
     // The msg is not read by the simulation: a duplicate key there passes it, settles the
@@ -487,12 +648,8 @@ export function createRelayGate({
     } catch (e) {
       return checkFailed(`simulate_intents: ${describe(e)}`);
     }
-    if (simulation.kind === "panic") return wouldFail(simulation.message);
-    // An invariant violation is reported, not panicked, by the simulation; execution panics on it.
-    const violated = isObject(simulation.value) ? simulation.value.invariant_violated : undefined;
-    if (violated !== undefined && violated !== null) {
-      return wouldFail(`invariant violated: ${JSON.stringify(violated)}`);
-    }
+    const refused = simulationRefusal(simulation);
+    if (refused) return refused;
     if (op === "setup") {
       if (portfolioCount === null) {
         log(`[relay] could not read the portfolios of ${signerId}; sending the Setup anyway`);
@@ -577,5 +734,5 @@ export function createRelayGate({
     return { ok: true, signerId, replayKey: `${signerId}:${hex(envelope.nonce)}` };
   }
 
-  return ({ target, payload }) => (target === "verifier" ? checkAllocate(payload) : checkCommit(payload));
+  return ({ target, payload }) => (target === "verifier" ? checkVerifier(payload) : checkCommit(payload));
 }
