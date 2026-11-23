@@ -27,6 +27,7 @@ import {
 import { RealChangeSetInvalidError } from "./vault-errors";
 import { loadPreflightLimits } from "./vault-limits";
 import { snapshotPortfolios, waitForAllocateCredit } from "./allocate-poll";
+import type { RelayGasDeduction } from "./relay-gas-cost";
 import { storageCostBytes } from "./storage-cost";
 import { submitAllocate } from "./allocate-submit";
 import { getIntentsBalances } from "./intents-read-client";
@@ -65,6 +66,13 @@ export type RunRealAllocateParams = {
    * token's leg; the bytes are re-derived from what is about to be signed and must match.
    */
   storage: { tokenId: string; amount: bigint; bytes: number };
+  /**
+   * The relay's gas the confirmation showed (D-589 block 5, `quoteRelayGas`): a registry token
+   * id and base units, deducted here from that token's leg after the Storage Cost. Null when the
+   * token has no live price: the Setup goes uncharged (operator, 2026-11-20). Required, so a
+   * caller cannot forget it silently.
+   */
+  relayGas: RelayGasDeduction | null;
   /** Signs in the login family's own scheme. */
   signer: VaultSigner;
   /**
@@ -115,6 +123,32 @@ export class RealAllocateUnconfirmedError extends Error {
     super(message);
     this.name = "RealAllocateUnconfirmedError";
   }
+}
+
+/**
+ * Deducts the relay's gas from its leg (D-589 block 5), in place, AFTER the cap: the cap settles
+ * "Max" against the exact balance, and the leg plus the gas must fit in it together. Returns the
+ * charge as the envelope carries it (intents id), or undefined when there is none. Throws, before
+ * anything is signed, when the leg is missing or the gas would take all of it.
+ */
+export function deductRelayGas(
+  legs: Array<{ tokenId: string; intentsTokenId: string; amount: string }>,
+  gas: RelayGasDeduction | null
+): { tokenId: string; amount: string } | undefined {
+  if (gas === null) return undefined;
+  const leg = legs.find((l) => l.tokenId === gas.tokenId);
+  if (!leg || gas.amount <= BigInt(0)) {
+    throw new RealChangeSetInvalidError("relay-gas-mismatch", `relay gas ${gas.tokenId} ${gas.amount} matches no leg`);
+  }
+  const net = BigInt(leg.amount) - gas.amount;
+  if (net <= BigInt(0)) {
+    throw new RealChangeSetInvalidError(
+      "relay-gas-exceeds-amount",
+      `${leg.tokenId}: ${leg.amount} held for the leg, relay gas ${gas.amount}`
+    );
+  }
+  leg.amount = net.toString();
+  return { tokenId: leg.intentsTokenId, amount: gas.amount.toString() };
 }
 
 export async function runRealAllocate(
@@ -240,6 +274,7 @@ export async function runRealAllocate(
     );
   }
   storageLeg.amount = net.toString();
+  const relayGas = deductRelayGas(legs, p.relayGas);
 
   stage("signing");
   const submitted = await submitAllocate({
@@ -253,6 +288,7 @@ export async function runRealAllocate(
       storage: { tokenId: toIntentsTokenId(p.storage.tokenId), amount: p.storage.amount.toString() },
     },
     allocations: legs.map((l) => ({ tokenId: l.intentsTokenId, amount: l.amount })),
+    ...(relayGas ? { relayGas } : {}),
     signer: {
       scheme: p.signer.scheme,
       signEnvelope: async (req) => {

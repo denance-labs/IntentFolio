@@ -82,6 +82,10 @@ export function changeSetNoticeCopy(reason: string, t: T): string {
       return t.realChangeSetStorageExceeds;
     case "storage-mismatch":
       return t.realChangeSetStorageMismatch;
+    case "relay-gas-exceeds-amount":
+      return t.realChangeSetRelayGasExceeds;
+    case "relay-gas-mismatch":
+      return t.realChangeSetRelayGasMismatch;
     default:
       return t.realChangeSetInvalid;
   }

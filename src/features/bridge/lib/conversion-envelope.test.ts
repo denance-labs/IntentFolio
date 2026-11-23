@@ -226,3 +226,55 @@ describe("buildConversionSignRequest — quotes this build would never have aske
     expect(e.reason).toBe("quote-invalid");
   });
 });
+
+// ── D-589 block 5: the relay's gas, LAST, on top of the quoted amount ─────────────
+describe("buildConversionSignRequest — the relay's gas (D-589 block 5)", () => {
+  const USDT_POL = USDT_POL_QUOTE.originTokenId;
+  // 0.006 USDT: what 0.002 NEAR is worth at NEAR 3 / USDT 1.
+  const GAS = { tokenId: USDT_POL, amount: BigInt(6000) };
+
+  it("signs [transfer to 1Click, gas]: the quoted amount untouched, the charge last", () => {
+    const req = build({ heldRaw: BigInt(20_006_000), relayGas: GAS }, USDT_POL_QUOTE);
+    expect(req.intents).toEqual([
+      {
+        intent: "transfer",
+        receiver_id: USDT_POL_QUOTE.depositAddress,
+        tokens: { [USDT_POL]: "20000000" },
+      },
+      {
+        intent: "transfer",
+        receiver_id: "intentfolio-budget.near",
+        tokens: { [USDT_POL]: "6000" },
+        memo: "gas",
+      },
+    ]);
+    // What the conversion signs (record, judge); the gas leaves on top of it.
+    expect(req.amount).toBe("20000000");
+    expect(req.relayGas).toEqual({ tokenId: USDT_POL, amount: "6000" });
+    expect(JSON.parse(req.nep413.message).intents).toEqual(req.intents);
+  });
+
+  it("C1 counts the gas: the quoted amount plus the charge, to the base unit", () => {
+    expect(build({ heldRaw: BigInt(20_006_000), relayGas: GAS }, USDT_POL_QUOTE).amount).toBe("20000000");
+    const e = refusal(() => build({ heldRaw: BigInt(20_005_999), relayGas: GAS }, USDT_POL_QUOTE));
+    expect(e.reason).toBe("balance-short");
+  });
+
+  it("without a charge (no live price) the envelope is today's single transfer", () => {
+    const req = build({ heldRaw: BigInt(20_000_000), relayGas: null }, USDT_POL_QUOTE);
+    expect(req.intents).toHaveLength(1);
+    expect(req.relayGas).toBeNull();
+  });
+
+  it("refuses a charge priced in another token, or not positive", () => {
+    expect(
+      refusal(() =>
+        build({ heldRaw: BigInt(30_000_000), relayGas: { ...GAS, tokenId: "nep141:usdt.tether-token.near" } }, USDT_POL_QUOTE)
+      ).reason
+    ).toBe("quote-invalid");
+    expect(
+      refusal(() => build({ heldRaw: BigInt(30_000_000), relayGas: { ...GAS, amount: BigInt(0) } }, USDT_POL_QUOTE))
+        .reason
+    ).toBe("quote-invalid");
+  });
+});

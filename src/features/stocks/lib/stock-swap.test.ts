@@ -327,6 +327,28 @@ describe("buildStockSwapSignRequest", () => {
     expect(deadlineSecs * 1000).toBeLessThan(quote.requestedDeadlineMs);
   });
 
+  // D-589 block 5: the relay's gas rides LAST, in the token that leaves, on top of the quote.
+  it("signs [transfer to 1Click, gas] and checks the balance for both", async () => {
+    const quote = await goodQuote();
+    const relayGas = { tokenId: USDT_ID, amount: BigInt(6000) };
+    const request = buildStockSwapSignRequest({ ...params(quote), heldRaw: BigInt(10_006_000), relayGas });
+    expect(request.intents).toEqual([
+      { intent: "transfer", receiver_id: DEPOSIT, tokens: { [USDT_ID]: "10000000" } },
+      { intent: "transfer", receiver_id: "intentfolio-budget.near", tokens: { [USDT_ID]: "6000" }, memo: "gas" },
+    ]);
+    expect(request.relayGas).toEqual({ tokenId: USDT_ID, amount: "6000" });
+    expect(() => buildStockSwapSignRequest({ ...params(quote), heldRaw: BigInt(10_005_999), relayGas })).toThrow(
+      StockSwapNotSignableError
+    );
+    expect(() =>
+      buildStockSwapSignRequest({
+        ...params(quote),
+        heldRaw: BigInt(20_000_000),
+        relayGas: { ...relayGas, tokenId: "nep141:wrap.near" },
+      })
+    ).toThrow(StockSwapNotSignableError);
+  });
+
   it.each([
     ["another signer", (q: StockSwapQuote) => ({ ...params(q), signerId: "other.near" })],
     ["a short balance", (q: StockSwapQuote) => ({ ...params(q), heldRaw: BigInt(q.amountInRaw) - BigInt(1) })],
@@ -345,6 +367,7 @@ describe("runStockSwap", () => {
   const base = async () => ({
     accountId: ACCOUNT,
     quote: await goodQuote(),
+    relayGas: null,
     signer,
     readHeld: async () => BigInt(10000000),
     publish: async () => ({ status: "OK", intent_hash: "HASH" }) as never,
@@ -359,6 +382,25 @@ describe("runStockSwap", () => {
         ({ kind: "delivered", reading: { status: "SUCCESS", amountOutRaw: "29820653812812409" } }) as never,
     });
     expect(result).toEqual({ kind: "delivered", intentHash: "HASH", txHash: "TX", amountOutRaw: "29820653812812409" });
+  });
+
+  it("signs the charge the screen showed with the quote, last", async () => {
+    const signEnvelope = vi.fn<(r: { nep413: { message: string } }) => Promise<never>>(async () => ({}) as never);
+    await runStockSwap({
+      ...(await base()),
+      signer: { scheme: "ed25519", signEnvelope } as never,
+      relayGas: { tokenId: USDT_ID, amount: BigInt(6000) },
+      readHeld: async () => BigInt(10_006_000),
+      watchSwap: async () => ({ kind: "delivered", reading: { status: "SUCCESS", amountOutRaw: null } }) as never,
+    });
+    const intents = JSON.parse(signEnvelope.mock.calls[0][0].nep413.message).intents;
+    expect(intents).toHaveLength(2);
+    expect(intents[1]).toEqual({
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [USDT_ID]: "6000" },
+      memo: "gas",
+    });
   });
 
   it("does not take a relay reason it cannot read as proof nothing moved", async () => {

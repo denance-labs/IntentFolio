@@ -349,6 +349,70 @@ describe("② Allocate envelope — the Setup's Storage Cost", () => {
   });
 });
 
+describe("② Allocate envelope — the relay's gas (D-589 block 5)", () => {
+  const authCallMsg = buildAuthCallSetupMsg({
+    deadline: DEADLINE_SECS,
+    nonce: Array(32).fill(7),
+    chain: "near",
+    address: SIGNER,
+    portfolioName: "Roundtrip",
+    composition: [{ tokenId: TOKEN, targetBps: 10000, toleranceBps: 500 }],
+    allocations: [{ tokenId: TOKEN, amount: "990000" }],
+  });
+  const build = (p: { storage?: { tokenId: string; amount: string }; relayGas?: { tokenId: string; amount: string } }) =>
+    buildAllocateSignRequest({
+      signerId: SIGNER,
+      deadlineSecs: DEADLINE_SECS,
+      nonceDeadlineSecs: NONCE_DEADLINE_SECS,
+      salt: SALT,
+      vaultId: VAULT_ID,
+      transfers: [{ tokenId: TOKEN, amount: "990000" }],
+      authCallMsg,
+      ...p,
+      nonceTail: TAIL,
+    });
+  const GAS = {
+    intent: "transfer",
+    receiver_id: "intentfolio-budget.near",
+    tokens: { [TOKEN]: "6066" },
+    memo: "gas",
+  };
+
+  it("a Setup is [transfer, auth_call, storage, gas]: the gas LAST, a valid IntentTransfer", () => {
+    const { request, erc191Message, intents } = build({
+      storage: { tokenId: TOKEN, amount: "10000" },
+      relayGas: { tokenId: TOKEN, amount: "6066" },
+    });
+    expect(intents.map((i) => (i as { memo?: string }).memo ?? i.intent)).toEqual([
+      "transfer",
+      "auth_call",
+      "storage",
+      "gas",
+    ]);
+    assertValid("IntentTransfer (gas)", IntentTransferValidator, intents[3]);
+    expect(intents[3]).toEqual(GAS);
+    assertValid("MultiPayloadNep413", MultiPayloadNep413Validator, assembleMultiPayload(request));
+    expect(JSON.parse(erc191Message).intents).toEqual(JSON.parse(request.message).intents);
+  });
+
+  it("an AllocateInto is [transfer, auth_call, gas]", () => {
+    const { intents } = build({ relayGas: { tokenId: TOKEN, amount: "6066" } });
+    expect(intents).toHaveLength(3);
+    expect(intents[1]).toMatchObject({ intent: "auth_call" });
+    expect(intents[2]).toEqual(GAS);
+  });
+
+  it("without a charge (no live price) the envelope is unchanged", () => {
+    expect(build({}).intents).toHaveLength(2);
+  });
+
+  it("refuses a charge that is not a positive amount of base units", () => {
+    for (const amount of ["0", "-1", "1.5", "", "01"]) {
+      expect(() => build({ relayGas: { tokenId: TOKEN, amount } })).toThrow(/positive amount/);
+    }
+  });
+});
+
 describe("③ Unallocate (commit) envelope — verifying_contract is the vault", () => {
   const changeSet = buildCommitChangeSet({
     portfolioId: "pf-golden-1",

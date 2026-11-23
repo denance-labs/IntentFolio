@@ -158,6 +158,8 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit, real portfolio) — %
     expect(state.allocateInto).toHaveBeenCalledWith({
       allocations: [{ tokenId: "near", qty: 2 }],
       tokenAdditions: [{ tokenId: "near", tolerancePct: 5 }],
+      // D-589 block 5: 0.002 NEAR of relay gas, out of the NEAR leg.
+      relayGas: { tokenId: "near", amount: BigInt("2000000000000000000000") },
     });
     expect(calls.onFunded).toHaveBeenCalledWith([{ tokenId: "near", qty: 2 }]);
     expect(calls.onClose).toHaveBeenCalled();
@@ -186,7 +188,17 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit, real portfolio) — %
         { tokenId: "near", qty: 2 },
       ],
       tokenAdditions: [{ tokenId: USDC_ETH, tolerancePct: 5 }],
+      // The gas comes out of the highest-value leg: $7.90 of NEAR above $3 of USDC(ETH).
+      relayGas: { tokenId: "near", amount: BigInt("2000000000000000000000") },
     });
+  });
+
+  it("shows the sending cost on its own line before signing (D-589 block 5)", () => {
+    renderEdit({ lang });
+    expect(screen.queryByText(shellTranslations[lang].relayGasLabel)).toBeNull();
+    typeNear(lang, "2");
+    expect(screen.getByText(shellTranslations[lang].relayGasLabel)).toBeTruthy();
+    expect(screen.getByText("0.002 NEAR")).toBeTruthy();
   });
 
   it("with no amount typed there is nothing to sign", () => {

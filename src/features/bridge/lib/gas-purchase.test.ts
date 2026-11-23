@@ -215,6 +215,58 @@ describe("buildGasPurchaseSignRequest", () => {
       })
     ).toThrow(/withdrawal amount/);
   });
+
+  // D-589 block 5: the purchase is its own envelope through our relay, so it pays its own gas —
+  // ON TOP of 1Click's input, which an EXACT_OUTPUT quote fixes.
+  describe("the relay's gas (D-589 block 5)", () => {
+    const GAS = { tokenId: USDT_TON, amount: BigInt(6000) };
+
+    it("signs [transfer to 1Click, gas]: 1Click's input untouched, the charge last", () => {
+      const built = buildGasPurchaseSignRequest({
+        signerId: ACCOUNT,
+        quote: q,
+        withdrawalAmountRaw: "4994000",
+        relayGas: GAS,
+        deadlineSecs: 1_800_000_000,
+        nonce: new Uint8Array(32).fill(7),
+      });
+      expect(built.intents).toEqual([
+        { intent: "transfer", receiver_id: "e2c908bf", tokens: { [USDT_TON]: "53459" } },
+        { intent: "transfer", receiver_id: "intentfolio-budget.near", tokens: { [USDT_TON]: "6000" }, memo: "gas" },
+      ]);
+      expect(built.relayGas).toEqual({ tokenId: USDT_TON, amount: "6000" });
+      expect(JSON.parse(built.nep413.message).intents).toEqual(built.intents);
+    });
+
+    it("counts the charge as part of what the purchase costs against the withdrawal", () => {
+      // 53459 + 6000 = 59459: one unit under the withdrawal signs, equal does not.
+      expect(() =>
+        buildGasPurchaseSignRequest({ signerId: ACCOUNT, quote: q, withdrawalAmountRaw: "59460", relayGas: GAS })
+      ).not.toThrow();
+      expect(() =>
+        buildGasPurchaseSignRequest({ signerId: ACCOUNT, quote: q, withdrawalAmountRaw: "59459", relayGas: GAS })
+      ).toThrow(/consume the whole amount/);
+    });
+
+    it("refuses a charge priced in another token, or not positive", () => {
+      expect(() =>
+        buildGasPurchaseSignRequest({
+          signerId: ACCOUNT,
+          quote: q,
+          withdrawalAmountRaw: "5000000",
+          relayGas: { ...GAS, tokenId: USDC_STELLAR },
+        })
+      ).toThrow(/sending cost is priced in/);
+      expect(() =>
+        buildGasPurchaseSignRequest({
+          signerId: ACCOUNT,
+          quote: q,
+          withdrawalAmountRaw: "5000000",
+          relayGas: { ...GAS, amount: BigInt(0) },
+        })
+      ).toThrow(/must be positive/);
+    });
+  });
 });
 
 // ── The margin: per chain, because the reason for one is per chain ──────────────

@@ -1141,3 +1141,88 @@ describe("submitWithdraw — omni (ZEC → Zcash)", () => {
     expect(h.signer.signEnvelope).not.toHaveBeenCalled();
   });
 });
+
+// D-589 block 5: the relay's gas rides LAST. The destination guards read the withdrawal without
+// it, and an envelope whose last intent is not the charge it declares never reaches a signature.
+describe("the relay's gas in the envelope (D-589 block 5)", () => {
+  const ZEC = "nep141:zec.omft.near";
+  const T1 = "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K";
+  const zecWithGas = () =>
+    buildWithdrawSignRequest({
+      signerId: SIGNER_ID,
+      tokenId: ZEC,
+      chainId: "zec:mainnet",
+      qty: 0.005,
+      heldRaw: BigInt(10) ** BigInt(12),
+      destinationAddress: T1,
+      deadlineSecs: DEADLINE_SECS,
+      nonce: NONCE,
+      omniFee: { gasFeeRaw: "22000", protocolFeeRaw: "10000", minAmountRaw: "100000", quotedForRaw: "500000" },
+      relayGas: { tokenId: ZEC, amount: BigInt(12000) },
+    });
+
+  it("omni: still finds the Zcash recipient with the gas behind the ft_withdraw", async () => {
+    const h = harness();
+    const request = zecWithGas();
+    expect(request.intents).toHaveLength(2);
+    await expect(
+      submitWithdraw({
+        request,
+        tokenId: ZEC,
+        chainId: "zec:mainnet",
+        destinationAddress: T1,
+        signer: h.signer,
+        publish: h.publish,
+        probe: h.probe,
+      })
+    ).resolves.toEqual({ intentHash: "0xIntentHash", route: "omni" });
+    expect(h.calls).toEqual(["sign", "publish"]);
+  });
+
+  it("omft and near-native: the destination is still read off the withdrawal", async () => {
+    for (const request of [
+      omftRequest({ qty: 3, relayGas: { tokenId: USDC_ARB, amount: BigInt(6066) } }),
+      nearNativeRequest({ qty: 3, relayGas: { tokenId: USDT_NEAR, amount: BigInt(6066) } }),
+    ]) {
+      const h = harness();
+      const tokenId = request.route === "omft" ? USDC_ARB : USDT_NEAR;
+      await expect(
+        submitWithdraw({
+          request,
+          tokenId,
+          chainId: ownChain(tokenId),
+          destinationAddress: request.route === "omft" ? EVM_ADDRESS : NEAR_ADDRESS,
+          signer: h.signer,
+          publish: h.publish,
+          probe: h.probe,
+        })
+      ).resolves.toMatchObject({ route: request.route });
+    }
+  });
+
+  it("refuses, before signing, an envelope whose last intent is not the charge it declares", async () => {
+    const built = zecWithGas();
+    for (const request of [
+      // The charge declared, the envelope without it.
+      { ...built, intents: built.intents.slice(0, 1) },
+      // A different amount than declared.
+      { ...built, relayGas: { tokenId: ZEC, amount: "11999" } },
+      // Declared, but not last.
+      { ...built, intents: [built.intents[1], built.intents[0]] },
+    ] as WithdrawSignRequest[]) {
+      const h = harness();
+      await expect(
+        submitWithdraw({
+          request,
+          tokenId: ZEC,
+          chainId: "zec:mainnet",
+          destinationAddress: T1,
+          signer: h.signer,
+          publish: h.publish,
+          probe: h.probe,
+        })
+      ).rejects.toThrow(/does not end with the sending cost/);
+      expect(h.signer.signEnvelope).not.toHaveBeenCalled();
+    }
+  });
+});

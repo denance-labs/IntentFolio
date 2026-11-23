@@ -17,6 +17,7 @@ import { readHeldOnVerifier } from "@/features/bridge/lib/run-real-withdraw";
 import { WithdrawError, WithdrawRelayRejectedError } from "@/features/bridge/lib/withdraw-errors";
 import { waitForWithdrawSettlement, type SettlementWaiter } from "@/features/bridge/lib/withdraw-poll";
 import { defaultWithdrawPublisher, parsePublishResponse, type WithdrawPublisher } from "@/features/bridge/lib/withdraw-submit";
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import type { VaultSigner } from "@/features/vault/lib/vault-signer";
 import { buildStockSwapSignRequest, type StockSwapQuote } from "./stock-swap";
 
@@ -32,6 +33,12 @@ export type RunStockSwapParams = {
   accountId: string;
   /** EXACTLY the quote the screen displayed and the user accepted. */
   quote: StockSwapQuote;
+  /**
+   * The relay's gas the screen showed WITH this quote (D-589 block 5), in the input token — or
+   * null when it has no live price. The quote is already net of it. Required, so a caller cannot
+   * forget it silently.
+   */
+  relayGas: RelayGasDeduction | null;
   signer: VaultSigner;
   onStage?: (stage: StockSwapStage) => void;
   onStatus?: (status: OneClickStatus) => void;
@@ -68,6 +75,7 @@ export async function runStockSwap(p: RunStockSwapParams): Promise<StockSwapResu
     signerId: p.accountId,
     quote,
     heldRaw,
+    relayGas: p.relayGas,
     nowMs: p.envelope?.nowMs,
     nonce: p.envelope?.nonce,
   });
@@ -89,7 +97,8 @@ export async function runStockSwap(p: RunStockSwapParams): Promise<StockSwapResu
   }
   console.log(
     `[stocks] published intent ${intentHash} — ${quote.amountInRaw} of ${quote.originAsset} to ` +
-      `${quote.depositAddress}, for ${quote.amountOutRaw} of ${quote.destinationAsset} (min ${quote.minAmountOutRaw})`
+      `${quote.depositAddress}, for ${quote.amountOutRaw} of ${quote.destinationAsset} (min ${quote.minAmountOutRaw})` +
+      (request.relayGas ? `; sending cost ${request.relayGas.amount}` : "")
   );
 
   stage("awaiting-settlement");

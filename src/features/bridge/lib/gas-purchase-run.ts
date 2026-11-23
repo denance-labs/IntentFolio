@@ -24,6 +24,7 @@
 //     `refundTo` points at the buyer's own account. The intent hash goes to the console for
 //     the same reason the withdrawal's does (D-R17), and that is the whole trace.
 
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import type { VaultSigner } from "@/features/vault/lib/vault-signer";
 import { buildGasPurchaseSignRequest, type GasPurchaseQuote } from "./gas-purchase";
 import { defaultWithdrawPublisher, parsePublishResponse, type WithdrawPublisher } from "./withdraw-submit";
@@ -44,7 +45,7 @@ export type GasPurchaseStage =
 export type GasPurchaseResult = {
   intentHash: string;
   txHash: string;
-  /** Base units of the withdrawn token that left the balance. */
+  /** Base units of the withdrawn token paid to 1Click. The relay's gas, if charged, left on top. */
   amountInRaw: string;
   /** Base units of gas 1Click owes. */
   amountOutRaw: string;
@@ -73,6 +74,12 @@ export type RunGasPurchaseParams = {
   quote: GasPurchaseQuote;
   /** Base units the withdrawal itself will move. The purchase must not eat into it. */
   withdrawalAmountRaw: string;
+  /**
+   * The relay's gas for this purchase (D-589 block 5), in the token sold — or null when it has
+   * no live price. On top of `amountIn`, never out of it. Required, so a caller cannot forget it
+   * silently. The ceiling below is about 1Click's price only; this is a fixed cost of ours.
+   */
+  relayGas: RelayGasDeduction | null;
   /**
    * 🔴 The price ceiling, in base units of the token being sold, and the guard that keeps this
    * a five-cent trade.
@@ -166,6 +173,7 @@ export async function runGasPurchase(p: RunGasPurchaseParams): Promise<GasPurcha
       signerId: p.signerId,
       quote: p.quote,
       withdrawalAmountRaw: p.withdrawalAmountRaw,
+      relayGas: p.relayGas,
       ...p.envelope,
     });
   } catch (e) {
@@ -223,7 +231,8 @@ export async function runGasPurchase(p: RunGasPurchaseParams): Promise<GasPurcha
   console.log(
     `[gas-purchase] published intent ${intentHash} — ${p.quote.amountInRaw} of ` +
       `${p.quote.tokenId} to ${p.quote.depositAddress} for ${p.quote.amountOutRaw} of ` +
-      `${p.quote.nativeAssetId}`
+      `${p.quote.nativeAssetId}` +
+      (request.relayGas ? `; sending cost ${request.relayGas.amount}` : "")
   );
 
   stage("awaiting-settlement");

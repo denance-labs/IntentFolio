@@ -5,6 +5,7 @@ import type { Intent } from "@defuse-protocol/contract-types";
 import {
   IntentFtWithdrawValidator,
   IntentNativeWithdrawValidator,
+  IntentTransferValidator,
   Nep413DefuseMessageFor_DefuseIntentsValidator,
   MultiPayloadNep413Validator,
   MultiPayloadErc191Validator,
@@ -492,5 +493,89 @@ describe("destination memo (mirrors the SDK's createWithdrawMemo)", () => {
   it("threads the tag through the built intent", () => {
     const intent = fields(omft({ destinationMemo: "98765" }).intents[0]);
     expect(intent.memo).toBe(`WITHDRAW_TO:${EVM_ADDRESS}:98765`);
+  });
+});
+
+// D-589 block 5: the relay's gas, deducted from the amount typed and paid LAST in the envelope.
+describe("the relay's gas (D-589 block 5)", () => {
+  // 0.006066 USDC/USDT — the operator's worked example (048 §10): NEAR 3.03, USDT 0.999.
+  const GAS = BigInt(6066);
+  const usdcGas = { tokenId: USDC_ARB, amount: GAS };
+
+  /** The intents the user actually signs, read back off the NEP-413 message. */
+  function signedIntents(req: WithdrawSignRequest): unknown[] {
+    return JSON.parse(req.nep413.message).intents;
+  }
+
+  function gasIntent(tokenId: string, amount: bigint) {
+    return {
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [tokenId]: amount.toString() },
+      memo: "gas",
+    };
+  }
+
+  it("omft: [ft_withdraw of the rest, gas], and `amount` is what the withdrawal signs", () => {
+    const req = omft({ qty: 3, relayGas: usdcGas });
+    const rest = (BigInt(3_000_000) - GAS).toString();
+    expect(req.intents).toHaveLength(2);
+    expect(fields(req.intents[0])).toMatchObject({ intent: "ft_withdraw", amount: rest, receiver_id: USDC_ARB_CONTRACT });
+    expect(req.intents[1]).toEqual(gasIntent(USDC_ARB, GAS));
+    expect(req.amount).toBe(rest);
+    expect(req.relayGas).toEqual({ tokenId: USDC_ARB, amount: GAS.toString() });
+    expect(signedIntents(req)).toEqual(JSON.parse(JSON.stringify(req.intents)));
+    assertValid("IntentTransfer", IntentTransferValidator, req.intents[1]);
+    assertValid("MultiPayloadNep413", MultiPayloadNep413Validator, assembleNep413(req));
+  });
+
+  it("near-native: [ft_withdraw to the user, gas]", () => {
+    const req = nearNative({ qty: 3, relayGas: { tokenId: USDT_NEAR, amount: GAS } });
+    expect(req.intents).toHaveLength(2);
+    expect(fields(req.intents[0])).toMatchObject({
+      intent: "ft_withdraw",
+      receiver_id: NEAR_ADDRESS,
+      amount: (BigInt(3_000_000) - GAS).toString(),
+    });
+    expect(req.intents[1]).toEqual(gasIntent(USDT_NEAR, GAS));
+  });
+
+  it("near-unwrap: [native_withdraw, gas in wNEAR] — the Verifier's id, not the registry's", () => {
+    const gas = BigInt(2) * BigInt(10) ** BigInt(21);
+    const req = nearUnwrap({ qty: 1.5, relayGas: { tokenId: "near", amount: gas } });
+    expect(req.intents).toHaveLength(2);
+    expect(fields(req.intents[0])).toMatchObject({
+      intent: "native_withdraw",
+      amount: (BigInt(15) * BigInt(10) ** BigInt(23) - gas).toString(),
+    });
+    expect(req.intents[1]).toEqual(gasIntent("nep141:wrap.near", gas));
+  });
+
+  it("caps the TOTAL at the balance, then takes the gas out of it", () => {
+    const held = BigInt(10) ** BigInt(12) - BigInt(1);
+    const req = omft({ qty: 1_000_000, heldRaw: held, relayGas: usdcGas });
+    expect(req.amount).toBe((held - GAS).toString());
+  });
+
+  it("measures the bridge floor on the withdrawal: an amount that clears it only with the gas in is refused", () => {
+    // USDC on Arbitrum: fee 5300, minimum 1. 0.011366 nets 5300 after the gas — exactly the fee.
+    expect(() => omft({ qty: 0.011366 })).not.toThrow();
+    expect(() => omft({ qty: 0.011366, relayGas: usdcGas })).toThrow(/bridge fee/);
+    expect(omft({ qty: 0.011367, relayGas: usdcGas }).amount).toBe("5301");
+  });
+
+  it("refuses a gas that takes the whole amount", () => {
+    expect(() => omft({ qty: 0.006066, relayGas: usdcGas })).toThrow(/sending cost/);
+  });
+
+  it("refuses a gas priced in another token than the one withdrawn", () => {
+    expect(() => omft({ qty: 3, relayGas: { tokenId: USDT_NEAR, amount: GAS } })).toThrow(/priced in/);
+  });
+
+  it("without a charge the envelope is the single withdrawal it always was", () => {
+    for (const req of [omft({ relayGas: null }), nearNative(), nearUnwrap({ relayGas: null })]) {
+      expect(req.intents).toHaveLength(1);
+      expect(req.relayGas).toBeNull();
+    }
   });
 });

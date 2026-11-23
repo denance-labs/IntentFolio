@@ -502,6 +502,31 @@ describe("the full envelope through buildWithdrawSignRequest", () => {
     expect(req.intents).toHaveLength(1);
   });
 
+  // D-589 block 5: the relay's gas rides LAST — after the fee swap, when there is one — in the
+  // token withdrawn, and the `mt_withdraw` is built from what is left.
+  it("puts the relay's gas last and builds the mt_withdraw from the rest", () => {
+    const gas = { tokenId: USDC_POLYGON, amount: BigInt(6066) };
+    const req = hotEnvelope({ relayGas: gas });
+    expect(req.amount).toBe(String(1_000_000 - 6066));
+    expect(req.intents.map((i) => fields(i).intent)).toEqual(["token_diff", "mt_withdraw", "transfer"]);
+    expect(fields(req.intents[1]).amounts).toEqual([String(1_000_000 - 6066 - 4321), RELAYER_FEE]);
+    expect(req.intents[2]).toEqual({
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [USDC_POLYGON]: "6066" },
+      memo: "gas",
+    });
+
+    const native = hotEnvelope({
+      tokenId: POL_NATIVE,
+      hotFee: nativeFee(),
+      qty: 1,
+      relayGas: { tokenId: POL_NATIVE, amount: BigInt(10) ** BigInt(15) },
+    });
+    expect(native.intents.map((i) => fields(i).intent)).toEqual(["mt_withdraw", "transfer"]);
+    expect(native.amount).toBe((BigInt(10) ** BigInt(18) - BigInt(10) ** BigInt(15)).toString());
+  });
+
   it("refuses to build without a live quote instead of falling back to the registry", () => {
     // The registry snapshot has no `blockNumber` and no swap, so an envelope built on it is
     // REFUSED by the contract, not merely mispriced. There is no safe fallback here.

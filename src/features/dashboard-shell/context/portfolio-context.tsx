@@ -44,6 +44,7 @@ import { shellTranslations } from "../lib/translations";
 import { announceOperation, realPortfolioHistoryQueryKey } from "@/features/vault/hooks/use-real-portfolio-history";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
 import { runRealAllocate, type RealAllocateStage } from "@/features/vault/lib/run-real-allocate";
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import type { SetupStorageCost } from "@/features/vault/lib/storage-cost";
 import { runRealUnallocate, type RealUnallocateStage } from "@/features/vault/lib/run-real-unallocate";
 import {
@@ -126,7 +127,9 @@ type PortfolioContextValue = {
     name: string,
     changeset: PortfolioChangeSet,
     signatureText: string,
-    storage: SetupStorageCost
+    storage: SetupStorageCost,
+    // D-589 block 5: the relay's gas the confirmation showed; null when it goes uncharged.
+    relayGas: RelayGasDeduction | null
   ) => Promise<void>;
   // New funds from the General Balance into the ACTIVE real portfolio, signed right away
   // (D-321, 013.plan P5): the Add tokens modal calls it; it never goes through the draft.
@@ -134,6 +137,7 @@ type PortfolioContextValue = {
   allocateIntoPortfolio: (params: {
     allocations: Array<{ tokenId: string; qty: number }>;
     tokenAdditions: Array<{ tokenId: string; tolerancePct: number }>;
+    relayGas: RelayGasDeduction | null;
   }) => Promise<RealAllocateIntoResult>;
   // Both signed (017-9c). On a real portfolio they go to the vault as a `commit_portfolio_changes`
   // without legs and resolve once the chain shows the result; the mock asks for a signature too,
@@ -565,7 +569,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   // path. Throws on a rejected signature or a rejected commit; the modal surfaces it and
   // keeps its inputs so the user can retry. Activates the new portfolio on success.
   const createPortfolioWithChangeSet = useCallback(
-    async (name: string, changeset: PortfolioChangeSet, signatureText: string, storage: SetupStorageCost): Promise<void> => {
+    async (
+      name: string,
+      changeset: PortfolioChangeSet,
+      signatureText: string,
+      storage: SetupStorageCost,
+      relayGas: RelayGasDeduction | null
+    ): Promise<void> => {
       if (!intentsAccountId) return;
 
       // ── Live-vault path (007.plan Phase 1; 008.plan Phase 0b) ─────────────
@@ -594,6 +604,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
             portfolioName: name.trim(),
             changeset,
             storage,
+            relayGas,
             signer: liveVault.signer,
             loginChain: liveVault.chain,
             loginWalletAddress: liveVault.address,
@@ -674,6 +685,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     async (params: {
       allocations: Array<{ tokenId: string; qty: number }>;
       tokenAdditions: Array<{ tokenId: string; tolerancePct: number }>;
+      relayGas: RelayGasDeduction | null;
     }): Promise<RealAllocateIntoResult> => {
       const current = portfolios.find((p) => p.id === activePortfolioId);
       // Same gate as the commit path; there is no mock fallback here — the modal only calls
@@ -703,6 +715,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           portfolioName: current.name,
           allocations: params.allocations,
           tokenAdditions: params.tokenAdditions,
+          relayGas: params.relayGas,
           signer: liveVault.signer,
           loginChain: liveVault.chain,
           nearWallet: realAllocateSigner,

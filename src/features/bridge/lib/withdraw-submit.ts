@@ -28,6 +28,7 @@
 // shapes themselves are #9 (withdraw-envelope.ts) and #11 (hot-envelope.ts).
 
 import { accountExists, accountHasContract, viewCall } from "@/features/vault/lib/near-view";
+import { relayGasIntent } from "@/features/vault/lib/relay-gas-cost";
 import type { MultiPayload, VaultSigner } from "@/features/vault/lib/vault-signer";
 import { getWithdrawalEntry } from "./withdrawal-registry";
 import {
@@ -350,6 +351,27 @@ function fields(intent: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * The intents that ARE the withdrawal: the envelope without the relay's gas, which the builder
+ * puts LAST (D-589 block 5). The guards below read the destination off these.
+ *
+ * It refuses an envelope whose last intent is not exactly the charge `request.relayGas` names.
+ * The builder fills both from one value, so this only fires on a hand-assembled request — and
+ * stripping a last intent that is not the charge would hide the withdrawal itself from the
+ * destination check. Before a signature exists, like every guard here.
+ */
+function withdrawalIntents(request: WithdrawSignRequest): readonly unknown[] {
+  if (request.relayGas == null) return request.intents;
+  const last = request.intents[request.intents.length - 1];
+  if (request.intents.length < 2 || JSON.stringify(last) !== JSON.stringify(relayGasIntent(request.relayGas))) {
+    throw new Error(
+      `Withdrawal envelope does not end with the sending cost it declares ` +
+        `(${request.relayGas.amount} of ${request.relayGas.tokenId}); nothing was signed`
+    );
+  }
+  return request.intents.slice(0, -1);
+}
+
+/**
  * The `mt_withdraw`, found by NAME and not by position.
  *
  * On the nine non-native `hot-omni` tokens the envelope opens with the `token_diff` that buys
@@ -401,6 +423,7 @@ function assertEnvelopePaysDestination(
   destinationAddress: string,
   destinationMemo: string | undefined
 ): void {
+  const withdrawal = withdrawalIntents(request);
   if (route === "hot-omni") {
     // Refused rather than dropped, exactly as the builder does: HOT ignores a destination memo
     // on withdrawal, so honouring one here would send funds to a shared address with nothing
@@ -411,7 +434,7 @@ function assertEnvelopePaysDestination(
           `${JSON.stringify(destinationMemo)}, which would be dropped rather than delivered`
       );
     }
-    const paid = readHotReceiver(findMtWithdraw(request.intents)?.msg);
+    const paid = readHotReceiver(findMtWithdraw(withdrawal)?.msg);
     const expected = encodeHotReceiver(chainId, destinationAddress);
     if (paid !== expected) {
       throw new Error(
@@ -432,7 +455,7 @@ function assertEnvelopePaysDestination(
           `${JSON.stringify(destinationMemo)}, which would be dropped rather than delivered`
       );
     }
-    const paid = request.intents.length === 1 ? readOmniRecipient(request.intents[0]) : null;
+    const paid = withdrawal.length === 1 ? readOmniRecipient(withdrawal[0]) : null;
     const expected = omniRecipient(chainId, destinationAddress);
     if (paid === null || paid !== expected) {
       throw new Error(
@@ -443,7 +466,7 @@ function assertEnvelopePaysDestination(
     return;
   }
 
-  const intent = fields(request.intents[0]);
+  const intent = fields(withdrawal[0]);
   // Two of the three remaining routes put the user's address in `receiver_id`; only `omft`
   // hides it inside the memo (see the builders). Read from the field the route actually
   // uses — comparing the wrong one passes by accident on a shape it was not written for.

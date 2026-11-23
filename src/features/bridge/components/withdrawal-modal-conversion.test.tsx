@@ -33,6 +33,8 @@ vi.mock("@/features/vault/context/real-allocate-context", () => ({
 }));
 
 import { useAvailableGeneralBalance } from "@/features/dashboard-shell/hooks/use-available-general-balance";
+import { LanguageProvider } from "@/features/dashboard-shell/context/language-context";
+import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import { assertNearDestinationUsable } from "../lib/withdraw-submit";
 import { bridgeTranslations } from "../lib/translations";
 import { ConversionNotSignableError } from "../lib/conversion-envelope";
@@ -667,5 +669,86 @@ describe("WithdrawalModal — one-click: delivered as itself", () => {
     expect(screen.queryByText(t.conversionCostLabel)).toBeNull();
     expect(screen.getByText(t.deliveryRefundNote)).toBeTruthy();
     expect(screen.queryByText(/becomes/)).toBeNull();
+  });
+});
+
+// ── D-589 block 5: the relay's gas on a conversion ───────────────────────────────
+// Live prices (the only ones the charge is priced from): NEAR 3, USDT 1 ⇒ 0.002 NEAR = 0.006 USDT
+// = 6000 base units of USDT(POL). 1Click is asked for the amount typed minus that, because the
+// quote is what gets signed; the charge rides with the quote it was asked net of.
+describe("WithdrawalModal — the relay's gas on a conversion (D-589 block 5)", () => {
+  const mockPrices = useTokenPrices as ReturnType<typeof vi.fn>;
+  const LIVE_PRICES = {
+    [USDT_POL]: { usdPrice: 1, source: "coingecko" },
+    near: { usdPrice: 3, source: "coingecko" },
+  };
+
+  afterEach(() => {
+    mockPrices.mockReturnValue({ prices: {} });
+  });
+
+  function renderLive(props: Partial<React.ComponentProps<typeof WithdrawalModal>> = {}) {
+    return render(
+      <LanguageProvider>
+        <WithdrawalModal open={true} lang="en" onClose={vi.fn()} {...props} />
+      </LanguageProvider>
+    );
+  }
+
+  it("asks 1Click for the net amount, shows the charge as its own row, and signs that same pair", async () => {
+    mockPrices.mockReturnValue({ prices: LIVE_PRICES });
+    const shown = quote({ amountInRaw: "4994000", amountOutRaw: "4993000", minAmountOutRaw: "4968035" });
+    const quoteSeam = vi.fn(async () => ok(shown));
+    const onConfirmed = vi.fn(async () => {});
+    renderLive({ conversions: conversions(quoteSeam), onConfirmed });
+    openUsdt();
+    await toStep4();
+
+    expect(quoteSeam).toHaveBeenCalledWith(
+      expect.objectContaining({ qty: 5, relayGas: { tokenId: USDT_POL, amount: BigInt(6000) } })
+    );
+    // What leaves the balance is the amount typed: the quoted 4.994 plus the 0.006.
+    expect(screen.getByText("5 USDT")).toBeTruthy();
+    expect(screen.getByText("Sending cost")).toBeTruthy();
+    expect(screen.getByText("0.006 USDT")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t.confirmWithdrawalButton }));
+    });
+    expect(onConfirmed).toHaveBeenCalledTimes(1);
+    const params = (
+      onConfirmed.mock.calls[0] as unknown as [{ conversionQuote?: ConversionQuote; relayGas: unknown }]
+    )[0];
+    expect(params.conversionQuote).toBe(shown);
+    expect(params.relayGas).toEqual({ tokenId: USDT_POL, amount: BigInt(6000) });
+  });
+
+  it("goes uncharged, with no row, when the held token has no live price", async () => {
+    mockPrices.mockReturnValue({ prices: { [USDT_POL]: { usdPrice: 1 } } });
+    const quoteSeam = vi.fn(async () => ok(quote()));
+    const onConfirmed = vi.fn(async () => {});
+    renderLive({ conversions: conversions(quoteSeam), onConfirmed });
+    openUsdt();
+    await toStep4();
+
+    expect(quoteSeam).toHaveBeenCalledWith(expect.objectContaining({ qty: 5, relayGas: null }));
+    expect(screen.queryByText("Sending cost")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t.confirmWithdrawalButton }));
+    });
+    expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({ relayGas: null }));
+  });
+
+  // 1Click's minimum is about what the conversion signs; the amount typed has to clear it with the
+  // gas on top, so that is the figure the user is told to type.
+  it("states 1Click's minimum plus the sending cost", async () => {
+    mockPrices.mockReturnValue({ prices: LIVE_PRICES });
+    const quoteSeam = vi.fn(
+      async (): Promise<ConversionQuoteResult> => ({ ok: false, reason: "below-minimum", minAmountRaw: "2000000" })
+    );
+    renderLive({ conversions: conversions(quoteSeam) });
+    openUsdt();
+    await toStep4("alice.near", "1");
+    expect(screen.getByText("The minimum to send to NEAR is 2.006 USDT.")).toBeTruthy();
   });
 });

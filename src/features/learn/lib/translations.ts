@@ -85,7 +85,7 @@ export const learnTranslations = {
         },
         {
           title: "It moves toward your targets",
-          body: "At the market's pace, through swaps that come up along the way, with no fees as it moves and no action needed from you. There's just a one-time storage cost when you create the portfolio. You can follow its progress in the app.",
+          body: "At the market's pace, through swaps that come up along the way, with no fees as it moves and no action needed from you. You can follow its progress in the app.",
         },
         {
           title: "Earn along the way",
@@ -295,7 +295,7 @@ export const learnTranslations = {
         },
         {
           title: "Avanza hacia tus objetivos",
-          body: "Al ritmo del mercado, con swaps que van surgiendo en el camino, sin comisiones en los movimientos y sin que hagas nada. Sólo hay un costo único de almacenamiento al crear el portfolio. El avance lo ves en la app.",
+          body: "Al ritmo del mercado, con swaps que van surgiendo en el camino, sin comisiones en los movimientos y sin que hagas nada. El avance lo ves en la app.",
         },
         {
           title: "Ganas en el camino",

@@ -153,6 +153,7 @@ const confirmParams = (over: Partial<WithdrawConfirmParams> = {}): WithdrawConfi
   chainId: "near:mainnet",
   address: "bob.near",
   destinationVerified: true,
+  relayGas: null,
   conversionQuote: QUOTE,
   ...over,
 });
@@ -216,6 +217,7 @@ describe("DashboardShell — the conversion quote seam", () => {
       chainId: "near:mainnet",
       qty: 1.234567890123456789,
       recipient: "bob.near",
+      relayGas: null,
     });
     expect(mockHeld).toHaveBeenCalledWith(ACCOUNT, USDT_BSC);
     expect(mockQuote).toHaveBeenCalledWith(
@@ -223,11 +225,54 @@ describe("DashboardShell — the conversion quote seam", () => {
     );
   });
 
+  // D-589 block 5: what was typed leaves the balance — the conversion and the relay's gas — and the
+  // quote is what gets signed, so 1Click is asked for the rest.
+  it("asks 1Click for the amount typed minus the sending cost, capped to the balance first", async () => {
+    mockHeld.mockResolvedValue(BigInt("5000000"));
+    const { conversions } = renderShell();
+    await conversions!.quote({
+      originTokenId: USDT_POL,
+      chainId: "near:mainnet",
+      qty: 5,
+      recipient: "bob.near",
+      relayGas: { tokenId: USDT_POL, amount: BigInt(6000) },
+    });
+    expect(mockQuote).toHaveBeenCalledWith(expect.objectContaining({ amountRaw: "4994000" }));
+  });
+
+  it("an amount the sending cost eats whole is below the minimum, and 1Click is not asked", async () => {
+    mockHeld.mockResolvedValue(BigInt("5000000"));
+    const { conversions } = renderShell();
+    const result = await conversions!.quote({
+      originTokenId: USDT_POL,
+      chainId: "near:mainnet",
+      qty: 0.006,
+      recipient: "bob.near",
+      relayGas: { tokenId: USDT_POL, amount: BigInt(6000) },
+    });
+    expect(result).toEqual({ ok: false, reason: "below-minimum", minAmountRaw: "1" });
+    expect(mockQuote).not.toHaveBeenCalled();
+  });
+
+  it("a sending cost priced in another token is refused before 1Click is asked", async () => {
+    mockHeld.mockResolvedValue(BigInt("5000000"));
+    const { conversions } = renderShell();
+    const result = await conversions!.quote({
+      originTokenId: USDT_POL,
+      chainId: "near:mainnet",
+      qty: 5,
+      recipient: "bob.near",
+      relayGas: { tokenId: "nep141:usdt.tether-token.near", amount: BigInt(6000) },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "unavailable" });
+    expect(mockQuote).not.toHaveBeenCalled();
+  });
+
   it("an amount clearly above the balance is refused before 1Click is asked", async () => {
     mockHeld.mockResolvedValue(BigInt("1000000"));
     const { conversions } = renderShell();
     await expect(
-      conversions!.quote({ originTokenId: USDT_POL, chainId: "near:mainnet", qty: 5, recipient: "bob.near" })
+      conversions!.quote({ originTokenId: USDT_POL, chainId: "near:mainnet", qty: 5, recipient: "bob.near", relayGas: null })
     ).rejects.toThrow(/more than the balance/);
     expect(mockQuote).not.toHaveBeenCalled();
   });
@@ -260,10 +305,26 @@ describe("DashboardShell — the conversion money door", () => {
       await onConfirmed(confirmParams());
     });
     expect(ensureCanOperate).toHaveBeenCalled();
-    expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({ accountId: ACCOUNT, quote: QUOTE, qty: 5 }));
+    expect(mockRun).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: ACCOUNT, quote: QUOTE, qty: 5, relayGas: null })
+    );
     expect(screen.getByText(t.withdrawalConvertingToast.replace("{qty}", "5.00").replace("{symbol}", "USDT(POL)").replace("{chain}", "NEAR"))).toBeTruthy();
     const row = mockContract.getTrackedWithdrawals(ACCOUNT).find((w) => w.intentId === "rec-1");
     expect(row).toMatchObject({ deliveryTokenId: QUOTE.deliveryTokenId, depositAddress: QUOTE.depositAddress, isReal: true });
+  });
+
+  it("hands the runner the sending cost the screen confirmed with the quote", async () => {
+    mockRun.mockImplementation(async (p: { onRecordId: (id: string) => void; onStage: (s: string) => void }) => {
+      p.onRecordId("rec-g");
+      p.onStage("publishing");
+      return new Promise(() => {});
+    });
+    const relayGas = { tokenId: USDT_POL, amount: BigInt(6000) };
+    const { onConfirmed } = renderShell();
+    await act(async () => {
+      await onConfirmed(confirmParams({ relayGas }));
+    });
+    expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({ quote: QUOTE, relayGas }));
   });
 
   // The Converting row shows the NEAR settlement hash while 1Click converts (operator, 2026-11-19).

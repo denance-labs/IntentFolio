@@ -23,6 +23,7 @@
 // contract-types / internal-utils canonical envelope).
 import type { Intent } from "@defuse-protocol/contract-types";
 import { INTENTS_CONTRACT_ID } from "@/features/wallet/config/network";
+import { relayGasIntent } from "./relay-gas-cost";
 import { STORAGE_COST_MEMO, STORAGE_COST_RECEIVER } from "./storage-cost";
 
 // ── Versioned V1 permit2 nonce ───────────────────────────────────────────────
@@ -164,6 +165,11 @@ export type BuildAllocateParams = {
    * SAME envelope. Absent for an AllocateInto, which never charges it.
    */
   storage?: { tokenId: string; amount: string };
+  /**
+   * The relay's gas (D-589 block 5, relay-gas-cost.ts): an intents token id and base units, the
+   * envelope's LAST intent. Absent only when the token has no live price.
+   */
+  relayGas?: { tokenId: string; amount: string };
   nonceTail?: Uint8Array;
 };
 
@@ -259,6 +265,9 @@ export function buildAllocateSignRequest(p: BuildAllocateParams): {
       memo: STORAGE_COST_MEMO,
     });
   }
+  // The relay's gas, after everything else (relay-gas-cost.ts): LAST in every envelope the relay
+  // sends to the Verifier, so the relay finds it in one place whatever the shape.
+  if (p.relayGas) intents.push(relayGasIntent(p.relayGas));
   const inner = {
     signer_id: p.signerId,
     deadline: deadlineIso(p.deadlineSecs),

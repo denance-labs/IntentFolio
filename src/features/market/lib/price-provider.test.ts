@@ -40,6 +40,17 @@ describe("getTokenPrices price cache", () => {
     expect(prices[PROBE.id].source).toBe("chaindefuser");
   });
 
+  // Cross-review 5c: the relay's gas is priced from NEAR's entry; native NEAR has no asset id of
+  // its own upstream and reads wNEAR's. Without it nothing would be charged, silently.
+  it("serves NEAR's live price under the registry id `near`, from wNEAR's upstream entry", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ assetId: "nep141:wrap.near", price: 2.5, priceUpdatedAt: "2026-11-23T00:00:00.000Z" }],
+    });
+    const prices = await getTokenPrices();
+    expect(prices.near).toMatchObject({ usdPrice: 2.5, source: "chaindefuser" });
+  });
+
   it("serves the last good price, not the hardcoded fallback, when upstream fails within the TTL", async () => {
     fetchMock.mockResolvedValue(okResponse());
     await getTokenPrices();

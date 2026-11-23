@@ -27,8 +27,10 @@
 import { messageFactory, config } from "@defuse-protocol/internal-utils";
 import type { Intent } from "@defuse-protocol/contract-types";
 import { INTENTS_CONTRACT_ID } from "@/features/wallet/config/network";
+import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
 import { getTokenById } from "@/features/market/lib/token-registry";
 import { capToHeld, toBaseUnits } from "@/features/vault/lib/base-units";
+import { relayGasIntent, type RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { buildHotWithdrawIntents, hotTokenFeeRaw } from "./hot-envelope";
 import type { HotFeeDetail } from "./hot-fee";
 import {
@@ -105,6 +107,14 @@ export type BuildWithdrawParams = {
   omniFee?: OmniFeeDetail;
   /** Injectable so tests are deterministic; `omni` only. Defaults to a random UUID, as upstream. */
   omniExternalId?: string;
+  /**
+   * The relay's gas (D-589 block 5, relay-gas-cost.ts): the deduction the confirmation showed,
+   * in the token withdrawn (a registry id) — or null/absent when that token has no live price
+   * and the withdrawal goes uncharged. It comes OUT of `qty`: the operation signs the rest, and
+   * the transfer to the gas account rides LAST in the envelope. Required one level up
+   * (`runRealWithdraw`), where forgetting it would be silent.
+   */
+  relayGas?: RelayGasDeduction | null;
 };
 
 export type WithdrawSignRequest = {
@@ -117,12 +127,18 @@ export type WithdrawSignRequest = {
   /** Unix seconds when the signed intent expires. Kept on the rescue record (D-463). */
   deadlineSecs: number;
   /**
-   * Base units LEAVING the General Balance — the figure the settlement assertion compares
-   * against. Gross on every route: what the user typed, or exactly the balance when that was
-   * within float noise of it (`capToHeld`, D-303). On `hot-omni` that is
-   * deliberately NOT `mt_withdraw.amounts[0]`, which is this minus the fee swap's input.
+   * Base units the WITHDRAWAL signs — what the rescue record, the delivery watch and the
+   * solver's judge read. Gross of the bridge fee on every route: what the user typed (or
+   * exactly the balance when that was within float noise of it, `capToHeld`, D-303) minus the
+   * relay's gas below. On `hot-omni` that is deliberately NOT `mt_withdraw.amounts[0]`, which
+   * is this minus the fee swap's input. What leaves the General Balance is this plus `relayGas`.
    */
   amount: string;
+  /**
+   * The relay's gas (D-589 block 5): an intents token id and base units, the envelope's LAST
+   * intent. Null when the withdrawal goes uncharged (no live price for the token).
+   */
+  relayGas: { tokenId: string; amount: string } | null;
   /**
    * Solver quotes the relay must honour when it publishes these intents (block 4.3.3).
    *
@@ -156,6 +172,25 @@ function requireHotFee(fee: HotFeeDetail | undefined, tokenId: string): HotFeeDe
     );
   }
   return fee;
+}
+
+/**
+ * The relay's gas as the envelope carries it, checked against the token withdrawn: it is paid
+ * in that token and nothing else (048 §10), so a charge priced in another one is a caller
+ * pairing two different screens — refused before anything is signed.
+ */
+function relayGasFor(
+  gas: RelayGasDeduction | null | undefined,
+  tokenId: string
+): { tokenId: string; amount: string } | null {
+  if (gas == null) return null;
+  if (gas.tokenId !== tokenId) {
+    throw new Error(
+      `The sending cost is priced in ${gas.tokenId}, but this withdrawal moves ${tokenId}; nothing was signed`
+    );
+  }
+  if (gas.amount <= BigInt(0)) throw new Error(`The sending cost must be positive, got ${gas.amount}`);
+  return { tokenId: toIntentsTokenId(tokenId), amount: gas.amount.toString() };
 }
 
 /**
@@ -313,11 +348,25 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
   const token = getTokenById(p.tokenId);
   if (!token) throw new Error(`Unknown token ${p.tokenId}`);
 
-  // GROSS is what leaves the balance (below), so GROSS is what the cap applies to.
-  const amount = capToHeld(BigInt(toBaseUnits(p.qty, token.decimals)), p.heldRaw).toString();
-  if (amount === "0") {
+  // What the user typed is what leaves the balance — the withdrawal AND the relay's gas — so
+  // that total is what the cap applies to.
+  const totalRaw = capToHeld(BigInt(toBaseUnits(p.qty, token.decimals)), p.heldRaw);
+  if (totalRaw === BigInt(0)) {
     throw new Error(`Withdrawal amount for ${token.symbol} rounds to zero base units`);
   }
+  // D-589 block 5: the relay's gas comes out of that total and the WITHDRAWAL is the rest. Every
+  // check below — the fee, both floors, the Omni quote — is about the withdrawal, so an amount
+  // that clears a floor only with the gas still in it is refused (the screen refuses it too,
+  // withdrawal-modal.tsx).
+  const relayGas = relayGasFor(p.relayGas, p.tokenId);
+  const withdrawnRaw = totalRaw - (relayGas ? BigInt(relayGas.amount) : BigInt(0));
+  if (withdrawnRaw <= BigInt(0)) {
+    throw new Error(
+      `Withdrawal of ${totalRaw} base units does not cover the ${relayGas?.amount} base-unit ` +
+        `sending cost for ${token.symbol}: nothing would be withdrawn`
+    );
+  }
+  const amount = withdrawnRaw.toString();
 
   // ── The amount is GROSS on every route: what the user receives is `amount - fee`. Where
   // the deduction HAPPENS differs (the PoA bridge takes it on the far side; HOT takes it here,
@@ -350,9 +399,11 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
   if (omniFee) {
     // The ceiling grows with the amount (omni-bridge.ts header), so a quote asked for less than
     // what is signed may be too low a `MaxGasFee` for the transaction the bridge has to build.
-    // Signing LESS than quoted is fine — the ceiling for a smaller amount is never higher. It
-    // can be MORE only when `capToHeld` snaps up to the balance (within 1e-12 of it), which on
-    // 8 decimals needs ≥ 10,000 ZEC — and then this refuses before anything is signed.
+    // Signing LESS than quoted is fine — the ceiling for a smaller amount is never higher, and
+    // the screen quotes the total typed, so the withdrawal (that total minus the relay's gas) is
+    // always under it. It can be MORE only when `capToHeld` snaps up to the balance (within
+    // 1e-12 of it), which on 8 decimals needs ≥ 10,000 ZEC — and then this refuses before
+    // anything is signed.
     if (amountRaw > BigInt(omniFee.quotedForRaw)) {
       throw new Error(
         `Withdrawal of ${amount} base units exceeds the ${omniFee.quotedForRaw} the Omni Bridge ` +
@@ -453,7 +504,7 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
     throw new Error(`The Omni Bridge has no destination prefix for ${entry.chainId}`);
   }
 
-  const intents: Intent[] = hotFee
+  const withdrawal: Intent[] = hotFee
     ? buildHotWithdrawIntents({
         tokenId: p.tokenId,
         chainId: entry.chainId,
@@ -479,6 +530,8 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
           destinationMemo: p.destinationMemo,
         }),
       ];
+  // LAST, so every reader that finds the withdrawal by position still finds it where it was.
+  const intents: Intent[] = relayGas ? [...withdrawal, relayGasIntent(relayGas)] : withdrawal;
 
   const deadlineSecs = p.deadlineSecs ?? Math.floor(Date.now() / 1000) + WITHDRAW_DEADLINE_SECS;
 
@@ -502,6 +555,7 @@ export function buildWithdrawSignRequest(p: BuildWithdrawParams): WithdrawSignRe
     route: entry.bridgeRoute,
     deadlineSecs,
     amount,
+    relayGas,
     // Read off the same quote that built the `token_diff`, so the two cannot drift apart.
     quoteHashes: hotFee?.swap ? [hotFee.swap.quoteHash] : [],
   };

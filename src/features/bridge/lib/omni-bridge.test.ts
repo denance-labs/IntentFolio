@@ -323,6 +323,28 @@ describe("buildWithdrawSignRequest on the omni route", () => {
     expect(a.external_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(a.external_id).not.toBe(b.external_id);
   });
+  // D-589 block 5: the relay's gas rides LAST, out of the amount quoted, and the bridge's own
+  // floor is measured on what the withdrawal signs.
+  it("signs [ft_withdraw of the rest, gas] when the relay's gas is charged", () => {
+    const req = zec({ relayGas: { tokenId: ZEC, amount: BigInt(12000) } });
+    expect(req.amount).toBe("488000");
+    expect(req.intents).toHaveLength(2);
+    expect(fields(req.intents[0])).toMatchObject({ receiver_id: OMNI_BRIDGE_CONTRACT_ID, amount: "488000" });
+    expect(readOmniRecipient(req.intents[0])).toBe(`zcash:${T1}`);
+    expect(req.intents[1]).toEqual({
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [ZEC]: "12000" },
+      memo: "gas",
+    });
+  });
+
+  it("refuses an amount over the bridge minimum only with the gas still in it", () => {
+    expect(() => zec({ qty: 0.0011 })).not.toThrow();
+    expect(() => zec({ qty: 0.0011, relayGas: { tokenId: ZEC, amount: BigInt(12000) } })).toThrow(
+      /below the Omni Bridge minimum/
+    );
+  });
 });
 
 /** The block-0 fixture: Omni's answer for a real withdrawal to Zcash (tx J8PwufFu…, 2026-11-12). */

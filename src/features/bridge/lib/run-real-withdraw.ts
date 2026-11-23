@@ -29,6 +29,7 @@
 import type { VaultSigner } from "@/features/vault/lib/vault-signer";
 import { getIntentsBalances } from "@/features/vault/lib/intents-read-client";
 import { AmountExceedsBalanceError } from "@/features/vault/lib/base-units";
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
 import { buildWithdrawSignRequest, type SupportedWithdrawRoute } from "./withdraw-envelope";
 import {
@@ -129,6 +130,13 @@ export type RunRealWithdrawParams = {
    * is: its gas ceiling is signed. See `BuildWithdrawParams.omniFee`.
    */
   omniFee?: OmniFeeDetail;
+  /**
+   * The relay's gas the confirmation showed (D-589 block 5, `quoteRelayGas`), in the token
+   * withdrawn — or null when that token has no live price and the withdrawal goes uncharged.
+   * Deducted from `qty` by the builder; the withdrawal signs the rest. Required, so a caller
+   * cannot forget it silently.
+   */
+  relayGas: RelayGasDeduction | null;
   /** Signs in the login family's own scheme and assembles the MultiPayload. */
   signer: VaultSigner;
   onStage?: (stage: RealWithdrawStage) => void;
@@ -268,6 +276,7 @@ export async function runRealWithdraw(p: RunRealWithdrawParams): Promise<RealWit
     destinationMemo: p.destinationMemo,
     hotFee: p.hotFee,
     omniFee: p.omniFee,
+    relayGas: p.relayGas,
     ...p.envelope,
   });
 

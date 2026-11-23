@@ -37,6 +37,8 @@ import { useRelayPaused } from "@/features/vault/hooks/use-relay-paused";
 import { RelayPausedNotice } from "@/features/vault/components/relay-paused-notice";
 import { useVaultPrecheck } from "@/features/vault/hooks/use-vault-precheck";
 import { VaultPrecheckNotice } from "@/features/vault/components/vault-precheck-notice";
+import { relayGasDeductionOf } from "@/features/vault/lib/relay-gas-cost";
+import { RelayGasLine, relayGasCostText, relayGasQuoteProblem, useRelayGasQuote } from "./relay-gas-line";
 import { StorageCostLine, storageQuoteProblem, useSetupStorageQuote } from "./storage-cost-line";
 import { APP_MAX_TOKENS_PER_PORTFOLIO, growsPastAppTokenCap } from "@/features/vault/lib/change-set-preflight";
 import { usePendingAllocates } from "@/features/vault/hooks/use-pending-allocates";
@@ -210,6 +212,10 @@ export function PresetReviewModal({
   const compositionTokenIds = useMemo(() => (changeset.tokenAdditions ?? []).map((a) => a.tokenId), [changeset]);
   const storageQuote = useSetupStorageQuote({ portfolioName: name.trim(), compositionTokenIds, grossAllocations: allocations });
   const storageProblem = storageQuoteProblem(storageQuote, t);
+  // D-589 block 5: the relay's gas, in the token the Storage Cost is charged in (the same choice,
+  // `relayGasTokenOf`), so the Setup's two costs come out of one leg.
+  const relayGasQuote = useRelayGasQuote(storageQuote?.ok ? storageQuote.tokenId : null);
+  const relayGasCharge = relayGasQuote?.ok ? relayGasQuote.charge : null;
   // A draft saved before the app's 10-token cap (D-528) can hold more: trimmed in the editor first.
   const overTokenCap = growsPastAppTokenCap(0, compositionTokenIds.length);
   // D-569: the one door every new portfolio goes through, so a mix with stocks that reached here
@@ -221,10 +227,25 @@ export function PresetReviewModal({
   const netAllocations = useMemo(
     () =>
       storageQuote?.ok
-        ? { ...allocations, [storageQuote.tokenId]: (allocations[storageQuote.tokenId] ?? 0) - storageQuote.qty }
+        ? {
+            ...allocations,
+            [storageQuote.tokenId]:
+              (allocations[storageQuote.tokenId] ?? 0) - storageQuote.qty - (relayGasCharge?.qty ?? 0),
+          }
         : allocations,
-    [allocations, storageQuote]
+    [allocations, storageQuote, relayGasCharge]
   );
+  // What stays of that token must still be a funded line once the sending cost is out too (the
+  // Storage Cost's own check, `quoteStorageCost`, only knows about itself).
+  const relayGasProblem =
+    relayGasQuoteProblem(relayGasQuote, t) ??
+    (storageQuote?.ok &&
+    relayGasCharge &&
+    Math.round((netAllocations[storageQuote.tokenId] ?? 0) * priceOf(storageQuote.tokenId) * 100) / 100 < MIN_FUNDED_USD
+      ? t.relayGasExceedsAmount
+          .replace("{token}", symbolFor(storageQuote.tokenId))
+          .replace("{cost}", relayGasCostText(relayGasCharge))
+      : null);
 
   // Projected initial state: treat the net allocations as the new portfolio's balances
   // and run them through the same engine the editor uses, so the preview's current% and
@@ -293,7 +314,9 @@ export function PresetReviewModal({
     !vaultBlock &&
     !overTokenCap &&
     !stocksBlocked &&
-    storageQuote?.ok === true;
+    storageQuote?.ok === true &&
+    relayGasQuote?.ok === true &&
+    relayGasProblem === null;
 
   function nameError(): string | null {
     if (nameValidation.ok) return null;
@@ -337,7 +360,7 @@ export function PresetReviewModal({
       onClose();
       return;
     }
-    if (!canSubmit || !storageQuote?.ok) return;
+    if (!canSubmit || !storageQuote?.ok || !relayGasQuote) return;
     setIsSigning(true);
     setSignError(null);
     setBalanceChanged(false);
@@ -345,7 +368,7 @@ export function PresetReviewModal({
     try {
       const summary = summarizeChangeSet(changeset, [], symbolFor);
       const text = changeSummaryToSignatureText(summary, name.trim());
-      await createPortfolioWithChangeSet(name.trim(), changeset, text, storageQuote);
+      await createPortfolioWithChangeSet(name.trim(), changeset, text, storageQuote, relayGasDeductionOf(relayGasQuote));
       // The draft became this portfolio — unless another tab replaced it meanwhile (F2, s186).
       if (draft) retireSignedDraft(draft.updatedAt);
       onCreated?.();
@@ -598,6 +621,10 @@ export function PresetReviewModal({
                 <p className="mt-3 text-[11px] leading-snug text-amber-200">
                   {storageProblem}
                 </p>
+              ) : null}
+              {storageQuote?.ok && relayGasCharge ? <RelayGasLine charge={relayGasCharge} className="mt-2" /> : null}
+              {storageQuote?.ok && relayGasProblem ? (
+                <p className="mt-2 text-[11px] leading-snug text-amber-200">{relayGasProblem}</p>
               ) : null}
               {lowered && hasFunds ? (
                 <p className="mt-2 text-[11px] tabular-nums text-slate-400">

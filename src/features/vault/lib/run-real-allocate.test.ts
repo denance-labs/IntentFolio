@@ -117,6 +117,7 @@ function run(over: Partial<Parameters<typeof runRealAllocate>[0]> = {}) {
     loginWalletAddress: "alice.near",
     nearWallet: signer,
     submit: walletSubmitter(signer),
+    relayGas: null,
     ...over,
   });
 }
@@ -346,6 +347,21 @@ describe("runRealAllocate", () => {
       expect(setup.allocations).toEqual([["nep141:wrap.near", net]]);
       // The Storage Cost is a third intent in the same token: together, the 2 NEAR typed.
       expect(inner.intents[2]).toMatchObject({ receiver_id: "intentfolio-budget.near", tokens: { "nep141:wrap.near": "10000" } });
+    });
+
+    // Cross-review 5c: the relay's gas on a NEAR leg is priced in "near" and must be SIGNED as
+    // wNEAR, or the gate (and the Verifier) see a token the account holds none of.
+    it("signs the relay's gas on a NEAR leg as nep141:wrap.near, last", async () => {
+      stubNearRpc();
+      await run({ changeset: NEAR_CHANGESET, relayGas: { tokenId: "near", amount: BigInt("2000000000000000000000") } });
+      const inner = JSON.parse(vi.mocked(signer.signNEP413Message).mock.calls[0][0].message);
+      expect(inner.intents).toHaveLength(4);
+      expect(inner.intents[3]).toEqual({
+        intent: "transfer",
+        receiver_id: "intentfolio-budget.near",
+        tokens: { "nep141:wrap.near": "2000000000000000000000" },
+        memo: "gas",
+      });
     });
 
     it("reports the credit back in OUR id, so the dashboard can resolve it", async () => {
@@ -718,6 +734,36 @@ describe("the Storage Cost (D-528)", () => {
     await run({ changeset: gross(5.0000000001) }); // float noise above the balance
     const [vault, , storage] = signedIntents();
     expect(BigInt(vault.tokens![USDC]) + BigInt(storage.tokens![USDC])).toBe(BigInt(5_000_000));
+  });
+
+  // D-589 block 5: the relay's gas comes out of the same leg, after the Storage Cost.
+  it("signs [vault, auth_call, storage, gas]: the leg net of both, the gas last", async () => {
+    stubRpc({ portfolios: ["pf-real"], balance: "983934" });
+    await run({ changeset: gross(1), relayGas: { tokenId: USDC, amount: BigInt(6066) } });
+    const [vault, , storage, gas] = signedIntents();
+    expect(vault.tokens).toEqual({ [USDC]: "983934" });
+    expect(storage.memo).toBe("storage");
+    expect(gas).toEqual({ intent: "transfer", receiver_id: "intentfolio-budget.near", tokens: { [USDC]: "6066" }, memo: "gas" });
+    expect(listAllocateRecords()[0].legs).toEqual([{ tokenId: USDC, amount: "983934" }]);
+  });
+
+  it("Max with the gas: net, cost and gas add up to exactly the balance", async () => {
+    stubRpc({ portfolios: ["pf-real"], balance: "4983934", held: "5000000" });
+    await run({ changeset: gross(5.0000000001), relayGas: { tokenId: USDC, amount: BigInt(6066) } });
+    const [vault, , storage, gas] = signedIntents();
+    expect(BigInt(vault.tokens![USDC]) + BigInt(storage.tokens![USDC]) + BigInt(gas.tokens![USDC])).toBe(BigInt(5_000_000));
+  });
+
+  it("refuses, before signing, a gas that would take the rest of the leg or matches no leg", async () => {
+    stubRpc({ portfolios: [], balance: null, held: "20000" });
+    await expect(
+      run({ changeset: gross(0.02), relayGas: { tokenId: USDC, amount: BigInt(10_000) } })
+    ).rejects.toMatchObject({ name: "RealChangeSetInvalidError", reason: "relay-gas-exceeds-amount" });
+    await expect(
+      run({ changeset: gross(0.02), relayGas: { tokenId: "near", amount: BigInt(1) } })
+    ).rejects.toMatchObject({ name: "RealChangeSetInvalidError", reason: "relay-gas-mismatch" });
+    expect(signer.signNEP413Message).not.toHaveBeenCalled();
+    expect(listAllocateRecords()).toEqual([]);
   });
 
   it("refuses, before signing, when the balance does not cover the cost", async () => {

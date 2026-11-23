@@ -105,6 +105,7 @@ function run(over: Partial<RunRealWithdrawParams> = {}) {
     chainId: "eth:42161",
     qty: 1.5,
     destinationAddress: EVM_ADDRESS,
+    relayGas: null,
     signer,
     publish: publish as unknown as WithdrawPublisher,
     probe,
@@ -197,6 +198,23 @@ describe("runRealWithdraw — omft, handed to a bridge nobody can watch (D-584)"
     // The nonce kept is the one inside what was signed, not a copy of the injected value.
     const [request] = signer.signEnvelope.mock.calls[0];
     expect(JSON.parse(request.erc191Message).nonce).toBe(onlyRecord().nonce);
+  });
+
+  // D-589 block 5: the confirmation's charge reaches the signature, LAST, and everything that
+  // follows the withdrawal (record, delivery, result) carries what the withdrawal signed.
+  it("signs the relay's gas last and records the withdrawal without it", async () => {
+    const result = await run({ qty: 3, relayGas: { tokenId: USDC_ARB, amount: BigInt(6066) } });
+    const intents = JSON.parse(signer.signEnvelope.mock.calls[0][0].nep413.message).intents;
+    expect(intents.map((i: { intent: string }) => i.intent)).toEqual(["ft_withdraw", "transfer"]);
+    expect(intents[0].amount).toBe("2993934");
+    expect(intents[1]).toEqual({
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [USDC_ARB]: "6066" },
+      memo: "gas",
+    });
+    expect(result.amount).toBe("2993934");
+    expect(onlyRecord()).toMatchObject({ amount: "2993934", qty: 3 });
   });
 });
 

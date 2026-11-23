@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { WithdrawalModal } from "./withdrawal-modal";
 
 vi.mock("@/features/dashboard-shell/hooks/use-available-general-balance", () => ({
@@ -90,6 +90,7 @@ import type { GasPurchaseQuote, GasQuoteRequest } from "../lib/gas-purchase";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
 import { bridgeTranslations } from "../lib/translations";
 import { isTokenAvailable } from "../lib/token-availability";
+import { LanguageProvider } from "@/features/dashboard-shell/context/language-context";
 
 const mockFee = fetchWithdrawalFee as ReturnType<typeof vi.fn>;
 const mockGasReq = fetchHotGasRequirement as ReturnType<typeof vi.fn>;
@@ -436,6 +437,8 @@ describe("WithdrawalModal", () => {
       address: "alice.near",
       memo: undefined,
       destinationVerified: false,
+      // The mock path charges nothing: no relay sends it (D-589 block 5).
+      relayGas: null,
     });
   });
 
@@ -521,6 +524,8 @@ describe("WithdrawalModal", () => {
       address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
       memo: undefined,
       destinationVerified: false,
+      // The mock path charges nothing: no relay sends it (D-589 block 5).
+      relayGas: null,
     });
   });
 
@@ -2913,5 +2918,158 @@ describe("WithdrawalModal — tokens ordered by USD value (D-586)", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((li) => li.querySelector("p")?.textContent)).toEqual([big.ticker, small.ticker]);
     expect(rows[1].textContent).toContain(bridgeTranslations.en.lastUsed);
+  });
+});
+
+// ── D-589 block 5: the relay's gas on a direct withdrawal ───────────────────────
+// Live prices (the only ones the charge is priced from): NEAR 3, USDT 1 ⇒ 0.002 NEAR = 0.006 USDT.
+describe("WithdrawalModal — the relay's gas (D-589 block 5)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  const LIVE_PRICES = {
+    [USDT_TRON]: { usdPrice: 1, source: "coingecko" },
+    near: { usdPrice: 3, source: "coingecko" },
+  };
+
+  function renderLive(props: Partial<React.ComponentProps<typeof WithdrawalModal>> = {}) {
+    mockBalance.mockReturnValue(new Map([[USDT_TRON, 10]]));
+    return render(
+      <LanguageProvider>
+        <WithdrawalModal open={true} lang="en" onClose={vi.fn()} isRealRoute={() => true} {...props} />
+      </LanguageProvider>
+    );
+  }
+
+  async function reachLiveStep4(amount: string, props: Partial<React.ComponentProps<typeof WithdrawalModal>> = {}) {
+    renderLive(props);
+    pickSingleNetworkToken("USDT");
+    fireEvent.change(screen.getByLabelText("Destination address"), { target: { value: TRON_ADDRESS } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: amount } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await act(async () => {});
+  }
+
+  it("shows it as its own row, takes it out of what arrives, and hands the same charge to the signature", async () => {
+    mockPrices.mockReturnValue({ prices: LIVE_PRICES });
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "810000", source: "live" }));
+    const onConfirmed = vi.fn();
+    await reachLiveStep4("5", { onConfirmed });
+
+    expect(screen.getByText("Sending cost")).toBeTruthy();
+    expect(screen.getByText("0.006 USDT")).toBeTruthy();
+    // 5 − 0.81 network fee − 0.006 sending cost.
+    expect(screen.getByText("4.184 USDT")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    });
+    expect(onConfirmed).toHaveBeenCalledWith(
+      expect.objectContaining({ qty: 5, relayGas: { tokenId: USDT_TRON, amount: BigInt(6000) } })
+    );
+  });
+
+  it("goes uncharged, with no row, when the token has no live price", async () => {
+    mockPrices.mockReturnValue({ prices: { [USDT_TRON]: { usdPrice: 1 } } });
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "810000", source: "live" }));
+    const onConfirmed = vi.fn();
+    await reachLiveStep4("5", { onConfirmed });
+
+    expect(screen.queryByText("Sending cost")).toBeNull();
+    expect(screen.getByText("4.19 USDT")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    });
+    expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({ relayGas: null }));
+  });
+
+  // The minimums are about what the withdrawal signs, which is the amount typed minus the gas.
+  it("step 3 asks for the bridge minimum plus the sending cost", () => {
+    mockPrices.mockReturnValue({ prices: LIVE_PRICES });
+    renderLive();
+    pickSingleNetworkToken("USDT");
+    fireEvent.change(screen.getByLabelText("Destination address"), { target: { value: TRON_ADDRESS } });
+    // The registry floor is 2.53 (fee 1.53 + minimum 1); with the gas it is 2.536.
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "2.53" } });
+    expect(screen.getByText("Minimum withdrawal: 2.536000 USDT")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("step 4 refuses an amount that clears the live floor only with the gas still in it", async () => {
+    mockPrices.mockReturnValue({ prices: LIVE_PRICES });
+    // Live fee 2 ⇒ floor 3 (fee + minimum 1); 3.003 clears it, but not once the 0.006 is out.
+    mockFee.mockResolvedValue(feeResult({ feeRaw: "2000000", source: "live" }));
+    const onConfirmed = vi.fn();
+    await reachLiveStep4("3.003", { onConfirmed });
+
+    expect(screen.getByText(/Withdraw at least 3.006000 USDT/)).toBeTruthy();
+    const confirm = screen.getByRole("button", { name: "Confirm withdrawal" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+  });
+});
+
+// ── D-589 block 5: the relay's gas on the gas purchase ────────────────────────────
+// The purchase is its own envelope through our relay, so it pays its own charge — on top of
+// 1Click's input, which an EXACT_OUTPUT quote fixes. NEAR 3, USDT 1 ⇒ 0.006 USDT = 6000 units.
+describe("WithdrawalModal — the relay's gas on the gas purchase (D-589 block 5)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  async function reachLiveTonBlocked(props: Partial<React.ComponentProps<typeof WithdrawalModal>>) {
+    mockBalance.mockReturnValue(new Map([[USDT_TON, 5]]));
+    mockPrices.mockReturnValue({
+      prices: {
+        [USDT_TON]: { usdPrice: 1, source: "coingecko" },
+        [GRAM]: { usdPrice: 1.34, source: "coingecko" },
+        near: { usdPrice: 3, source: "coingecko" },
+      },
+    });
+    mockFee.mockResolvedValue(feeResult(null, TON_REQUIREMENT));
+    render(
+      <LanguageProvider>
+        <WithdrawalModal open={true} lang="en" onClose={vi.fn()} isRealRoute={() => true} isAvailable={() => true} {...props} />
+      </LanguageProvider>
+    );
+    pickSingleNetworkToken("USDT");
+    fireEvent.change(screen.getByLabelText("Destination address"), { target: { value: TON_ADDRESS } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await act(async () => {});
+    await act(async () => {});
+  }
+
+  const purchaseSection = () =>
+    document.querySelector('[aria-labelledby="gas-purchase-heading"]') as HTMLElement;
+
+  it("lists the purchase's own sending cost and hands it to the buy, against what the withdrawal signs", async () => {
+    const onBuyGas = vi.fn<NonNullable<React.ComponentProps<typeof WithdrawalModal>["onBuyGas"]>>(async () => {});
+    await reachLiveTonBlocked({ onQuoteGas: vi.fn(async () => gasQuote()), onBuyGas });
+
+    expect(within(purchaseSection()).getByText("Sending cost")).toBeTruthy();
+    expect(within(purchaseSection()).getByText("0.006 USDT")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Buy 0.04 GRAM" }));
+    await act(async () => {});
+    expect(onBuyGas).toHaveBeenCalledTimes(1);
+    expect(onBuyGas.mock.calls[0][0].relayGas).toEqual({ tokenId: USDT_TON, amount: BigInt(6000) });
+    // The 5 typed, minus the withdrawal's own 0.006: what the withdrawal will sign.
+    expect(onBuyGas.mock.calls[0][0].withdrawalAmountRaw).toBe("4994000");
+  });
+
+  it("counts both charges when deciding the purchase would eat the withdrawal", async () => {
+    // 4.99 + 0.006 for the purchase against 5 − 0.006 for the withdrawal: too large. Without the
+    // gas on both sides it slipped under the "too large" guard.
+    await reachLiveTonBlocked({
+      onQuoteGas: vi.fn(async () => gasQuote({ amountInRaw: "4990000" })),
+      onBuyGas: vi.fn(),
+    });
+    expect(screen.getByText(bridgeTranslations.en.gasPurchaseTooLarge)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Buy 0.04 GRAM" })).toBeNull();
   });
 });

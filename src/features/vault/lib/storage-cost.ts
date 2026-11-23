@@ -146,6 +146,33 @@ function ceilDiv(a: bigint, b: bigint): bigint {
   return (a + b - BigInt(1)) / b;
 }
 
+/**
+ * A NEAR cost in a token's base units: `ceil(costNEAR × nearUSD / tokenUSD)`, integer arithmetic.
+ * Null when an independent float valuation disagrees — the amount must cover the cost, and one
+ * base unit less must not (the ceiling adds at most one) — which catches an inverted ratio or a
+ * wrong decimals count before anyone signs it. Shared by the Storage Cost and the relay's gas
+ * (relay-gas-cost.ts), so both convert the same way.
+ */
+export function nearCostInTokenUnits(
+  costYocto: bigint,
+  nearPrice: number,
+  tokenPrice: number,
+  decimals: number
+): { amount: bigint; qty: number } | null {
+  const nearScaled = BigInt(Math.round(nearPrice * PRICE_SCALE));
+  const tokenScaled = BigInt(Math.round(tokenPrice * PRICE_SCALE));
+  if (nearScaled <= BigInt(0) || tokenScaled <= BigInt(0)) return null;
+  const amount = ceilDiv(costYocto * nearScaled * TEN ** BigInt(decimals), tokenScaled * YOCTO_PER_NEAR);
+  const qty = fromBaseUnits(amount, decimals);
+
+  const costUsd = (Number(costYocto) / 1e24) * nearPrice;
+  const unitUsd = tokenPrice / 10 ** decimals;
+  const amountUsd = qty * tokenPrice;
+  const slack = costUsd * 1e-6;
+  if (amountUsd < costUsd - slack || amountUsd - unitUsd >= costUsd + slack) return null;
+  return { amount, qty };
+}
+
 /** The Storage Cost of a Setup, in the token it is charged in. Pure. */
 export function quoteStorageCost(p: StorageQuoteInput): StorageQuote {
   const funded = Object.entries(p.grossAllocations).filter(([, qty]) => Number.isFinite(qty) && qty > 0);
@@ -173,22 +200,9 @@ export function quoteStorageCost(p: StorageQuoteInput): StorageQuote {
   const costYocto = BigInt(bytes) * YOCTO_PER_BYTE;
   if (costYocto <= BigInt(0) || costYocto > MAX_STORAGE_COST_YOCTO) return { ok: false, reason: "implausible" };
 
-  // amount = ceil(costNEAR × nearUSD / tokenUSD), in the token's base units.
-  const nearScaled = BigInt(Math.round(nearPrice * PRICE_SCALE));
-  const tokenScaled = BigInt(Math.round(charged.price * PRICE_SCALE));
-  const amount = ceilDiv(
-    costYocto * nearScaled * TEN ** BigInt(token.decimals),
-    tokenScaled * YOCTO_PER_NEAR
-  );
-  const qty = fromBaseUnits(amount, token.decimals);
-
-  // Independent float valuation: the amount must cover the cost, and one base unit less must not
-  // (the ceiling adds at most one). Catches an inverted ratio or a wrong decimals count.
-  const costUsd = (Number(costYocto) / 1e24) * nearPrice;
-  const unitUsd = charged.price / 10 ** token.decimals;
-  const amountUsd = qty * charged.price;
-  const slack = costUsd * 1e-6;
-  if (amountUsd < costUsd - slack || amountUsd - unitUsd >= costUsd + slack) return { ok: false, reason: "implausible" };
+  const converted = nearCostInTokenUnits(costYocto, nearPrice, charged.price, token.decimals);
+  if (!converted) return { ok: false, reason: "implausible" };
+  const { amount, qty } = converted;
 
   // What stays in the portfolio of that token must still be a funded line (C2, 016 §7).
   if (Math.round((charged.qty - qty) * charged.price * 100) / 100 < MIN_FUNDED_USD) {

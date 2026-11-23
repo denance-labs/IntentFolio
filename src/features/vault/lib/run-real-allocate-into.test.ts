@@ -108,6 +108,7 @@ function run(over: Partial<Parameters<typeof runRealAllocateInto>[0]> = {}) {
     nearWallet: walletMock,
     submit: walletSubmitter(walletMock),
     poll: { readSeal: sealed, sleep: () => Promise.resolve() },
+    relayGas: null,
     ...over,
   });
 }
@@ -160,6 +161,32 @@ describe("runRealAllocateInto", () => {
     const inner = JSON.parse(vi.mocked(walletMock.signNEP413Message).mock.calls[0][0].message);
     expect(inner.intents[0].tokens).toEqual({ [USDC]: "1000000" });
     expect(signedMsg().op.allocate_into.allocations).toEqual([[USDC, "1000000"]]);
+  });
+
+  // D-589 block 5: the relay's gas comes out of its leg and rides last; the vault is credited the net.
+  it("signs [transfer, auth_call, gas] with the leg net of the gas, and credits the net", async () => {
+    stubRpc();
+    const result = await run({ relayGas: { tokenId: USDC, amount: BigInt(6066) } });
+    const inner = JSON.parse(vi.mocked(walletMock.signNEP413Message).mock.calls[0][0].message);
+    expect(inner.intents).toHaveLength(3);
+    expect(inner.intents[0].tokens).toEqual({ [USDC]: "993934" });
+    expect(inner.intents[2]).toEqual({
+      intent: "transfer",
+      receiver_id: "intentfolio-budget.near",
+      tokens: { [USDC]: "6066" },
+      memo: "gas",
+    });
+    expect(signedMsg().op.allocate_into.allocations).toEqual([[USDC, "993934"]]);
+    expect(result.credited).toEqual([{ tokenId: USDC, qty: 0.993934 }]);
+  });
+
+  it("refuses, before signing, a gas that would take the whole leg", async () => {
+    stubRpc();
+    await expect(run({ relayGas: { tokenId: USDC, amount: BigInt(1_000_000) } })).rejects.toMatchObject({
+      name: "RealChangeSetInvalidError",
+      reason: "relay-gas-exceeds-amount",
+    });
+    expect(walletMock.signNEP413Message).not.toHaveBeenCalled();
   });
 
   describe("composition additions", () => {

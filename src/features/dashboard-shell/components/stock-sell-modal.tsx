@@ -28,9 +28,11 @@ import {
 } from "@/features/stocks/lib/stock-swap";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
 import { announceOperation } from "@/features/vault/hooks/use-real-portfolio-history";
+import { relayGasDeductionOf, type RelayGasCharge } from "@/features/vault/lib/relay-gas-cost";
 import { intentsBalancesQueryKey } from "@/features/wallet/hooks/use-intents-balances";
 import { useLanguage } from "../context/language-context";
 import { shellTranslations } from "../lib/translations";
+import { RelayGasRow, relayGasQuoteProblem, useRelayGasQuote } from "./relay-gas-line";
 
 const SALE_LABEL = "USDC";
 const FIELD =
@@ -54,11 +56,16 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
   const [heldUnread, setHeldUnread] = useState(false);
   const [amount, setAmount] = useState("");
   const [quote, setQuote] = useState<StockSwapQuote | null>(null);
+  // D-589 block 5: the relay's gas the quote on screen was asked net of — shown and signed with it.
+  const [quoteRelayGas, setQuoteRelayGas] = useState<RelayGasCharge | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [stage, setStage] = useState<StockSwapStage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<StockSwapResult | null>(null);
   const running = useRef(false);
+  // In the stock sold, out of the amount typed: 1Click is asked for the rest (048 §10).
+  const relayGasQuote = useRelayGasQuote(tokenId);
+  const relayGasProblem = relayGasQuoteProblem(relayGasQuote, t);
 
   const busy = stage !== null;
   // Told not to try again, so nothing here offers to. The balance may still change under it.
@@ -104,6 +111,18 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
       return;
     }
     if (!token) return;
+    if (relayGasProblem !== null) {
+      setError(relayGasProblem);
+      return;
+    }
+    // What was typed leaves the balance: the sale and the relay's gas. The quote is what gets
+    // signed, so 1Click prices the sale alone. Nothing left to sell is an amount with no price.
+    const charge = relayGasQuote?.ok ? relayGasQuote.charge : null;
+    const saleRaw = BigInt(amountRaw) - (charge ? BigInt(charge.amount) : BigInt(0));
+    if (saleRaw <= BigInt(0)) {
+      setError(t.stockSellNoLiquidity);
+      return;
+    }
     // A hand-written fallback is no reference for anything, and neither is an old price.
     const price = prices[tokenId];
     const priceAgeMs = price ? Date.now() - Date.parse(price.updatedAt) : Number.NaN;
@@ -121,7 +140,7 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
       side: "sell",
       stock: { ticker: token.symbol, name: token.name, id: token.id, decimals: token.decimals },
       funding: STOCK_SALE_ASSET,
-      amountRaw,
+      amountRaw: saleRaw.toString(),
       accountId: intentsAccountId,
       maxTradeUsd: null,
       referenceUsdPrice: reference,
@@ -129,6 +148,7 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
     setQuoting(false);
     if (answer.ok) {
       setQuote(answer.quote);
+      setQuoteRelayGas(charge);
     } else {
       console.warn(`[stocks] no quote for ${symbol}: ${answer.detail}`);
       setQuote(null);
@@ -147,6 +167,7 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
       const outcome = await runStockSwap({
         accountId: intentsAccountId,
         quote,
+        relayGas: relayGasDeductionOf({ ok: true, charge: quoteRelayGas }),
         signer: liveSigner.signer,
         onStage: setStage,
       });
@@ -235,8 +256,9 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
       {quote ? (
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-2xl border border-slate-800 px-4 py-3 text-sm">
           <dt className="text-slate-400">{t.stockSellYouSell}</dt>
+          {/* What leaves the balance: the sale plus the sending cost, i.e. the amount typed. */}
           <dd className="text-right tabular-nums text-slate-100">
-            {formatRaw(quote.amountInRaw, STOCK_DECIMALS)} {symbol}
+            {formatRaw(BigInt(quote.amountInRaw) + BigInt(quoteRelayGas?.amount ?? "0"), STOCK_DECIMALS)} {symbol}
           </dd>
           <dt className="text-slate-400">{t.stockSellYouReceive}</dt>
           <dd className="text-right tabular-nums text-slate-100">
@@ -248,6 +270,8 @@ export function StockSellModal({ tokenId, onClose }: { tokenId: string; onClose:
           </dd>
           <dt className="text-slate-400">{t.stockSellCost}</dt>
           <dd className="text-right tabular-nums text-slate-100">{(Math.max(quote.costBps, 0) / 100).toFixed(2)} %</dd>
+          {/* D-589 block 5: its own row, never folded into 1Click's cost (operator). */}
+          {quoteRelayGas ? <RelayGasRow charge={quoteRelayGas} symbol={symbol} className="col-span-2" labelClassName="text-sm" /> : null}
         </dl>
       ) : null}
 

@@ -31,7 +31,7 @@ export const shellTranslations = {
     // landing's "How it works" cards 03 and 04.
     onboardingStep3Title: "It moves toward your targets",
     onboardingStep3Body:
-      "At the market's pace, with no fees as it moves and no action needed from you. There's just a one-time storage cost when you create the portfolio.",
+      "At the market's pace, with no fees as it moves and no action needed from you.",
     onboardingStep4Title: "Earn along the way",
     onboardingStep4Body:
       "Each move aims to leave you a spread in your favor. Once you reach your targets, it keeps aiming without leaving your band.",
@@ -497,6 +497,12 @@ export const shellTranslations = {
     storageCostPricesNotLive: "Waiting for current prices to work out the storage cost.",
     storageCostExceedsAmount: "The {token} amount doesn't cover the storage cost ({cost}). Raise it or add another token.",
     storageCostImplausible: "We couldn't work out the storage cost. Nothing was signed; reload the page.",
+    // D-589 block 5: the relay's gas, on every confirmation that signs for the Verifier. Never
+    // "fee" or "commission" (operator, 2026-11-20).
+    relayGasLabel: "Sending cost",
+    relayGasInfo: "Pays the NEAR network gas to send this operation. It's a fixed amount per operation.",
+    relayGasExceedsAmount: "The {token} amount doesn't cover the sending cost ({cost}). Raise it or add another token.",
+    relayGasImplausible: "We couldn't work out the sending cost. Nothing was signed; reload the page.",
     signErrorCancelled: "You cancelled the signature. You can retry.",
     signErrorUnavailable: "Your wallet is unavailable. Unlock it and retry.",
     signErrorGeneric: "Couldn't complete the signature.",
@@ -661,7 +667,7 @@ export const shellTranslations = {
       "Elige qué tokens y cuánto de cada uno. Puedes armarlo antes de depositar: queda guardado hasta que lleguen tus fondos.",
     onboardingStep3Title: "Avanza hacia tus objetivos",
     onboardingStep3Body:
-      "Al ritmo del mercado, sin comisiones en los movimientos y sin que hagas nada. Sólo hay un costo único de almacenamiento al crear el portfolio.",
+      "Al ritmo del mercado, sin comisiones en los movimientos y sin que hagas nada.",
     onboardingStep4Title: "Ganas en el camino",
     onboardingStep4Body:
       "Cada movimiento busca dejarte un spread a favor. Cuando llegas a tus objetivos, lo sigue buscando sin salir de tu banda.",
@@ -1057,6 +1063,10 @@ export const shellTranslations = {
     storageCostPricesNotLive: "Esperando precios actualizados para calcular el costo de almacenamiento.",
     storageCostExceedsAmount: "El monto de {token} no cubre el costo de almacenamiento ({cost}). Subí el monto o sumá otro token.",
     storageCostImplausible: "No pudimos calcular el costo de almacenamiento. No se firmó nada; recargá la página.",
+    relayGasLabel: "Costo de envío",
+    relayGasInfo: "Paga el gas de la red NEAR para enviar esta operación. Es un monto fijo por operación.",
+    relayGasExceedsAmount: "El monto de {token} no cubre el costo de envío ({cost}). Subí el monto o sumá otro token.",
+    relayGasImplausible: "No pudimos calcular el costo de envío. No se firmó nada; recargá la página.",
     signErrorCancelled: "Cancelaste la firma. Puedes reintentar.",
     signErrorUnavailable: "Tu wallet no está disponible. Desbloquéala y reintenta.",
     signErrorGeneric: "No se pudo completar la firma.",

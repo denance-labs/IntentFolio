@@ -35,7 +35,8 @@ import { loadPreflightLimits } from "./vault-limits";
 import { resolveEnvelopeSubmitter, type WalletSubmitCapability } from "./envelope-submitter";
 import { RealChangeSetInvalidError } from "./vault-errors";
 import { parseVaultErrorCode } from "./vault-error-code";
-import { RealAllocateUnconfirmedError, type RealAllocateStage } from "./run-real-allocate";
+import type { RelayGasDeduction } from "./relay-gas-cost";
+import { deductRelayGas, RealAllocateUnconfirmedError, type RealAllocateStage } from "./run-real-allocate";
 import type { EnvelopeSubmitter } from "./relay-types";
 import type { VaultSigner } from "./vault-signer";
 import type { TokenCompositionInput, VaultChainKind } from "./vault-payloads";
@@ -65,6 +66,11 @@ export type RunRealAllocateIntoParams = {
    * addition the vault would refuse — inside `on_auth`, i.e. as an orphan.
    */
   tokenAdditions?: Array<{ tokenId: string; tolerancePct: number }>;
+  /**
+   * The relay's gas the confirmation showed (D-589 block 5): deducted from its leg after the
+   * cap. Null when the token has no live price. Required, as on the Setup.
+   */
+  relayGas: RelayGasDeduction | null;
   signer: VaultSigner;
   /** Decides who submits. Unlike Setup it never reaches the msg: AllocateInto has no `login_wallet`. */
   loginChain: VaultChainKind;
@@ -178,6 +184,7 @@ export async function runRealAllocateInto(
   legs.forEach((leg, i) => {
     leg.amount = capToHeld(BigInt(leg.amount), held[i]).toString();
   });
+  const relayGas = deductRelayGas(legs, p.relayGas);
 
   stage("signing");
   const submitted = await submitAllocate({
@@ -189,6 +196,7 @@ export async function runRealAllocateInto(
       tokenAdditions: tokenAdditions.map((a) => ({ ...a, tokenId: toIntentsTokenId(a.tokenId) })),
     },
     allocations: legs.map((l) => ({ tokenId: l.intentsTokenId, amount: l.amount })),
+    ...(relayGas ? { relayGas } : {}),
     signer: {
       scheme: p.signer.scheme,
       signEnvelope: async (req) => {

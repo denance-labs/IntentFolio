@@ -201,7 +201,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
 
     await act(async () => {
       await expect(
-        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE),
+        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null),
       ).rejects.toBeInstanceOf(NearKeyNotVerifiedError);
     });
 
@@ -217,7 +217,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
     mount();
 
     await act(async () => {
-      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE);
+      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null);
     });
 
     // The other direction, and it is not a formality: a gate that blocked everybody would
@@ -230,7 +230,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
     mount();
 
     await act(async () => {
-      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE);
+      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null);
     });
 
     expect(vaultRuns.allocate).toHaveBeenCalledTimes(1);
@@ -251,7 +251,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
 
     await act(async () => {
       await expect(
-        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE),
+        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null),
       ).rejects.toBeInstanceOf(NearKeyJustVerifiedError);
     });
 
@@ -266,7 +266,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
     mount();
 
     await act(async () => {
-      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE);
+      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null);
     });
 
     expect(verify).not.toHaveBeenCalled();
@@ -283,7 +283,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
     try {
       await act(async () => {
         await expect(
-          door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE),
+          door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null),
         ).rejects.toMatchObject({ name: "RealChangeSetInvalidError", reason: "too-many-portfolios" });
       });
       const sign = (loginWallet.value as { signMessage: ReturnType<typeof vi.fn> }).signMessage;
@@ -303,7 +303,7 @@ describe("createPortfolioWithChangeSet — the gate, exercised through the real 
 
     await act(async () => {
       await expect(
-        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE),
+        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null),
       ).rejects.toBeInstanceOf(NearKeyNotVerifiedError);
     });
 
@@ -340,7 +340,7 @@ describe("createPortfolioWithChangeSet — a failed live Allocate refetches what
 
     await act(async () => {
       await expect(
-        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE),
+        door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null),
       ).rejects.toBe(error);
     });
 
@@ -358,7 +358,7 @@ describe("createPortfolioWithChangeSet — a failed live Allocate refetches what
     const invalidate = vi.spyOn(client, "invalidateQueries");
 
     await act(async () => {
-      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE);
+      await door!.createPortfolioWithChangeSet("Mi cartera", CHANGESET, "sign this", STORAGE, null);
     });
 
     const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
@@ -384,6 +384,7 @@ const REAL_READ = {
 const FUNDING = {
   allocations: [{ tokenId: "near", qty: 1 }],
   tokenAdditions: [],
+  relayGas: null,
 };
 
 describe("allocateIntoPortfolio — the door for adding funds to a real portfolio", () => {
@@ -415,6 +416,7 @@ describe("allocateIntoPortfolio — the door for adding funds to a real portfoli
       await door!.allocateIntoPortfolio({
         allocations: [{ tokenId: "near", qty: 1 }],
         tokenAdditions: [{ tokenId: "nep141:usdt.tether-token.near", tolerancePct: 5 }],
+        relayGas: null,
       });
     });
     expect(vaultRuns.allocateInto).toHaveBeenCalledTimes(1);
@@ -487,7 +489,7 @@ const GAP_READ = {
   },
   balances: [["nep141:wrap.near", BigInt("1000000000000000000000000")]],
 };
-const GAP_FUNDING = { allocations: [{ tokenId: "near", qty: 1 }], tokenAdditions: [] };
+const GAP_FUNDING = { allocations: [{ tokenId: "near", qty: 1 }], tokenAdditions: [], relayGas: null };
 
 describe("allocateIntoPortfolio — coverage gaps", () => {
   beforeEach(() => {
@@ -571,7 +573,7 @@ describe("composition edits — no local log, the History re-reads the chain", (
   });
 
   it.each([
-    ["a creation", "TX_CREATE", () => door!.createPortfolioWithChangeSet("mine", CHANGESET, "sign", STORAGE)],
+    ["a creation", "TX_CREATE", () => door!.createPortfolioWithChangeSet("mine", CHANGESET, "sign", STORAGE, null)],
     [
       "adding funds with a token that joins",
       "TX_INTO",
@@ -579,6 +581,7 @@ describe("composition edits — no local log, the History re-reads the chain", (
         door!.allocateIntoPortfolio({
           allocations: [{ tokenId: "near", qty: 1 }],
           tokenAdditions: [{ tokenId: "nep141:usdt.tether-token.near", tolerancePct: 7 }],
+        relayGas: null,
         }),
     ],
     [

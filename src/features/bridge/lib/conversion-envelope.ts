@@ -1,5 +1,7 @@
 // The signed message that hands a Converting Withdrawal to 1Click: ONE `transfer` intent of the
-// held token to the quote's deposit address, nothing else (D-392, plan 020 §5.4 C1–C3; ADR-0024).
+// held token to the quote's deposit address (D-392, plan 020 §5.4 C1–C3; ADR-0024) — followed, LAST,
+// by the relay's gas in the same token when the operation is charged (D-589 block 5,
+// relay-gas-cost.ts). Nothing else.
 //
 // Attribution: see ATTRIBUTIONS.md #13 (1Click API v0 — the deposit address this pays).
 //
@@ -14,6 +16,7 @@ import { messageFactory, config } from "@defuse-protocol/internal-utils";
 import type { Intent } from "@defuse-protocol/contract-types";
 import { INTENTS_CONTRACT_ID } from "@/features/wallet/config/network";
 import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
+import { relayGasIntent, type RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { withdrawalPlan } from "./conversion-routes";
 import type { ConversionQuote } from "./oneclick-conversion-quote";
 import { WithdrawError } from "./withdraw-errors";
@@ -80,6 +83,14 @@ export type BuildConversionParams = {
   quote: ConversionQuote;
   /** The signer's exact balance of the held token, read on click (C1, D-303). */
   heldRaw: bigint;
+  /**
+   * The relay's gas (D-589 block 5): the deduction the screen showed WITH this quote, in the held
+   * token (a registry id) — or null/absent when that token has no live price and the conversion
+   * goes uncharged. NOT taken out of the quote: 1Click quoted the amount net of it (the screen
+   * asks for the total minus the gas), so the transfer stays `amountIn` and this rides on top.
+   * Required one level up (`runConversionWithdraw`), where forgetting it would be silent.
+   */
+  relayGas?: RelayGasDeduction | null;
   /** Injectable clock (ms), for C2. */
   nowMs?: number;
   /** Injectable so tests are deterministic; defaults to the SDK's random 32-byte nonce. */
@@ -90,10 +101,21 @@ export type ConversionSignRequest = {
   /** Consumed by `VaultSigner` unchanged — the shapes are identical. */
   nep413: { message: string; recipient: string; nonce: Uint8Array };
   erc191Message: string;
-  /** The raw intents, for offline validation against contract-types. Exactly one `transfer`. */
+  /**
+   * The raw intents, for offline validation against contract-types: the `transfer` to 1Click,
+   * then the relay's gas when it is charged.
+   */
   intents: Intent[];
-  /** Base units LEAVING the General Balance: `quote.amountInRaw`, unchanged. */
+  /**
+   * Base units the CONVERSION signs: `quote.amountInRaw`, unchanged — what the rescue record and
+   * the solver's judge read. What leaves the General Balance is this plus `relayGas`.
+   */
   amount: string;
+  /**
+   * The relay's gas (D-589 block 5): an intents token id and base units, the envelope's LAST
+   * intent. Null when the conversion goes uncharged (no live price for the held token).
+   */
+  relayGas: { tokenId: string; amount: string } | null;
   /** Unix seconds when the signed transfer expires — before the quote does. */
   deadlineSecs: number;
 };
@@ -136,11 +158,32 @@ export function buildConversionSignRequest(p: BuildConversionParams): Conversion
     refuse("signer-mismatch", `Quote refunds to ${quote.refundTo}, but ${p.signerId} is signing`);
   }
 
-  // ── C1: the exact balance covers the whole amount. Never shrunk: a transfer below `amountIn`
-  // is an incomplete deposit, which 1Click does not convert — it sits until the refund deadline.
+  // The relay's gas is paid in the held token and nothing else (048 §10): a charge priced in
+  // another one is a caller pairing two different screens.
+  let relayGas: { tokenId: string; amount: string } | null = null;
+  if (p.relayGas != null) {
+    if (p.relayGas.tokenId !== quote.originTokenId) {
+      refuse(
+        "quote-invalid",
+        `The sending cost is priced in ${p.relayGas.tokenId}, but this conversion moves ${quote.originTokenId}`
+      );
+    }
+    if (p.relayGas.amount <= ZERO) refuse("quote-invalid", `The sending cost must be positive, got ${p.relayGas.amount}`);
+    relayGas = { tokenId: toIntentsTokenId(quote.originTokenId), amount: p.relayGas.amount.toString() };
+  }
+
+  // ── C1: the exact balance covers the whole amount AND the relay's gas. Never shrunk: a transfer
+  // below `amountIn` is an incomplete deposit, which 1Click does not convert — it sits until the
+  // refund deadline; and the gas is not taken out of it either, the quote is already net of it.
   const amountIn = BigInt(quote.amountInRaw);
-  if (p.heldRaw < amountIn) {
-    refuse("balance-short", `Balance ${p.heldRaw} is below the quoted ${quote.amountInRaw}`);
+  const leavingRaw = amountIn + (relayGas ? BigInt(relayGas.amount) : ZERO);
+  if (p.heldRaw < leavingRaw) {
+    refuse(
+      "balance-short",
+      relayGas
+        ? `Balance ${p.heldRaw} is below the quoted ${quote.amountInRaw} plus the ${relayGas.amount} sending cost`
+        : `Balance ${p.heldRaw} is below the quoted ${quote.amountInRaw}`
+    );
   }
 
   // ── C2: enough life left, and a signature that dies first.
@@ -164,14 +207,14 @@ export function buildConversionSignRequest(p: BuildConversionParams): Conversion
   }
 
   // ── C3: one `transfer`, the whole quoted amount, to the deposit address. No memo — the deposit
-  // address alone identifies the quote (G1 refused any other deposit mode).
-  const intents: Intent[] = [
-    {
-      intent: "transfer",
-      receiver_id: quote.depositAddress,
-      tokens: { [toIntentsTokenId(quote.originTokenId)]: quote.amountInRaw },
-    } as Intent,
-  ];
+  // address alone identifies the quote (G1 refused any other deposit mode). The relay's gas goes
+  // LAST, a transfer to our own gas account that 1Click never sees.
+  const conversion: Intent = {
+    intent: "transfer",
+    receiver_id: quote.depositAddress,
+    tokens: { [toIntentsTokenId(quote.originTokenId)]: quote.amountInRaw },
+  } as Intent;
+  const intents: Intent[] = relayGas ? [conversion, relayGasIntent(relayGas)] : [conversion];
 
   const message = messageFactory.makeSwapMessage({
     innerMessage: {
@@ -191,6 +234,7 @@ export function buildConversionSignRequest(p: BuildConversionParams): Conversion
     erc191Message: message.ERC191.message,
     intents,
     amount: quote.amountInRaw,
+    relayGas,
     deadlineSecs,
   };
 }

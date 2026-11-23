@@ -10,9 +10,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readHeldOnVerifier } from "@/features/bridge/lib/run-real-withdraw";
 import type { OneClickStatus } from "@/features/bridge/lib/oneclick-status";
 import { ConnectWalletModal } from "@/features/dashboard-shell/components/connect-wallet-modal";
+import { relayGasCostText, useRelayGasQuote } from "@/features/dashboard-shell/components/relay-gas-line";
 import { ensureCanOperate, useLoginWallet } from "@/features/login-wallet";
+import { toRegistryTokenId } from "@/features/market/lib/intents-token-id";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
+import { relayGasDeductionOf, type RelayGasCharge } from "@/features/vault/lib/relay-gas-cost";
 import { useStocksRegionBlocked } from "../hooks/use-stocks-region-blocked";
 import { runStockSwap, type StockSwapResult, type StockSwapStage } from "../lib/run-stock-swap";
 import {
@@ -52,6 +55,8 @@ export function StockTestPanel() {
   const [balances, setBalances] = useState<Balances | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [quote, setQuote] = useState<StockSwapQuote | null>(null);
+  // D-589 block 5: the relay's gas the quote on screen was asked net of — shown and signed with it.
+  const [quoteRelayGas, setQuoteRelayGas] = useState<RelayGasCharge | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [stage, setStage] = useState<StockSwapStage | null>(null);
   const [status, setStatus] = useState<OneClickStatus | null>(null);
@@ -67,6 +72,8 @@ export function StockTestPanel() {
   const outDecimals = side === "buy" ? stock.decimals : funding.decimals;
   const inSymbol = side === "buy" ? funding.label : stock.ticker;
   const outSymbol = side === "buy" ? stock.ticker : funding.label;
+  // The relay's gas, in the token that leaves, out of the amount typed (048 §10).
+  const relayGasQuote = useRelayGasQuote(toRegistryTokenId(side === "buy" ? funding.id : stock.id));
   const busy = stage !== null;
   // D-569: where stocks can't be bought, only selling them is offered. Other tokens trade as always.
   const regionBlocked = useStocksRegionBlocked();
@@ -114,14 +121,33 @@ export function StockTestPanel() {
       setError("Inicia sesión con tu wallet");
       return;
     }
+    if (relayGasQuote && !relayGasQuote.ok) {
+      setError("No se pudo calcular el costo de envío: recarga la página");
+      return;
+    }
+    // Lo escrito sale del saldo: el cambio y el costo de envío. 1Click cotiza sólo el cambio.
+    const charge = relayGasQuote?.ok ? relayGasQuote.charge : null;
+    const swapRaw = BigInt(amountRaw) - (charge ? BigInt(charge.amount) : BigInt(0));
+    if (swapRaw <= BigInt(0)) {
+      setError(`El monto no cubre el costo de envío (${charge ? relayGasCostText(charge, inSymbol) : "—"})`);
+      return;
+    }
     setQuoting(true);
     setError(null);
     setResult(null);
     setStatus(null);
-    const answer = await quoteStockSwap({ side, stock, funding, amountRaw, accountId: intentsAccountId, maxTradeUsd: MAX_TRADE_USD });
+    const answer = await quoteStockSwap({
+      side,
+      stock,
+      funding,
+      amountRaw: swapRaw.toString(),
+      accountId: intentsAccountId,
+      maxTradeUsd: MAX_TRADE_USD,
+    });
     setQuoting(false);
     if (answer.ok) {
       setQuote(answer.quote);
+      setQuoteRelayGas(charge);
     } else {
       setQuote(null);
       setError(answer.detail);
@@ -141,6 +167,7 @@ export function StockTestPanel() {
       const outcome = await runStockSwap({
         accountId: intentsAccountId,
         quote,
+        relayGas: relayGasDeductionOf({ ok: true, charge: quoteRelayGas }),
         signer: liveSigner.signer,
         onStage: setStage,
         onStatus: setStatus,
@@ -316,6 +343,12 @@ export function StockTestPanel() {
             <dd className="text-right tabular-nums text-slate-100">
               {formatRaw(quote.amountInRaw, inDecimals)} {inSymbol} (${quote.amountInUsd.toFixed(2)})
             </dd>
+            {quoteRelayGas ? (
+              <>
+                <dt className="text-slate-400">Costo de envío</dt>
+                <dd className="text-right tabular-nums text-slate-100">{relayGasCostText(quoteRelayGas, inSymbol)}</dd>
+              </>
+            ) : null}
             <dt className="text-slate-400">Recibes aprox.</dt>
             <dd className="text-right tabular-nums text-slate-100">
               {formatRaw(quote.amountOutRaw, outDecimals)} {outSymbol} (${quote.amountOutUsd.toFixed(2)})

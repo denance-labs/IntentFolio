@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
     source: string;
     updatedAt: string;
   },
+  // NEAR's live price: absent, the relay's gas has nothing to be priced from and goes uncharged.
+  nearPrice: null as null | { usdPrice: number; source: string; updatedAt: string },
   ensureCanOperate: vi.fn(),
   readHeld: vi.fn(),
   quote: vi.fn(),
@@ -32,7 +34,9 @@ vi.mock("@/features/login-wallet", async () => ({
   ensureCanOperate: mocks.ensureCanOperate,
 }));
 vi.mock("@/features/market/hooks/use-token-prices", () => ({
-  useTokenPrices: () => ({ prices: { [NVDA_ID]: mocks.price } }),
+  useTokenPrices: () => ({
+    prices: { [NVDA_ID]: mocks.price, ...(mocks.nearPrice ? { near: mocks.nearPrice } : {}) },
+  }),
 }));
 vi.mock("@/features/vault/hooks/use-live-signer", () => ({
   useLiveSigner: () => (mocks.signer ? { signer: { scheme: "nep413" }, chain: "near", address: mocks.account } : null),
@@ -83,6 +87,7 @@ beforeEach(() => {
   mocks.account = "pablofork.near";
   mocks.signer = true;
   mocks.price = { usdPrice: 200, source: "coingecko", updatedAt: new Date().toISOString() };
+  mocks.nearPrice = null;
   mocks.readHeld.mockReset().mockResolvedValue(HELD);
   mocks.quote.mockReset();
   mocks.run.mockReset();
@@ -263,5 +268,42 @@ describe("StockSellModal", () => {
     await quoted();
     expect(screen.getByText("Connect your wallet to sign the sale.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Sell" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// D-589 block 5: the relay's gas, in the stock sold, out of the amount typed. NEAR 3 / NVDA 200 ⇒
+// 0.002 NEAR = 0.00003 NVDA = 3e13 base units.
+describe("StockSellModal — the relay's gas (D-589 block 5)", () => {
+  const GAS = BigInt("30000000000000");
+
+  it("asks 1Click for the sale alone, shows the charge, and signs the pair", async () => {
+    mocks.nearPrice = { usdPrice: 3, source: "coingecko", updatedAt: new Date().toISOString() };
+    const netQuote = { ...QUOTE, amountInRaw: (HELD - GAS).toString() } as StockSwapQuote;
+    mocks.quote.mockResolvedValue({ ok: true, quote: netQuote });
+    mocks.run.mockResolvedValue({ kind: "delivered", intentHash: "h", txHash: "tx", amountOutRaw: "13400000" });
+    open();
+    await screen.findByText(/^Available:/);
+    fireEvent.click(screen.getByRole("button", { name: "Max" }));
+    fireEvent.click(screen.getByRole("button", { name: "Get price" }));
+    await screen.findByText("You receive about");
+
+    expect(mocks.quote).toHaveBeenCalledWith(expect.objectContaining({ amountRaw: (HELD - GAS).toString() }));
+    expect(screen.getByText("Sending cost")).toBeTruthy();
+    expect(screen.getByText("0.00003 NVDA")).toBeTruthy();
+    // "You sell" is what leaves the balance: all of it, the gas included.
+    expect(screen.getByText("0.067666 NVDA")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sell" }));
+    await waitFor(() => expect(mocks.run).toHaveBeenCalled());
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ quote: netQuote, relayGas: { tokenId: NVDA_ID, amount: GAS } })
+    );
+  });
+
+  it("without a live NEAR price the sale goes uncharged, as before", async () => {
+    open();
+    await quoted();
+    expect(mocks.quote).toHaveBeenCalledWith(expect.objectContaining({ amountRaw: HELD.toString() }));
+    expect(screen.queryByText("Sending cost")).toBeNull();
   });
 });

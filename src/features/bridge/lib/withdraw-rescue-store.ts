@@ -86,7 +86,10 @@ type WithdrawRecordBase = {
   signerId: string;
   /** Full defuse asset id of the token that LEAVES the General Balance. */
   tokenId: string;
-  /** Base units. Authoritative: `qty` below is the human rendering of this. */
+  /**
+   * Base units the withdrawal signs. Authoritative. Not in it: the relay's gas (D-589 block 5),
+   * which leaves the balance in the same envelope — so `qty` below, as typed, can exceed it.
+   */
   amount: string;
   /** Human units, as the user entered them. For a person reading the record. */
   qty: number;

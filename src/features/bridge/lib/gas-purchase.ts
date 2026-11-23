@@ -31,6 +31,8 @@
 
 import { messageFactory } from "@defuse-protocol/internal-utils";
 import type { Intent } from "@defuse-protocol/contract-types";
+import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
+import { relayGasIntent, type RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { ONE_CLICK_BASE_URL } from "./oneclick-base-url";
 
 /** Basis points. 1% on a five-cent swap is noise; refusing to fill it is not. */
@@ -317,8 +319,17 @@ export type GasQuoteSeam = (p: GasQuoteRequest) => Promise<GasPurchaseQuote | nu
 export type BuyGasSeam = (p: {
   quote: GasPurchaseQuote;
   maxAmountInRaw: string;
-  /** The withdrawal this purchase exists to unblock — the purchase must not consume it. */
+  /**
+   * The withdrawal this purchase exists to unblock — what IT signs, so already without its own
+   * relay gas. The purchase must not consume it.
+   */
   withdrawalAmountRaw: string;
+  /**
+   * The relay's gas for the PURCHASE (D-589 block 5), in the token sold — or null when it has no
+   * live price. On top of `amountIn`: the quote is EXACT_OUTPUT, so its input is fixed and the
+   * charge cannot come out of it.
+   */
+  relayGas: RelayGasDeduction | null;
 }) => Promise<void>;
 
 export type BuildGasPurchaseParams = {
@@ -327,13 +338,21 @@ export type BuildGasPurchaseParams = {
   quote: GasPurchaseQuote;
   /** Base units the withdrawal itself will move — the purchase must not eat into it. */
   withdrawalAmountRaw: string;
+  /**
+   * The relay's gas (D-589 block 5, relay-gas-cost.ts), in the token sold (a registry id) — or
+   * null/absent when that token has no live price. Rides LAST in the envelope, ON TOP of
+   * `amountIn`: an EXACT_OUTPUT quote fixes its input, so nothing can be deducted from it.
+   * Required one level up (`runGasPurchase`), where forgetting it would be silent.
+   */
+  relayGas?: RelayGasDeduction | null;
   /** Injectable so tests are deterministic. */
   deadlineSecs?: number;
   nonce?: Uint8Array;
 };
 
 /**
- * The signed message that pays 1Click for the gas: ONE `transfer` intent, nothing else.
+ * The signed message that pays 1Click for the gas: ONE `transfer` intent — followed, LAST, by the
+ * relay's gas in the same token when the purchase is charged (D-589 block 5). Nothing else.
  *
  * Deliberately the same shape and the same factory as the withdrawal envelope
  * (`makeSwapMessage` against `intents.near`), not the vault's — a gas purchase never touches
@@ -343,6 +362,8 @@ export function buildGasPurchaseSignRequest(p: BuildGasPurchaseParams): {
   nep413: { message: string; recipient: string; nonce: Uint8Array };
   erc191Message: string;
   intents: Intent[];
+  /** The relay's gas as signed: an intents token id and base units, or null when uncharged. */
+  relayGas: { tokenId: string; amount: string } | null;
 } {
   const amountIn = BigInt(p.quote.amountInRaw);
   if (amountIn <= ZERO) {
@@ -356,9 +377,22 @@ export function buildGasPurchaseSignRequest(p: BuildGasPurchaseParams): {
   if (!isBaseUnitString(p.withdrawalAmountRaw)) {
     throw new Error(`Gas purchase needs the withdrawal amount to compare against`);
   }
-  if (amountIn >= BigInt(p.withdrawalAmountRaw)) {
+  // The relay's gas is paid in the token sold and nothing else (048 §10).
+  let relayGas: { tokenId: string; amount: string } | null = null;
+  if (p.relayGas != null) {
+    if (toIntentsTokenId(p.relayGas.tokenId) !== toIntentsTokenId(p.quote.tokenId)) {
+      throw new Error(
+        `The sending cost is priced in ${p.relayGas.tokenId}, but this purchase sells ${p.quote.tokenId}; nothing was signed`
+      );
+    }
+    if (p.relayGas.amount <= ZERO) throw new Error(`The sending cost must be positive, got ${p.relayGas.amount}`);
+    relayGas = { tokenId: toIntentsTokenId(p.quote.tokenId), amount: p.relayGas.amount.toString() };
+  }
+  // What the purchase costs is what leaves the balance for it: 1Click's input plus our gas.
+  const costRaw = amountIn + (relayGas ? BigInt(relayGas.amount) : ZERO);
+  if (costRaw >= BigInt(p.withdrawalAmountRaw)) {
     throw new Error(
-      `Gas purchase of ${p.quote.amountInRaw} base units is not worth making against a ` +
+      `Gas purchase of ${costRaw} base units is not worth making against a ` +
         `withdrawal of ${p.withdrawalAmountRaw}: it would consume the whole amount`
     );
   }
@@ -366,13 +400,13 @@ export function buildGasPurchaseSignRequest(p: BuildGasPurchaseParams): {
   const deadlineSecs =
     p.deadlineSecs ?? Math.floor(Date.now() / 1000) + TRANSFER_DEADLINE_SECS;
 
-  const intents: Intent[] = [
-    {
-      intent: "transfer",
-      receiver_id: p.quote.depositAddress,
-      tokens: { [p.quote.tokenId]: p.quote.amountInRaw },
-    } as Intent,
-  ];
+  const purchase: Intent = {
+    intent: "transfer",
+    receiver_id: p.quote.depositAddress,
+    tokens: { [p.quote.tokenId]: p.quote.amountInRaw },
+  } as Intent;
+  // LAST, as on every envelope our relay sends: a transfer to our own gas account 1Click never sees.
+  const intents: Intent[] = relayGas ? [purchase, relayGasIntent(relayGas)] : [purchase];
 
   const message = messageFactory.makeSwapMessage({
     innerMessage: {
@@ -391,5 +425,6 @@ export function buildGasPurchaseSignRequest(p: BuildGasPurchaseParams): {
     },
     erc191Message: message.ERC191.message,
     intents,
+    relayGas,
   };
 }

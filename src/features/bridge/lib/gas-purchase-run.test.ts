@@ -83,6 +83,7 @@ function run(over: Partial<RunGasPurchaseParams> = {}) {
     withdrawalAmountRaw: "5000000",
     // ~3x the measured price, in the withdrawn token's base units.
     maxAmountInRaw: "161721",
+    relayGas: null,
     signer,
     publish: publish as unknown as WithdrawPublisher,
     waitForSettlement: settle as unknown as SettlementWaiter,
@@ -204,6 +205,26 @@ describe("runGasPurchase — what it refuses before a signature exists", () => {
       receiver_id: ONECLICK_DEPOSIT,
       tokens: { [USDT_TON]: "53907" },
     });
+  });
+});
+
+// D-589 block 5: the purchase goes through our relay like everything else, so it pays its gas.
+describe("runGasPurchase — the relay's gas (D-589 block 5)", () => {
+  it("signs the transfer to 1Click and, last, the charge in the token sold", async () => {
+    await run({ relayGas: { tokenId: USDT_TON, amount: BigInt(6000) } });
+    const intents = JSON.parse(signer.signEnvelope.mock.calls[0][0].nep413.message).intents;
+    expect(intents).toEqual([
+      { intent: "transfer", receiver_id: ONECLICK_DEPOSIT, tokens: { [USDT_TON]: "53907" } },
+      { intent: "transfer", receiver_id: "intentfolio-budget.near", tokens: { [USDT_TON]: "6000" }, memo: "gas" },
+    ]);
+  });
+
+  it("refuses before signing when the purchase and its gas would eat the withdrawal", async () => {
+    // 53907 + 6000 = 59907, equal to what the withdrawal signs.
+    await expect(
+      run({ relayGas: { tokenId: USDT_TON, amount: BigInt(6000) }, withdrawalAmountRaw: "59907" })
+    ).rejects.toMatchObject({ fundsState: "untouched" });
+    expect(signer.signEnvelope).not.toHaveBeenCalled();
   });
 });
 

@@ -15,7 +15,8 @@
 //     an `auth_call` msg whose allocations are exactly the transferred tokens — or, since the
 //     solver relay stopped answering (D-589), for the one-intent envelopes the app used to
 //     publish there: a withdrawal (`ft_withdraw`, `native_withdraw`, HOT's lone `mt_withdraw`)
-//     or a `transfer` to a 1Click deposit address (`isAppOutflow`);
+//     or a `transfer` to a 1Click deposit address (`isAppOutflow`). Each of them carries, LAST,
+//     the relay's gas paid by the user (`relayGasProblem`, D-589 block 5);
 //   - the vault has no dry run, so the commit is checked here, step by step, in the vault's own
 //     order: signature (multi-payload-verify.ts), `verifying_contract`, V1 nonce deadline, the
 //     key belongs to the signer, the signer owns the portfolio, and the nonce is not burnt yet
@@ -48,8 +49,10 @@ import { OMNI_BRIDGE_CONTRACT_ID, OMNI_WITHDRAW_MIN_GAS } from "@/features/bridg
 import { WITHDRAW_MIN_GAS } from "@/features/bridge/lib/withdraw-envelope";
 import { PORTFOLIO_NAME_MAX_LENGTH } from "@/features/dashboard-shell/lib/portfolio-validation";
 import { walletMatchesAccount } from "@/features/login-wallet/lib/identity";
-import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
+import { NEAR_REGISTRY_TOKEN_ID, toIntentsTokenId, toRegistryTokenId } from "@/features/market/lib/intents-token-id";
+import { getTokenPrices } from "@/features/market/lib/price-provider";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
+import type { TokenPriceMap } from "@/features/market/types";
 import { INTENTS_CONTRACT_ID, VAULT_CONTRACT_ID } from "@/features/wallet/config/network";
 import {
   APP_MAX_PORTFOLIOS_PER_ACCOUNT,
@@ -70,8 +73,9 @@ import {
   verifyMultiPayload,
 } from "./multi-payload-verify";
 import type { RelayViewResult } from "./relay-rpc-provider";
+import { quoteRelayGas, RELAY_GAS_MEMO, RELAY_GAS_RECEIVER } from "./relay-gas-cost";
 import type { RelayTarget } from "./relay-types";
-import { STORAGE_COST_MEMO, STORAGE_COST_RECEIVER } from "./storage-cost";
+import { livePriceOf, STORAGE_COST_MEMO, STORAGE_COST_RECEIVER } from "./storage-cost";
 import { AUTH_CALL_TTL_SECS, decodeV1Nonce } from "./vault-envelope";
 import type { VaultChainKind } from "./vault-payloads";
 
@@ -182,23 +186,29 @@ function isAcceptableMinGas(authCall: Record<string, unknown>): boolean {
  * are exactly the transferred tokens (the app builds both from one list, `allocate-submit.ts`);
  * a garbage msg is an orphan the relay would be paying to create.
  *
- * A Setup also carries its Storage Cost, last (D-528): without it the relay does not pay. Its
- * PRESENCE is checked, not its amount (operator, 2026-10-26: a modified client can pay one base
- * unit — cents per portfolio, bounded by the caps). An AllocateInto never carries one.
+ * A Setup also carries its Storage Cost, after the auth call (D-528): without it the relay does
+ * not pay. Its PRESENCE is checked, not its amount (operator, 2026-10-26: a modified client can
+ * pay one base unit — cents per portfolio, bounded by the caps). An AllocateInto never carries one.
+ *
+ * Either may end with the relay's gas (`splitRelayGas`, D-589 block 5), in one of the tokens it
+ * funds — the app charges it on the highest-value leg (`relayGasTokenOf`). Whether it has to be
+ * there, and whether it is enough, needs prices: `relayGasProblem`.
  */
 export function isAllocateIntoVault(message: Record<string, unknown>, vaultId: string): boolean {
-  const intents = message.intents;
-  if (!Array.isArray(intents) || (intents.length !== 2 && intents.length !== 3)) return false;
-  const [transfer, authCall, storage] = intents;
+  if (!Array.isArray(message.intents)) return false;
+  const { ops, gas } = splitRelayGas(message.intents);
+  if (ops.length !== 2 && ops.length !== 3) return false;
+  const [transfer, authCall, storage] = ops;
   if (!isObject(transfer) || !hasExactKeys(transfer, ["intent", "receiver_id", "tokens"])) return false;
   if (transfer.intent !== "transfer" || transfer.receiver_id !== vaultId || !isObject(transfer.tokens)) return false;
+  if (gas && !Object.prototype.hasOwnProperty.call(transfer.tokens, gas.tokenId)) return false;
   if (!isObject(authCall)) return false;
   const authCallKeys = "min_gas" in authCall ? ["intent", "contract_id", "msg", "min_gas"] : ["intent", "contract_id", "msg"];
   if (!hasExactKeys(authCall, authCallKeys) || !isAcceptableMinGas(authCall)) return false;
   if (authCall.intent !== "auth_call" || authCall.contract_id !== vaultId) return false;
   const op = allocateOpMatchingTransfer(authCall.msg, transfer.tokens);
-  if (op === "setup") return intents.length === 3 && isStorageCostTransfer(storage, transfer.tokens);
-  return op === "allocate_into" && intents.length === 2;
+  if (op === "setup") return ops.length === 3 && isStorageCostTransfer(storage, transfer.tokens);
+  return op === "allocate_into" && ops.length === 2;
 }
 
 /** The msg's op when its allocations are exactly the transferred tokens, else null. */
@@ -246,6 +256,36 @@ function isStorageCostTransfer(intent: unknown, vaultTokens: Record<string, unkn
   return (
     Object.prototype.hasOwnProperty.call(vaultTokens, tokenId) && typeof amount === "string" && /^[1-9]\d*$/.test(amount)
   );
+}
+
+/** The relay's gas as an envelope carries it: the id the Verifier reads and base units. */
+type RelayGasTransfer = { tokenId: string; amount: string };
+
+/**
+ * The relay's gas exactly as the app builds it (`relayGasIntent`, 048 §10), or null: a plain
+ * transfer to the account that pays the gas, memo `gas`, ONE token, a positive amount. No
+ * `msg`: it would call `mt_on_transfer` on an account without a contract, fail and refund.
+ */
+function relayGasTransferOf(intent: unknown): RelayGasTransfer | null {
+  if (!isObject(intent) || !hasExactKeys(intent, ["intent", "receiver_id", "tokens", "memo"])) return null;
+  if (intent.intent !== "transfer" || intent.receiver_id !== RELAY_GAS_RECEIVER || intent.memo !== RELAY_GAS_MEMO) {
+    return null;
+  }
+  if (!isObject(intent.tokens)) return null;
+  const entries = Object.entries(intent.tokens);
+  if (entries.length !== 1) return null;
+  const [tokenId, amount] = entries[0];
+  return typeof amount === "string" && /^[1-9]\d*$/.test(amount) ? { tokenId, amount } : null;
+}
+
+/**
+ * An envelope's intents as the operation and the relay's gas. The gas is the LAST intent when it
+ * is one, and only then: a second one, or one anywhere else, stays among the operation's intents,
+ * whose exact shape refuses it.
+ */
+function splitRelayGas(intents: readonly unknown[]): { ops: unknown[]; gas: RelayGasTransfer | null } {
+  const gas = intents.length > 0 ? relayGasTransferOf(intents[intents.length - 1]) : null;
+  return gas ? { ops: intents.slice(0, -1), gas } : { ops: [...intents], gas: null };
 }
 
 /**
@@ -340,44 +380,61 @@ function isAppHotWithdraw(intent: Record<string, unknown>): boolean {
  * `[token_diff, mt_withdraw]` is not here — its fee swap needs a solver quote, so it cannot land
  * without the solver relay.
  *
- * ⚠️ Abuse is CHEAP, not just bounded (cross-review D-589): one base unit transferred to an
- * implicit account the signer controls, or withdrawn to their own NEAR account, loses them
- * nothing and passes every check here — any implicit account passes as a deposit address, and
- * telling 1Click's apart needs 1Click. What it costs is OUR gas (≤ 300 TGas a call), the process
- * caps and the verifier keys' allowance (~200 calls a key), shared with the Allocate: scripted, it
- * can exhaust the pool for everyone. The allowance watcher alerts before that; the fix is the
- * user paying the gas inside the same envelope (048 bloque 5).
+ * It may end with the relay's gas (`splitRelayGas`), paid in the token the operation moves and
+ * nothing else (048 §10); whether it has to be there and is enough is `relayGasProblem`'s.
+ *
+ * ⚠️ Abuse is bounded by that charge, not prevented (cross-review D-589): one base unit
+ * transferred to an implicit account the signer controls, or withdrawn to their own NEAR account,
+ * passes every check here — any implicit account passes as a deposit address, and telling
+ * 1Click's apart needs 1Click. Priced, each call now pays at least half of its gas (0.002 NEAR,
+ * ~2× what it burns), so scripting it costs the attacker about what it costs us. A token the
+ * server cannot price still goes free (operator, 2026-11-20), and some never can: eight registry
+ * tokens are not in 1Click's price feed (cross-review 5c, 2026-11-23: the bridged USDC/USDT, USN,
+ * LiNEAR, REF, META, FAR, wALC). That residual still meets the process caps and the verifier
+ * keys' allowance (~200 calls a key), shared with the Allocate; the allowance watcher alerts.
  */
 export function isAppOutflow(message: Record<string, unknown>): boolean {
+  return appOutflowToken(message) !== null;
+}
+
+/** The token an app outflow moves (the one its gas is paid in), as the Verifier reads it, or null. */
+function appOutflowToken(message: Record<string, unknown>): string | null {
   const intents = message.intents;
-  if (!hasExactKeys(message, ["intents"]) || !Array.isArray(intents) || intents.length !== 1) return false;
-  const [intent] = intents;
-  if (!isObject(intent)) return false;
+  if (!hasExactKeys(message, ["intents"]) || !Array.isArray(intents)) return null;
+  const { ops, gas } = splitRelayGas(intents);
+  if (ops.length !== 1 || !isObject(ops[0])) return null;
+  const token = outflowTokenOf(ops[0]);
+  return token !== null && (gas === null || gas.tokenId === token) ? token : null;
+}
+
+/** The token one outflow intent moves when it is the app's, else null. */
+function outflowTokenOf(intent: Record<string, unknown>): string | null {
   switch (intent.intent) {
     case "ft_withdraw":
-      return isAppFtWithdraw(intent);
+      return isAppFtWithdraw(intent) ? `nep141:${intent.token as string}` : null;
     case "mt_withdraw":
-      return isAppHotWithdraw(intent);
+      // The withdrawn token is the first; a second is HOT's native fee (`buildHotWithdrawIntents`).
+      return isAppHotWithdraw(intent) ? `nep245:${HOT_OMNI_CONTRACT_ID}:${(intent.token_ids as string[])[0]}` : null;
     case "native_withdraw":
-      return (
-        hasExactKeys(intent, ["intent", "receiver_id", "amount"]) &&
+      return hasExactKeys(intent, ["intent", "receiver_id", "amount"]) &&
         typeof intent.receiver_id === "string" &&
         intent.receiver_id !== "" &&
         isPositiveAmount(intent.amount)
-      );
+        ? toIntentsTokenId(NEAR_REGISTRY_TOKEN_ID)
+        : null;
     case "transfer": {
-      if (!hasExactKeys(intent, ["intent", "receiver_id", "tokens"]) || !isObject(intent.tokens)) return false;
+      if (!hasExactKeys(intent, ["intent", "receiver_id", "tokens"]) || !isObject(intent.tokens)) return null;
       const entries = Object.entries(intent.tokens);
-      return (
-        typeof intent.receiver_id === "string" &&
+      return typeof intent.receiver_id === "string" &&
         ONE_CLICK_DEPOSIT_ADDRESS.test(intent.receiver_id) &&
         entries.length === 1 &&
         APP_TOKEN_IDS.has(entries[0][0]) &&
         isPositiveAmount(entries[0][1])
-      );
+        ? entries[0][0]
+        : null;
     }
     default:
-      return false;
+      return null;
   }
 }
 
@@ -421,6 +478,12 @@ function nameProblem(name: unknown): string | null {
   return typeof name === "string" && name.length <= PORTFOLIO_NAME_MAX_LENGTH
     ? null
     : `not a portfolio name the app allows (at most ${PORTFOLIO_NAME_MAX_LENGTH} characters)`;
+}
+
+/** The tokens an Allocate that `isAllocateIntoVault` accepted transfers to the vault. */
+function fundedTokens(message: Record<string, unknown>): string[] {
+  const transfer = (message.intents as Record<string, unknown>[])[0];
+  return Object.keys(transfer.tokens as Record<string, unknown>);
 }
 
 /** The `auth_call` msg of an Allocate that `isAllocateIntoVault` accepted: as signed, its deadline, nonce, op and body. */
@@ -572,19 +635,83 @@ export async function viewCommitNonceUsed(
   }
 }
 
+/** The longest the relay waits for prices before pricing the gas without them (the feed has no timeout). */
+export const RELAY_PRICE_TIMEOUT_MS = 3_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer in ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export function createRelayGate({
   view,
   vaultId = VAULT_CONTRACT_ID,
   intentsId = INTENTS_CONTRACT_ID,
   now = () => Date.now(),
   log = (line) => console.warn(line),
+  prices = getTokenPrices,
+  priceTimeoutMs = RELAY_PRICE_TIMEOUT_MS,
 }: {
   view: RelayView;
   vaultId?: string;
   intentsId?: string;
   now?: () => number;
   log?: (line: string) => void;
+  /** USD prices as the app's own feed serves them (`/api/market/prices`), to price the relay's gas. */
+  prices?: () => Promise<TokenPriceMap>;
+  /** Override RELAY_PRICE_TIMEOUT_MS; tests only. */
+  priceTimeoutMs?: number;
 }): RelayGate {
+  /**
+   * Why the envelope does not pay the relay's gas, or null (D-589 block 5, 048 §10; operator,
+   * 2026-11-20). The server prices it the way the app does (`quoteRelayGas`, live prices only)
+   * and accepts from HALF of that: the client priced it moments earlier from the same feed, and
+   * the price moves. Without a live price for NEAR or the token the app does not charge and the
+   * relay cannot judge, so the envelope passes with or without it. `chargeable` is where the app
+   * would have charged it: the token an outflow moves, or any token an Allocate funds (the app
+   * picks the highest-value one with a price, `relayGasTokenOf`), so if ANY has a price the
+   * charge is due — and it goes on a priced one: paid in a token without a price while another
+   * has one, it is not the app's (cross-review 5c). The shape — last, one token, one of the
+   * operation's — was checked before this.
+   *
+   * A price read that throws or does not answer in time is no price: the app, on the same feed,
+   * signed without the charge, and a hung feed must not hold every withdrawal at the relay.
+   *
+   * Accepted (operator, 2026-11-23): a client that signs before its first price read lands (it
+   * starts from registry fallbacks; a failed refresh keeps the last live prices) signs without
+   * the charge and is refused here while the server has a price. Nothing is sent, the screen
+   * says so, and signing again once the prices are in passes.
+   */
+  async function relayGasProblem(message: Record<string, unknown>, chargeable: readonly string[]): Promise<string | null> {
+    const { gas } = splitRelayGas(message.intents as unknown[]);
+    let map: TokenPriceMap;
+    try {
+      map = await withTimeout(prices(), priceTimeoutMs);
+    } catch (e) {
+      log(`[relay] could not read prices (${describe(e)}); the sending cost goes unchecked`);
+      return null;
+    }
+    const priceOf = (registryTokenId: string) => livePriceOf(map, registryTokenId);
+    // The feed answers with registry fallbacks when 1Click is down: nothing is charged then, and
+    // that should not go unnoticed.
+    if (priceOf(NEAR_REGISTRY_TOKEN_ID) === null) log("[relay] no live NEAR price; the sending cost goes unchecked");
+    const dueIn = (tokenId: string) => {
+      const quote = quoteRelayGas({ tokenId: toRegistryTokenId(tokenId), priceOf });
+      if (quote.ok) return quote.charge;
+      log(`[relay] the sending cost in ${tokenId} does not price consistently; it goes unchecked`);
+      return null;
+    };
+    const priced = chargeable.find((tokenId) => dueIn(tokenId) !== null);
+    if (!gas) return priced === undefined ? null : `the envelope does not pay its sending cost (${priced} has a price)`;
+    const due = dueIn(gas.tokenId);
+    if (!due) return priced === undefined ? null : `the sending cost is paid in ${gas.tokenId}, which has no price, not in ${priced}`;
+    if (BigInt(gas.amount) * BigInt(2) >= BigInt(due.amount)) return null;
+    return `the sending cost (${gas.amount} of ${gas.tokenId}) is under half of the ${due.amount} due`;
+  }
+
   async function checkVerifier(payload: unknown): Promise<RelayGateVerdict> {
     const envelope = extractDefuseEnvelope(payload);
     if (!envelope) return wouldFail("unreadable envelope");
@@ -596,13 +723,16 @@ export function createRelayGate({
     if (hasExactKeys(envelope.message, ["intents"]) && isAllocateIntoVault(envelope.message, vaultId)) {
       return checkAllocate(payload, envelope);
     }
-    if (isAppOutflow(envelope.message)) return checkOutflow(payload, envelope);
+    const outflowToken = appOutflowToken(envelope.message);
+    if (outflowToken !== null) return checkOutflow(payload, envelope, outflowToken);
     return wouldFail(`not the app's Allocate into ${vaultId}, withdrawal or 1Click transfer`);
   }
 
-  /** A withdrawal or 1Click transfer (D-589): its deadline, then the simulation decides. */
-  async function checkOutflow(payload: unknown, envelope: DefuseEnvelope): Promise<RelayGateVerdict> {
-    const problem = outflowDeadlineProblem(envelope.deadline, Math.floor(now() / 1000));
+  /** A withdrawal or 1Click transfer (D-589): its deadline and its gas, then the simulation decides. */
+  async function checkOutflow(payload: unknown, envelope: DefuseEnvelope, token: string): Promise<RelayGateVerdict> {
+    const problem =
+      outflowDeadlineProblem(envelope.deadline, Math.floor(now() / 1000)) ??
+      (await relayGasProblem(envelope.message, [token]));
     if (problem) return wouldFail(problem);
     let simulation: RelayViewResult;
     try {
@@ -635,7 +765,8 @@ export function createRelayGate({
       compositionRulesProblem(op, body) ??
       deadlineProblem(deadline, Math.floor(now() / 1000)) ??
       opProblem ??
-      offerProblem(tokenIdsOf(body.allocations, tupleTokenId));
+      offerProblem(tokenIdsOf(body.allocations, tupleTokenId)) ??
+      (await relayGasProblem(envelope.message, fundedTokens(envelope.message)));
     if (problem) return wouldFail(problem);
 
     let simulation: RelayViewResult;

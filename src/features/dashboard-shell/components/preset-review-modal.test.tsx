@@ -973,6 +973,29 @@ describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-
     expect(createButton().disabled).toBe(true);
   });
 
+  // D-589 block 5: the relay's gas, in the same token, its own line, handed to the signature.
+  it("shows the sending cost on its own line and hands it to the signature", async () => {
+    renderModal();
+    expect(screen.getByText(t.relayGasLabel)).toBeTruthy();
+    await clickPrimary(t.presetReviewCreate);
+    const [, , , , relayGas] = state.create.mock.calls[0];
+    expect(relayGas).toEqual({ tokenId: "near", amount: BigInt("2000000000000000000000") }); // 0.002 NEAR
+  });
+
+  it("blocks the signature when the storage cost fits but the sending cost on top does not", async () => {
+    renderModal();
+    await clickPrimary(t.presetReviewCreate);
+    const storageQty: number = state.create.mock.calls[0][3].qty;
+    cleanup();
+    // At $3, in rounded cents (as `belowMin`): 0.003 NEAR left after the storage cost is $0.01 and
+    // clears the floor; 0.001 left after the 0.002 NEAR of gas too is $0.00 and does not.
+    state.available = new Map([["near", storageQty + 0.003]]);
+    renderModal();
+    expect(screen.queryByText(t.storageCostExceedsAmount.split("{token}")[0])).toBeNull();
+    expect(screen.getByText((text) => text.startsWith(t.relayGasExceedsAmount.split("{token}")[0]))).toBeTruthy();
+    expect(createButton().disabled).toBe(true);
+  });
+
   it("waits for a live NEAR price instead of pricing the cost on a guess", () => {
     state.prices = { near: { usdPrice: 0 } };
     state.available = new Map([["near", 5], ["nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", 20]]);

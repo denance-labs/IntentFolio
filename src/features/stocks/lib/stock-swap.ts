@@ -29,6 +29,7 @@ import { tokenRegistry } from "@/features/market/lib/token-registry";
 import { CONVERSION_MIN_QUOTE_REMAINING_SECS, CONVERSION_TRANSFER_DEADLINE_MARGIN_SECS } from "@/features/bridge/lib/conversion-envelope";
 import { ONE_CLICK_BASE_URL } from "@/features/bridge/lib/oneclick-base-url";
 import { CONVERSION_QUOTE_DEADLINE_SECS } from "@/features/bridge/lib/oneclick-conversion-quote";
+import { relayGasIntent, type RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { INTENTS_CONTRACT_ID } from "@/features/wallet/config/network";
 
 /** Only the `/stocks-test` route. Next.js inlines this at build time: it has to stay a static literal. */
@@ -330,6 +331,13 @@ export type BuildStockSwapParams = {
   quote: StockSwapQuote;
   /** The signer's exact balance of the input token, read on click. */
   heldRaw: bigint;
+  /**
+   * The relay's gas (D-589 block 5): the deduction the screen showed WITH this quote, in the input
+   * token (a registry id) — or null/absent when it has no live price. Not taken out of the quote:
+   * the screen asked 1Click for the amount net of it, so the transfer stays `amountIn` and this
+   * rides LAST, on top. Required one level up (`runStockSwap`).
+   */
+  relayGas?: RelayGasDeduction | null;
   nowMs?: number;
   nonce?: Uint8Array;
 };
@@ -337,8 +345,10 @@ export type BuildStockSwapParams = {
 export type StockSwapSignRequest = {
   nep413: { message: string; recipient: string; nonce: Uint8Array };
   erc191Message: string;
-  /** Exactly one `transfer`. */
+  /** The `transfer` to 1Click, then the relay's gas when it is charged. */
   intents: Intent[];
+  /** The relay's gas as signed: an intents token id and base units, or null when uncharged. */
+  relayGas: { tokenId: string; amount: string } | null;
   deadlineSecs: number;
 };
 
@@ -361,9 +371,21 @@ export function buildStockSwapSignRequest(p: BuildStockSwapParams): StockSwapSig
   // send THIS account's money into a swap that pays and refunds someone else.
   if (quote.accountId !== p.signerId) refuse(`La cotización es de ${quote.accountId} y firma ${p.signerId}`);
 
+  // The relay's gas is paid in the token that leaves and nothing else (048 §10).
+  let relayGas: { tokenId: string; amount: string } | null = null;
+  if (p.relayGas != null) {
+    if (toIntentsTokenId(p.relayGas.tokenId) !== quote.originAsset) {
+      refuse(`El costo de envío está en ${p.relayGas.tokenId} y la operación mueve ${quote.originAsset}`);
+    }
+    if (p.relayGas.amount <= ZERO) refuse("El costo de envío no es positivo");
+    relayGas = { tokenId: quote.originAsset, amount: p.relayGas.amount.toString() };
+  }
+
   // Never shrunk to fit: a transfer below `amountIn` is an incomplete deposit that 1Click does not
-  // convert, and the money would sit until the refund deadline.
-  if (p.heldRaw < BigInt(quote.amountInRaw)) refuse("El saldo no alcanza para esta cotización");
+  // convert, and the money would sit until the refund deadline. The gas leaves on top of it.
+  if (p.heldRaw < BigInt(quote.amountInRaw) + (relayGas ? BigInt(relayGas.amount) : ZERO)) {
+    refuse("El saldo no alcanza para esta cotización");
+  }
 
   const nowMs = p.nowMs ?? Date.now();
   if (nowMs - quote.quotedAtMs > STOCK_QUOTE_MAX_AGE_MS) refuse("La cotización venció: vuelve a cotizar");
@@ -376,13 +398,13 @@ export function buildStockSwapSignRequest(p: BuildStockSwapParams): StockSwapSig
     throw new Error(`SDK is configured for "${config.env.contractID}" but must address ${INTENTS_CONTRACT_ID}`);
   }
 
-  const intents: Intent[] = [
-    {
-      intent: "transfer",
-      receiver_id: quote.depositAddress,
-      tokens: { [quote.originAsset]: quote.amountInRaw },
-    } as Intent,
-  ];
+  const swap: Intent = {
+    intent: "transfer",
+    receiver_id: quote.depositAddress,
+    tokens: { [quote.originAsset]: quote.amountInRaw },
+  } as Intent;
+  // LAST, as on every envelope our relay sends: a transfer to our own gas account 1Click never sees.
+  const intents: Intent[] = relayGas ? [swap, relayGasIntent(relayGas)] : [swap];
   const message = messageFactory.makeSwapMessage({
     innerMessage: {
       signer_id: p.signerId,
@@ -400,6 +422,7 @@ export function buildStockSwapSignRequest(p: BuildStockSwapParams): StockSwapSig
     },
     erc191Message: message.ERC191.message,
     intents,
+    relayGas,
     deadlineSecs,
   };
 }

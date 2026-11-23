@@ -29,6 +29,14 @@ import { useLoginWallet } from "@/features/login-wallet";
 import { changeSetNoticeCopy } from "./confirm-changes-modal";
 import { formatDecimalForInput, percentChipAmount } from "../lib/decimal-input";
 import { amountChipClass, Modal } from "./portfolio-primitives";
+import {
+  RelayGasLine,
+  relayGasQuoteProblem,
+  useLivePriceOf,
+  useRelayGasQuote,
+} from "@/features/dashboard-shell/components/relay-gas-line";
+import { relayGasDeductionOf, relayGasTokenOf } from "@/features/vault/lib/relay-gas-cost";
+import { toRegistryTokenId } from "@/features/market/lib/intents-token-id";
 import { colorForSymbol, formatUsd, formatCrypto } from "../lib/format";
 import type { translations } from "../lib/translations";
 import type { CurrentPortfolioQty } from "../types";
@@ -228,12 +236,24 @@ export function AddFundsModal({
     return out;
   }, [entries, amounts]);
 
+  // D-589 block 5: the relay's gas, in the highest-value leg (`relayGasTokenOf`), deducted from it.
+  // Only where this confirm signs: a draft-only edit sends nothing.
+  const livePriceOf = useLivePriceOf();
+  const relayGasToken = useMemo(
+    () => (realFunding ? relayGasTokenOf(allocations, livePriceOf) : null),
+    [realFunding, allocations, livePriceOf]
+  );
+  const relayGasQuote = useRelayGasQuote(relayGasToken);
+  const relayGasCharge = relayGasQuote?.ok ? relayGasQuote.charge : null;
+  const relayGasOn = (id: string) =>
+    relayGasCharge !== null && toRegistryTokenId(relayGasCharge.tokenId) === id ? relayGasCharge.qty : 0;
+
   // A row whose typed amount would leave the funded line under MIN_FUNDED_USD (only with a known price).
   const rowBelowMin = (e: Entry): boolean => {
     const raw = e.id in amounts ? Number(amounts[e.id]) : 0;
     const amt = Number.isFinite(raw) ? raw : 0;
     if (amt <= 0 || e.price <= 0) return false;
-    const after = (existingBalances[e.id] ?? 0) + amt;
+    const after = (existingBalances[e.id] ?? 0) + amt - relayGasOn(e.id);
     const afterCents = Math.round(after * e.price * 100) / 100;
     return afterCents < MIN_FUNDED_USD;
   };
@@ -261,8 +281,13 @@ export function AddFundsModal({
   // The vault would refuse this Allocate (017-9b): asked on open, and only where this confirm signs.
   const vaultBlock = useVaultPrecheck(vaultLive && signsNow ? { kind: "allocate", tokenIds: Object.keys(allocations) } : null);
   const relayBlocked = relayPaused || signError?.kind === "relay-paused" || !!vaultBlock;
+  const relayGasProblem = signsNow ? relayGasQuoteProblem(relayGasQuote, shellT) : null;
   const canConfirm =
-    hasFunds && !anyRowError && !isSigning && !capBlocked && !(signsNow && (blockedByDraft || relayBlocked));
+    hasFunds &&
+    !anyRowError &&
+    !isSigning &&
+    !capBlocked &&
+    !(signsNow && (blockedByDraft || relayBlocked || relayGasProblem !== null));
   // Only where this confirm would sign: a draft-only edit stays usable while paused.
   const showRelayPaused = relayPaused && !unconfirmedReason && signsNow;
   const showVaultBlock = !!vaultBlock && !showRelayPaused && !unconfirmedReason;
@@ -319,6 +344,7 @@ export function AddFundsModal({
       ({ credited } = await allocateIntoPortfolio({
         allocations: Object.entries(allocations).map(([tokenId, qty]) => ({ tokenId, qty })),
         tokenAdditions,
+        relayGas: relayGasQuote ? relayGasDeductionOf(relayGasQuote) : null,
       }));
     } catch (e) {
       // Same split as `preset-review-modal`: submitted-but-unconfirmed is not a signature failure.
@@ -612,6 +638,11 @@ export function AddFundsModal({
           </p>
         ) : null}
       </fieldset>
+
+      {signsNow && relayGasCharge && !unconfirmedReason ? <RelayGasLine charge={relayGasCharge} /> : null}
+      {relayGasProblem && !unconfirmedReason ? (
+        <p className="mt-3 text-[11px] leading-snug text-amber-200">{relayGasProblem}</p>
+      ) : null}
 
       {/* One always-mounted live region, so the outcome is announced when it appears. */}
       <div role="status" aria-live="polite">

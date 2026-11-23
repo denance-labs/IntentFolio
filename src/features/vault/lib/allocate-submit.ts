@@ -110,6 +110,11 @@ export type SubmitAllocateParams = {
   op: AllocateOpInput;
   /** The funded legs. One Transfer carries all of them (008.plan Phase 2). */
   allocations: AllocationInput[];
+  /**
+   * The relay's gas (D-589 block 5): an intents token id and base units, already deducted from
+   * its leg by the caller. Absent only when that token has no live price (relay-gas-cost.ts).
+   */
+  relayGas?: { tokenId: string; amount: string };
   /** Signs in the login family's own scheme (NEP-413 for NEAR, ERC-191 otherwise). */
   signer: VaultSigner;
   /**
@@ -214,6 +219,7 @@ export async function submitAllocate(p: SubmitAllocateParams): Promise<SubmitAll
     transfers: p.allocations,
     authCallMsg,
     ...(p.op.kind === "setup" ? { storage: p.op.storage } : {}),
+    ...(p.relayGas ? { relayGas: p.relayGas } : {}),
   });
 
   // ── First safety gate: persist the raw msg BEFORE signing, or do not sign at all. ──

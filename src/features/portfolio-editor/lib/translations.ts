@@ -171,6 +171,8 @@ export const translations = {
     appTooManyTokens: "A portfolio can hold up to {max} tokens.",
     realChangeSetStorageExceeds: "Your balance doesn't cover the storage cost. Nothing was signed.",
     realChangeSetStorageMismatch: "We couldn't work out the storage cost. Nothing was signed; reload the page.",
+    realChangeSetRelayGasExceeds: "Your balance doesn't cover the sending cost. Nothing was signed.",
+    realChangeSetRelayGasMismatch: "We couldn't work out the sending cost. Nothing was signed; reload the page.",
     realChangeSetTooManyPortfolios: "An account can hold up to {max} portfolios.",
     // Pre-flight refusals (008.plan Phase 2): caught before signing, so nothing was sent.
     realChangeSetTargetsNot100:
@@ -439,6 +441,8 @@ export const translations = {
     appTooManyTokens: "Un portfolio puede tener hasta {max} tokens.",
     realChangeSetStorageExceeds: "Tu saldo no alcanza para cubrir el costo de almacenamiento. No se firmó nada.",
     realChangeSetStorageMismatch: "No pudimos calcular el costo de almacenamiento. No se firmó nada; recargá la página.",
+    realChangeSetRelayGasExceeds: "Tu saldo no alcanza para cubrir el costo de envío. No se firmó nada.",
+    realChangeSetRelayGasMismatch: "No pudimos calcular el costo de envío. No se firmó nada; recargá la página.",
     realChangeSetTooManyPortfolios: "Una cuenta puede tener hasta {max} portfolios.",
     // Rechazos previos a la firma (008.plan Fase 2): no se envió nada.
     realChangeSetTargetsNot100:

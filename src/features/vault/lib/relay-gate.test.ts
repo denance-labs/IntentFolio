@@ -4,8 +4,9 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
 import { portfolioPresets } from "@/content/portfolio-presets";
 import { deriveIntentsAccountId } from "@/features/login-wallet/lib/identity";
-import { toIntentsTokenId } from "@/features/market/lib/intents-token-id";
+import { toIntentsTokenId, toRegistryTokenId } from "@/features/market/lib/intents-token-id";
 import { tokenRegistry } from "@/features/market/lib/token-registry";
+import type { TokenPriceMap } from "@/features/market/types";
 import { buildConversionSignRequest } from "@/features/bridge/lib/conversion-envelope";
 import { buildGasPurchaseSignRequest } from "@/features/bridge/lib/gas-purchase";
 import type { ConversionQuote } from "@/features/bridge/lib/oneclick-conversion-quote";
@@ -28,6 +29,8 @@ import {
   type RelayView,
 } from "./relay-gate";
 import { APP_MAX_PORTFOLIOS_PER_ACCOUNT, APP_MAX_TOKENS_PER_PORTFOLIO } from "./change-set-preflight";
+import { quoteRelayGas, RELAY_GAS_MEMO, RELAY_GAS_RECEIVER, relayGasDeductionOf } from "./relay-gas-cost";
+import { livePriceOf, STORAGE_COST_MEMO } from "./storage-cost";
 import type { RelayViewResult } from "./relay-rpc-provider";
 import { AUTH_CALL_MIN_GAS, AUTH_CALL_TTL_SECS, buildAllocateSignRequest, buildCommitSignRequest } from "./vault-envelope";
 import {
@@ -82,8 +85,14 @@ const vaultView = (answers: Record<string, RelayViewResult | Error>) =>
 const setupView = (answers: Record<string, RelayViewResult | Error>) =>
   fakeView({ simulate_intents: value({ intents_executed: [{}], state: {} }), list_portfolios_for: value([]), ...answers });
 
-const gateWith = (view: RelayView, log: (line: string) => void = () => {}) =>
-  createRelayGate({ view, vaultId: VAULT, intentsId: INTENTS, now: () => NOW_MS, log });
+/** No live price unless the test gives some: the relay's gas is then not due (D-589 block 5). */
+const NO_PRICES = async (): Promise<TokenPriceMap> => ({});
+
+const gateWith = (
+  view: RelayView,
+  log: (line: string) => void = () => {},
+  prices: () => Promise<TokenPriceMap> = NO_PRICES
+) => createRelayGate({ view, vaultId: VAULT, intentsId: INTENTS, now: () => NOW_MS, log, prices });
 
 async function nep413Commit(
   opts: {
@@ -154,6 +163,8 @@ function allocatePayload(
     allocateInto?: Partial<Pick<BuildAuthCallAllocateIntoParams, "tokenAdditions" | "allocations">>;
     /** A Setup's Storage Cost (D-528); one base unit of its first leg unless given, none with null. */
     storage?: { tokenId: string; amount: string } | null;
+    /** The relay's gas (D-589 block 5), last; none unless given. */
+    relayGas?: { tokenId: string; amount: string };
     patchMsg?: (msg: PatchableMsg) => void;
   } = {}
 ) {
@@ -191,6 +202,7 @@ function allocatePayload(
     transfers: allocations,
     authCallMsg,
     storage: opts.allocateInto || opts.storage === null ? undefined : (opts.storage ?? { tokenId: allocations[0].tokenId, amount: "1" }),
+    relayGas: opts.relayGas,
   });
   // The builder's own text unless the intents are replaced, so every Setup test also ties it to the gate.
   let text = erc191Message;
@@ -1469,5 +1481,431 @@ describe("relay gate — withdrawals and 1Click transfers (D-589)", () => {
     const payload = { standard: "erc191", payload: JSON.stringify(parsed, null, 2), signature: "secp256k1:x" };
     await expect(verifier(view, payload)).resolves.toMatchObject({ ok: false, code: "would-fail" });
     expect(view).not.toHaveBeenCalled();
+  });
+  // D-589 block 5 (048 §10; operator, 2026-11-20): the user pays the relay's gas — 0.002 NEAR of
+  // the token the operation moves, last, to the account that pays it. Due when the server can
+  // price it, accepted from half of the server's figure.
+  describe("the sending cost (D-589 block 5)", () => {
+    const USDT = "nep141:usdt.tether-token.near";
+    const XLM = "nep245:v2_1.omni.hot.tg:1100_111bzQBB5v7AhLyPMDwS8uJgQV24KaAPXtwyVWu2KXbbfQU6NXRCz";
+    /** NEAR at 2.5 USD and USDT at 1: 0.002 NEAR = 0.005 USDT = 5000 base units. */
+    const DUE_USDT = "5000";
+    /** 0.002 NEAR in yoctoNEAR, paid in wNEAR. */
+    const DUE_NEAR = "2000000000000000000000";
+    const priced = (usd: Record<string, number>) => async (): Promise<TokenPriceMap> =>
+      Object.fromEntries(
+        Object.entries(usd).map(([id, usdPrice]) => [id, { symbol: id, usdPrice, updatedAt: "", source: "chaindefuser" }])
+      );
+    const ETH = "nep141:eth.omft.near";
+    /** ETH at 2500: 0.002 NEAR = 0.000002 ETH, 18 decimals. */
+    const DUE_ETH = "2000000000000";
+    /** Registry ids, as the feed serves them: NEAR is `near`. */
+    const PRICES = priced({ near: 2.5, [USDT]: 1, [XLM]: 0.25, [ETH]: 2500 });
+    const gate = (view: RelayView, prices = PRICES, log: (line: string) => void = () => {}) =>
+      gateWith(view, log, prices);
+    const gasIntent = (tokenId: string, amount: string, over: Record<string, unknown> = {}) => ({
+      intent: "transfer",
+      receiver_id: RELAY_GAS_RECEIVER,
+      tokens: { [tokenId]: amount },
+      memo: RELAY_GAS_MEMO,
+      ...over,
+    });
+    const USDT_TRANSFER = { intent: "transfer", receiver_id: DEPOSIT, tokens: { [USDT]: "10000000" } };
+
+    it("passes what the app builds with its charge: withdrawals, NEAR unwrapped, a conversion", async () => {
+      const requests = {
+        "near-native": withdraw({ qty: 1, relayGas: { tokenId: USDT, amount: BigInt(DUE_USDT) } }),
+        "near-unwrap": withdraw({ tokenId: "near", qty: 0.5, relayGas: { tokenId: "near", amount: BigInt(DUE_NEAR) } }),
+        conversion: buildConversionSignRequest({
+          signerId: SIGNER,
+          quote: conversionQuote,
+          heldRaw: BigInt(10) ** BigInt(18),
+          nowMs: NOW_MS,
+          nonce: NONCE_BYTES,
+          relayGas: { tokenId: ETH, amount: BigInt(DUE_ETH) },
+        }),
+      };
+      for (const [name, request] of Object.entries(requests)) {
+        const signed = JSON.parse(request.nep413.message) as { intents: unknown[] };
+        expect(signed.intents.at(-1), name).toMatchObject({ memo: RELAY_GAS_MEMO });
+        for (const [standard, payload] of Object.entries(wire(request))) {
+          const view = outflowView();
+          await expect(gate(view)({ target: "verifier", payload }), `${name} (${standard})`).resolves.toMatchObject({
+            ok: true,
+          });
+          expect(view).toHaveBeenCalledWith(INTENTS, "simulate_intents", { signed: [payload] });
+        }
+      }
+    });
+
+    it("passes a HOT native withdrawal with its charge in the HOT token", async () => {
+      const ops = [
+        {
+          intent: "mt_withdraw",
+          receiver_id: "bridge-refuel.hot.tg",
+          amounts: ["1000000"],
+          token_ids: [XLM.slice("nep245:v2_1.omni.hot.tg:".length)],
+          token: "v2_1.omni.hot.tg",
+          msg: '{"receiver_id":"x","amount_native":"1000","block_number":123}',
+          min_gas: "91300000000000",
+        },
+      ];
+      // 0.002 NEAR × 2.5 / 0.25 = 0.02 XLM, 7 decimals.
+      const payload = withIntents([...ops, gasIntent(XLM, "200000")]);
+      await expect(gate(outflowView())({ target: "verifier", payload })).resolves.toMatchObject({ ok: true });
+    });
+
+    it("passes from half of the server's figure, and not one base unit under it", async () => {
+      const half = String(Number(DUE_USDT) / 2);
+      await expect(
+        gate(outflowView())({ target: "verifier", payload: withIntents([USDT_TRANSFER, gasIntent(USDT, half)]) })
+      ).resolves.toMatchObject({ ok: true });
+      const view = outflowView();
+      const verdict = await gate(view)({
+        target: "verifier",
+        payload: withIntents([USDT_TRANSFER, gasIntent(USDT, String(Number(half) - 1))]),
+      });
+      expect(verdict).toMatchObject({ ok: false, code: "would-fail" });
+      expect(view).not.toHaveBeenCalled();
+    });
+
+    it("refuses an outflow without it when the server prices the token, before the simulation", async () => {
+      for (const ops of [[USDT_TRANSFER], [NEAR_NATIVE]]) {
+        const view = outflowView();
+        const verdict = await gate(view)({ target: "verifier", payload: withIntents(ops) });
+        expect(verdict, JSON.stringify(ops)).toMatchObject({ ok: false, code: "would-fail" });
+        expect(view).not.toHaveBeenCalled();
+      }
+    });
+
+    it("passes an outflow without it when the server has no live price for the token or for NEAR", async () => {
+      const unpriced = [priced({ near: 2.5 }), priced({ [USDT]: 1 }), NO_PRICES];
+      for (const prices of unpriced) {
+        await expect(
+          gate(outflowView(), prices)({ target: "verifier", payload: withIntents([USDT_TRANSFER]) })
+        ).resolves.toMatchObject({ ok: true });
+      }
+      // A registry fallback is not a price.
+      const fallback = async (): Promise<TokenPriceMap> => ({
+        near: { symbol: "NEAR", usdPrice: 2.5, updatedAt: "", source: "fallback" },
+        [USDT]: { symbol: "USDT", usdPrice: 1, updatedAt: "", source: "fallback" },
+      });
+      await expect(
+        gate(outflowView(), fallback)({ target: "verifier", payload: withIntents([USDT_TRANSFER]) })
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it("passes the charge the app priced when the server cannot price it (the amount goes unchecked)", async () => {
+      await expect(
+        gate(outflowView(), NO_PRICES)({ target: "verifier", payload: withIntents([USDT_TRANSFER, gasIntent(USDT, "1")]) })
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it("treats a price read that throws as no price, and says so", async () => {
+      const log = vi.fn();
+      const broken = async (): Promise<TokenPriceMap> => {
+        throw new Error("feed down");
+      };
+      await expect(
+        gate(outflowView(), broken, log)({ target: "verifier", payload: withIntents([USDT_TRANSFER]) })
+      ).resolves.toMatchObject({ ok: true });
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("feed down"));
+    });
+
+    it.each([
+      ["to another account", [USDT_TRANSFER, gasIntent(USDT, DUE_USDT, { receiver_id: "attacker.near" })]],
+      ["in another token", [USDT_TRANSFER, gasIntent(WNEAR, DUE_NEAR)]],
+      ["with another memo", [USDT_TRANSFER, gasIntent(USDT, DUE_USDT, { memo: STORAGE_COST_MEMO })]],
+      ["with a msg", [USDT_TRANSFER, gasIntent(USDT, DUE_USDT, { msg: "{}" })]],
+      ["in two tokens", [USDT_TRANSFER, gasIntent(USDT, DUE_USDT, { tokens: { [USDT]: DUE_USDT, [WNEAR]: DUE_NEAR } })]],
+      ["of zero", [USDT_TRANSFER, gasIntent(USDT, "0")]],
+      ["before the operation", [gasIntent(USDT, DUE_USDT), USDT_TRANSFER]],
+      ["twice", [USDT_TRANSFER, gasIntent(USDT, DUE_USDT), gasIntent(USDT, DUE_USDT)]],
+      ["alone", [gasIntent(USDT, DUE_USDT)]],
+      ["in a HOT token on a withdrawal of another token", [NEAR_NATIVE, gasIntent(XLM, "200000")]],
+    ])("refuses a charge %s, without asking the simulation", async (_name, intents) => {
+      const view = outflowView();
+      await expect(gate(view)({ target: "verifier", payload: withIntents(intents) })).resolves.toMatchObject({
+        ok: false,
+        code: "would-fail",
+      });
+      expect(view).not.toHaveBeenCalled();
+    });
+
+    it("refuses a wrong-shaped charge even when the server has no price (the shape is not priced)", async () => {
+      const view = outflowView();
+      const payload = withIntents([USDT_TRANSFER, gasIntent(WNEAR, DUE_NEAR)]);
+      await expect(gate(view, NO_PRICES)({ target: "verifier", payload })).resolves.toMatchObject({ ok: false });
+      expect(view).not.toHaveBeenCalled();
+    });
+
+    // Cross-review 5c: every route the app signs, built by its own builder with the charge priced
+    // by the same function and price map the gate uses — so a builder drifting in token or
+    // position shows up here, not as a `would-fail` in production.
+    describe("every route the app signs, against the gate", () => {
+      const ALL: TokenPriceMap = Object.fromEntries(
+        [...tokenRegistry.map((t) => t.id), ...[...STOCK_TEST_ASSETS, ...STOCK_TEST_FUNDING_ASSETS].map((a) => toRegistryTokenId(a.id))].map(
+          (id) => [id, { symbol: id, usdPrice: id === "near" ? 2.5 : id === "nep141:zec.omft.near" ? 50 : 1, updatedAt: "", source: "chaindefuser" }]
+        )
+      );
+      const allPriced = async () => ALL;
+      const chargeIn = (registryId: string) => {
+        const deduction = relayGasDeductionOf(quoteRelayGas({ tokenId: registryId, priceOf: (id) => livePriceOf(ALL, id) }));
+        if (!deduction) throw new Error(`${registryId} has no price in the test map`);
+        return deduction;
+      };
+      const TRON = "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near";
+      const ZEC = "nep141:zec.omft.near";
+      const stockQuote = {
+        accountId: SIGNER,
+        maxTradeUsd: null,
+        depositAddress: DEPOSIT,
+        amountInRaw: "10000000",
+        amountOutRaw: "1",
+        minAmountOutRaw: "1",
+        amountInUsd: 10,
+        amountOutUsd: 10,
+        costBps: 10,
+        requestedDeadlineMs: NOW_MS + 10 * 60_000,
+        quoteDeadlineMs: NOW_MS + 10 * 60_000,
+        timeEstimateSecs: 10,
+        signature: "ed25519:x",
+        quotedAtMs: NOW_MS - 10_000,
+      };
+      const [stock, funding] = [STOCK_TEST_ASSETS[0], STOCK_TEST_FUNDING_ASSETS[0]];
+      const hotDestinations: Record<string, string> = {
+        "ton:mainnet": "UQCv4mTYxbLOKZBDL_b_jckLV3ev0SLA-demExEBdbkivm0W",
+        "stellar:mainnet": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      };
+      const hotNatives = Object.entries(withdrawalRegistry).filter(
+        ([id, row]) => row.bridgeRoute === "hot-omni" && isTokenAvailable(id)
+      );
+
+      /** Each route, built with the charge (`true`) or without it (`false`). */
+      const routes = (charged: boolean) => {
+        const gas = (registryId: string) => (charged ? chargeIn(registryId) : null);
+        return {
+          "near-native": withdraw({ relayGas: gas("nep141:usdt.tether-token.near") }),
+          "near-unwrap": withdraw({ tokenId: "near", qty: 0.5, relayGas: gas("near") }),
+          omft: withdraw({
+            tokenId: TRON,
+            chainId: "tron:mainnet",
+            qty: 5,
+            destinationAddress: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+            relayGas: gas(TRON),
+          }),
+          omni: withdraw({
+            tokenId: ZEC,
+            chainId: "zec:mainnet",
+            qty: 0.005,
+            destinationAddress: "t1TinQZKCGaNk6ujaaaqjJUkgKKRqE8Bj8K",
+            omniFee: { gasFeeRaw: "22000", protocolFeeRaw: "10000", minAmountRaw: "100000", quotedForRaw: "500000" },
+            omniExternalId: "5d0f1c2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            relayGas: gas(ZEC),
+          }),
+          ...Object.fromEntries(
+            hotNatives.map(([tokenId, row]) => [
+              `hot-omni ${row.chainId}`,
+              withdraw({
+                tokenId,
+                chainId: row.chainId,
+                qty: 10,
+                heldRaw: BigInt(10) ** BigInt(40),
+                destinationAddress: hotDestinations[row.chainId] ?? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                hotFee: { relayerFeeRaw: "1000", blockNumber: "123", nativeAssetId: tokenId, payment: "in-kind", swap: null },
+                relayGas: gas(tokenId),
+              }),
+            ])
+          ),
+          conversion: buildConversionSignRequest({
+            signerId: SIGNER,
+            quote: conversionQuote,
+            heldRaw: BigInt(10) ** BigInt(18),
+            nowMs: NOW_MS,
+            nonce: NONCE_BYTES,
+            relayGas: gas(conversionQuote.originTokenId),
+          }),
+          "gas purchase": buildGasPurchaseSignRequest({
+            signerId: SIGNER,
+            quote: {
+              depositAddress: DEPOSIT,
+              amountInRaw: "53459",
+              amountOutRaw: "1000",
+              tokenId: "nep141:usdt.tether-token.near",
+              nativeAssetId: "nep141:wrap.near",
+            },
+            withdrawalAmountRaw: "5000000",
+            deadlineSecs: NOW + 600,
+            nonce: NONCE_BYTES,
+            relayGas: gas("nep141:usdt.tether-token.near"),
+          }),
+          "stock buy": buildStockSwapSignRequest({
+            signerId: SIGNER,
+            heldRaw: BigInt(10) ** BigInt(30),
+            nowMs: NOW_MS,
+            nonce: NONCE_BYTES,
+            quote: { ...stockQuote, side: "buy", stock, funding, originAsset: funding.id, destinationAsset: stock.id },
+            relayGas: gas(toRegistryTokenId(funding.id)),
+          }),
+          "stock sell": buildStockSwapSignRequest({
+            signerId: SIGNER,
+            heldRaw: BigInt(10) ** BigInt(30),
+            nowMs: NOW_MS,
+            nonce: NONCE_BYTES,
+            quote: { ...stockQuote, side: "sell", stock, funding, originAsset: stock.id, destinationAsset: funding.id },
+            relayGas: gas(toRegistryTokenId(stock.id)),
+          }),
+        };
+      };
+
+      it("passes each one with its charge, in NEP-413 and in EVM's text", async () => {
+        const built = routes(true);
+        expect(Object.keys(built)).toHaveLength(13); // 4 direct routes, 5 HOT natives, conversion, gas purchase, 2 stock sides
+        for (const [name, request] of Object.entries(built)) {
+          for (const [standard, payload] of Object.entries(wire(request))) {
+            await expect(gate(outflowView(), allPriced)({ target: "verifier", payload }), `${name} (${standard})`).resolves.toMatchObject({
+              ok: true,
+            });
+          }
+        }
+      });
+
+      it("refuses each one without it while the server prices its token, before the simulation", async () => {
+        for (const [name, request] of Object.entries(routes(false))) {
+          const view = outflowView();
+          const verdict = await gate(view, allPriced)({ target: "verifier", payload: wire(request).nep413 });
+          expect(verdict, name).toMatchObject({ ok: false, code: "would-fail" });
+          expect(view, name).not.toHaveBeenCalled();
+        }
+      });
+
+      it("takes HOT's withdrawn token, never its native fee token, as the one the charge is paid in", async () => {
+        const usdtTon = "nep245:v2_1.omni.hot.tg:1117_3tsdfyziyc7EJbP2aULWSKU4toBaAcN4FdTgfm5W1mC4ouR";
+        const gram = "nep245:v2_1.omni.hot.tg:1117_";
+        const twoTokens = {
+          intent: "mt_withdraw",
+          receiver_id: "bridge-refuel.hot.tg",
+          amounts: ["5000000", "40000000"],
+          token_ids: [usdtTon, gram].map((id) => id.slice("nep245:v2_1.omni.hot.tg:".length)),
+          token: "v2_1.omni.hot.tg",
+          msg: '{"receiver_id":"x","amount_native":"40000000","block_number":123}',
+          min_gas: "91300000000000",
+        };
+        const inWithdrawn = chargeIn(usdtTon).amount.toString();
+        const inFee = chargeIn(gram).amount.toString();
+        await expect(
+          gate(outflowView(), allPriced)({ target: "verifier", payload: withIntents([twoTokens, gasIntent(usdtTon, inWithdrawn)]) })
+        ).resolves.toMatchObject({ ok: true });
+        const view = outflowView();
+        await expect(
+          gate(view, allPriced)({ target: "verifier", payload: withIntents([twoTokens, gasIntent(gram, inFee)]) })
+        ).resolves.toMatchObject({ ok: false, code: "would-fail" });
+        expect(view).not.toHaveBeenCalled();
+      });
+    });
+
+    it("treats a price read that does not answer in time as no price, and says so", async () => {
+      const log = vi.fn();
+      const hung = () => new Promise<TokenPriceMap>(() => {});
+      const relay = createRelayGate({ view: outflowView(), vaultId: VAULT, intentsId: INTENTS, now: () => NOW_MS, log, prices: hung, priceTimeoutMs: 5 });
+      await expect(relay({ target: "verifier", payload: withIntents([USDT_TRANSFER]) })).resolves.toMatchObject({ ok: true });
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("no answer in 5 ms"));
+    });
+
+    it("says so when the feed answers without a live NEAR price (1Click down: nothing is charged)", async () => {
+      const log = vi.fn();
+      const fallback = async (): Promise<TokenPriceMap> => ({
+        near: { symbol: "NEAR", usdPrice: 2.5, updatedAt: "", source: "fallback" },
+        [USDT]: { symbol: "USDT", usdPrice: 1, updatedAt: "", source: "fallback" },
+      });
+      await expect(
+        gate(outflowView(), fallback, log)({ target: "verifier", payload: withIntents([USDT_TRANSFER]) })
+      ).resolves.toMatchObject({ ok: true });
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("no live NEAR price"));
+    });
+
+    describe("Allocate", () => {
+      const legs = [
+        { tokenId: WNEAR, amount: "1000000000000000000000000" },
+        { tokenId: USDT, amount: "10000000" },
+      ];
+      const composition = [
+        { tokenId: WNEAR, targetBps: 5000, toleranceBps: 500 },
+        { tokenId: USDT, targetBps: 5000, toleranceBps: 500 },
+      ];
+      const setup = (relayGas?: { tokenId: string; amount: string }) =>
+        allocatePayload({ setup: { allocations: legs, composition }, storage: { tokenId: USDT, amount: "1" }, relayGas });
+      const into = (relayGas?: { tokenId: string; amount: string }) =>
+        allocatePayload({ allocateInto: { allocations: legs }, relayGas });
+
+      it("passes a Setup and an AllocateInto with the charge on any leg they fund", async () => {
+        for (const payload of [
+          setup({ tokenId: USDT, amount: DUE_USDT }).payload,
+          setup({ tokenId: WNEAR, amount: DUE_NEAR }).payload,
+          into({ tokenId: USDT, amount: DUE_USDT }).payload,
+        ]) {
+          await expect(gate(setupView({}))({ target: "verifier", payload })).resolves.toMatchObject({ ok: true });
+        }
+        const text = JSON.parse(setup({ tokenId: USDT, amount: DUE_USDT }).payload.payload) as { intents: unknown[] };
+        expect(text.intents).toHaveLength(4);
+        expect(text.intents.at(-1)).toMatchObject({ memo: RELAY_GAS_MEMO });
+      });
+
+      it("refuses one without it when a funded token has a price, before the simulation", async () => {
+        for (const payload of [setup().payload, into().payload]) {
+          const view = setupView({});
+          await expect(gate(view)({ target: "verifier", payload })).resolves.toMatchObject({ ok: false, code: "would-fail" });
+          expect(view).not.toHaveBeenCalled();
+        }
+      });
+
+      it("passes one without it when no funded token has a price", async () => {
+        await expect(gate(setupView({}), priced({ [USDT]: 1 }))({ target: "verifier", payload: setup().payload })).resolves.toMatchObject({ ok: true });
+      });
+
+      it("refuses a charge under half, in a token it does not fund, or before the Storage Cost", async () => {
+        const storage = { intent: "transfer", receiver_id: RELAY_GAS_RECEIVER, tokens: { [USDT]: "1" }, memo: STORAGE_COST_MEMO };
+        const base = JSON.parse(setup().payload.payload) as { intents: unknown[] };
+        const [t, a] = base.intents;
+        const cases = [
+          setup({ tokenId: USDT, amount: "2499" }).payload,
+          setup({ tokenId: DOGE, amount: "1" }).payload,
+          allocatePayload({ intents: [t, a, gasIntent(USDT, DUE_USDT), storage] }).payload,
+        ];
+        for (const payload of cases) {
+          const view = setupView({});
+          await expect(gate(view)({ target: "verifier", payload })).resolves.toMatchObject({ ok: false, code: "would-fail" });
+          expect(view).not.toHaveBeenCalled();
+        }
+      });
+
+      // Cross-review 5c: the app charges a priced leg when there is one (`relayGasTokenOf`).
+      it("with a priced leg and one without a price: due, and only on the priced one", async () => {
+        const mixed = [
+          { tokenId: USDT, amount: "10000000" },
+          { tokenId: DOGE, amount: "100000000" },
+        ];
+        const mixedSetup = (relayGas?: { tokenId: string; amount: string }) =>
+          allocatePayload({
+            setup: {
+              allocations: mixed,
+              composition: [
+                { tokenId: USDT, targetBps: 5000, toleranceBps: 500 },
+                { tokenId: DOGE, targetBps: 5000, toleranceBps: 500 },
+              ],
+            },
+            storage: { tokenId: USDT, amount: "1" },
+            relayGas,
+          }).payload;
+        await expect(gate(setupView({}))({ target: "verifier", payload: mixedSetup({ tokenId: USDT, amount: DUE_USDT }) })).resolves.toMatchObject({
+          ok: true,
+        });
+        for (const payload of [mixedSetup(), mixedSetup({ tokenId: DOGE, amount: "1" })]) {
+          const view = setupView({});
+          await expect(gate(view)({ target: "verifier", payload })).resolves.toMatchObject({ ok: false, code: "would-fail" });
+          expect(view).not.toHaveBeenCalled();
+        }
+      });
+    });
   });
 });

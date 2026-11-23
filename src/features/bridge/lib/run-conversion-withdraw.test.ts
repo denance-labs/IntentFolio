@@ -131,6 +131,7 @@ function run(over: Partial<RunConversionWithdrawParams> = {}) {
     accountId: SIGNER,
     quote: QUOTE,
     qty: 0.005,
+    relayGas: null,
     signer,
     publish: publish as unknown as WithdrawPublisher,
     waitForSettlement: settle as unknown as SettlementWaiter,
@@ -280,6 +281,42 @@ describe("runConversionWithdraw — 1Click delivers", () => {
       onRecordId: (id) => seen.push({ id, publishedYet: publish.mock.calls.length > 0 }),
     });
     expect(seen).toEqual([{ id: result.recordId, publishedYet: false }]);
+  });
+});
+
+// D-589 block 5: the relay's gas rides LAST, on top of the quoted amount; the record keeps what the
+// conversion signs (the judge's figure) and the amount typed.
+describe("runConversionWithdraw — the relay's gas (D-589 block 5)", () => {
+  // 0.002 NEAR of ETH at NEAR 3 / ETH 3000: 2e-6 ETH.
+  const GAS = { tokenId: QUOTE.originTokenId, amount: BigInt("2000000000000") };
+
+  it("signs [transfer, gas] and records the conversion's own amount", async () => {
+    const result = await run({
+      relayGas: GAS,
+      qty: 0.005002,
+      readHeld: async () => BigInt(QUOTE.amountInRaw) + GAS.amount,
+    });
+
+    const signed = JSON.parse(signer.signEnvelope.mock.calls[0][0].nep413.message);
+    expect(signed.intents).toEqual([
+      { intent: "transfer", receiver_id: QUOTE.depositAddress, tokens: { [QUOTE.originTokenId]: QUOTE.amountInRaw } },
+      {
+        intent: "transfer",
+        receiver_id: "intentfolio-budget.near",
+        tokens: { [QUOTE.originTokenId]: "2000000000000" },
+        memo: "gas",
+      },
+    ]);
+    expect(result.amount).toBe(QUOTE.amountInRaw);
+    expect(onlyRecord()).toMatchObject({ amount: QUOTE.amountInRaw, qty: 0.005002 });
+  });
+
+  it("re-quotes rather than signing when the balance covers the quote but not the gas", async () => {
+    const e = await failure(run({ relayGas: GAS, readHeld: async () => BigInt(QUOTE.amountInRaw) }));
+    expect(e).toBeInstanceOf(ConversionNotSignableError);
+    expect((e as ConversionNotSignableError).reason).toBe("balance-short");
+    expect(signer.signEnvelope).not.toHaveBeenCalled();
+    expect(listWithdrawRecords()).toEqual([]);
   });
 });
 

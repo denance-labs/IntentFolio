@@ -45,6 +45,7 @@ import { runGasPurchase, GasPurchaseError } from "@/features/bridge/lib/gas-purc
 import type { GasPurchaseQuote } from "@/features/bridge/lib/gas-purchase";
 import type { HotFeeDetail } from "@/features/bridge/lib/hot-fee";
 import type { OmniFeeDetail } from "@/features/bridge/lib/omni-bridge";
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import { WithdrawError } from "@/features/bridge/lib/withdraw-errors";
 import { useLiveSigner } from "@/features/vault/hooks/use-live-signer";
 import { announceOperation } from "@/features/vault/hooks/use-real-portfolio-history";
@@ -591,7 +592,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       /** The live HOT quote the confirm screen showed, exactly as `run-real-withdraw.ts` needs it. */
       hotFee: HotFeeDetail | undefined,
       /** The live Omni Bridge quote (`omni` route, D-580), likewise. */
-      omniFee: OmniFeeDetail | undefined
+      omniFee: OmniFeeDetail | undefined,
+      /** The relay's gas the confirm screen showed (D-589 block 5); null = uncharged. */
+      relayGas: RelayGasDeduction | null
     ): Promise<void> => {
       const token = tokenRegistry.find((tk) => tk.id === tokenId) ?? null;
       const symbol = token?.symbol ?? tokenId;
@@ -628,6 +631,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         destinationAlreadyVerified: destinationVerified,
         hotFee,
         omniFee,
+        relayGas,
         signer: signer.signer,
         onRecordId: (recordId) => {
           rowId = recordId;
@@ -784,9 +788,9 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         if (e instanceof HeldReadTimeoutError) throw e;
         throw new HeldReadFailedError(e);
       }
-      let amount: bigint;
+      let total: bigint;
       try {
-        amount = capToHeld(BigInt(toBaseUnits(p.qty, token.decimals)), held);
+        total = capToHeld(BigInt(toBaseUnits(p.qty, token.decimals)), held);
       } catch (e) {
         // The balance on screen is stale; a fresh read is what lets the next try succeed.
         if (e instanceof AmountExceedsBalanceError) {
@@ -794,6 +798,16 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         }
         throw e;
       }
+      // D-589 block 5: what the user typed is what leaves the balance — the conversion AND the
+      // relay's gas — so the cap above applies to that total, and 1Click is asked for the rest.
+      // The quote is what gets signed, so it has to be for the NET amount already.
+      if (p.relayGas && p.relayGas.tokenId !== p.originTokenId) {
+        return { ok: false, reason: "unavailable", detail: "sending cost priced in another token" };
+      }
+      const amount = total - (p.relayGas?.amount ?? BigInt(0));
+      // Nothing left to convert: the least that leaves one base unit, in the conversion's own
+      // terms like 1Click's minimum — the screen adds the gas back when it states it.
+      if (amount <= BigInt(0)) return { ok: false, reason: "below-minimum", minAmountRaw: "1" };
       return quoteConversion({
         originTokenId: p.originTokenId,
         chainId: p.chainId,
@@ -827,7 +841,12 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
    * resolved, never "failed"); anything else stays UNCONFIRMED with its record open.
    */
   const runLiveConversion = useCallback(
-    async (quote: ConversionQuote, qty: number, signer: NonNullable<typeof liveSigner>): Promise<void> => {
+    async (
+      quote: ConversionQuote,
+      qty: number,
+      relayGas: RelayGasDeduction | null,
+      signer: NonNullable<typeof liveSigner>
+    ): Promise<void> => {
       const heldSymbol = getTokenById(quote.originTokenId)?.symbol ?? quote.originTokenId;
       const delivery = getTokenById(quote.deliveryTokenId);
       const deliverySymbol = delivery?.symbol ?? quote.deliveryTokenId;
@@ -854,6 +873,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         accountId: intentsAccountId,
         quote,
         qty,
+        relayGas,
         signer: signer.signer,
         onRecordId: (recordId) => {
           rowId = recordId;
@@ -971,6 +991,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       destinationVerified,
       hotFee,
       omniFee,
+      relayGas,
       conversionQuote,
     }: WithdrawConfirmParams) => {
       if (conversionQuote) {
@@ -989,7 +1010,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
         }
         // D-280 B4: the same money door as every other way out of the General Balance.
         await ensureCanOperate(keyVerification, verifyKey, lang);
-        return runLiveConversion(conversionQuote, qty, liveSigner);
+        return runLiveConversion(conversionQuote, qty, relayGas, liveSigner);
       }
       // 🔴 The other half of the door: a pair that only leaves by conversion, arriving WITHOUT a
       // quote, has no other way out — the direct builder refuses its route and the mock would
@@ -1015,7 +1036,8 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           liveSigner,
           destinationVerified,
           hotFee,
-          omniFee
+          omniFee,
+          relayGas
         );
       }
 
@@ -1112,10 +1134,12 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
       quote,
       maxAmountInRaw,
       withdrawalAmountRaw,
+      relayGas,
     }: {
       quote: GasPurchaseQuote;
       maxAmountInRaw: string;
       withdrawalAmountRaw: string;
+      relayGas: RelayGasDeduction | null;
     }): Promise<void> => {
       if (!liveSigner) {
         throw new Error("No wallet is connected to sign the purchase");
@@ -1145,6 +1169,7 @@ export function DashboardShell({ children, basePath }: { children: ReactNode; ba
           quote,
           withdrawalAmountRaw,
           maxAmountInRaw,
+          relayGas,
           signer: liveSigner.signer,
         });
 

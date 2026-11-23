@@ -63,6 +63,17 @@ import type { TokenPriceMap } from "@/features/market/types";
 import { formatDecimalForInput } from "@/features/portfolio-editor/lib/decimal-input";
 import { AmountExceedsBalanceError, fromBaseUnits, toBaseUnits } from "@/features/vault/lib/base-units";
 import {
+  relayGasDeductionOf,
+  type RelayGasCharge,
+  type RelayGasDeduction,
+} from "@/features/vault/lib/relay-gas-cost";
+import {
+  RelayGasRow,
+  relayGasQuoteProblem,
+  useRelayGasQuote,
+} from "@/features/dashboard-shell/components/relay-gas-line";
+import { shellTranslations } from "@/features/dashboard-shell/lib/translations";
+import {
   useSendTransactionAs,
   type SendTransactionAs,
 } from "@/features/vault/context/real-allocate-context";
@@ -215,6 +226,12 @@ export type WithdrawConfirmParams = {
    */
   omniFee?: OmniFeeDetail;
   /**
+   * The relay's gas step 4 showed (D-589 block 5), in the token withdrawn and deducted from
+   * `qty` — or null when that token has no live price (uncharged) and on a mock withdrawal.
+   * Required, like the runner's: forgetting it must not be silent.
+   */
+  relayGas: RelayGasDeduction | null;
+  /**
    * D-392: the quote step 4 showed, for a Converting Withdrawal — signed exactly as is
    * (`runConversionWithdraw`). Undefined for a direct one, and its presence is what tells the
    * caller which path this is: the caller must never send it down the mock.
@@ -226,8 +243,15 @@ export type WithdrawConfirmParams = {
 export type ConversionQuoteRequest = {
   originTokenId: string;
   chainId: string;
+  /** As typed: what leaves the balance, the relay's gas included. */
   qty: number;
   recipient: string;
+  /**
+   * The relay's gas step 4 will show with this quote (D-589 block 5), in the held token — or null
+   * when it has no live price. The caller asks 1Click for `qty` minus this: the quote is what gets
+   * signed, so it has to be for the net amount already.
+   */
+  relayGas: RelayGasDeduction | null;
   signal?: AbortSignal;
 };
 
@@ -489,8 +513,9 @@ export function WithdrawalModal({
     tokenId: string,
     chainId: string,
     hotFee: HotFeeDetail | undefined,
-    conversionQuote?: ConversionQuote,
-    omniFee?: OmniFeeDetail
+    conversionQuote: ConversionQuote | undefined,
+    omniFee: OmniFeeDetail | undefined,
+    relayGas: RelayGasDeduction | null
   ) {
     // Two clicks can both reach here: the confirm handler awaits a fee re-check first, and
     // nothing has disabled the button yet at that point. Without this, each would build its
@@ -509,6 +534,7 @@ export function WithdrawalModal({
         destinationVerified,
         hotFee,
         omniFee,
+        relayGas,
         conversionQuote,
       });
     } catch (e) {
@@ -648,11 +674,14 @@ export function WithdrawalModal({
               address={withdrawAddress}
               prices={prices}
               t={t}
+              lang={lang}
               quoteConversion={conversions.quote}
               requoteTick={requoteTick}
               submitting={submitting}
               errorText={submitError}
-              onConfirm={(quote) => handleConfirm(selectedTokenId, selectedChainId, undefined, quote)}
+              onConfirm={(quote, relayGas) =>
+                handleConfirm(selectedTokenId, selectedChainId, undefined, quote, undefined, relayGas)
+              }
               onCancel={handleBack}
             />
           )}
@@ -666,13 +695,14 @@ export function WithdrawalModal({
               prices={prices}
               t={t}
               liveFee={isRealRoute?.(selectedTokenId) ?? false}
+              lang={lang}
               nativeBalanceRaw={nativeGasBalanceRaw(selectedChainId, generalBalance)}
               onQuoteGas={onQuoteGas}
               onBuyGas={onBuyGas}
               submitting={submitting}
               errorText={submitError}
-              onConfirm={(hotFee, omniFee) =>
-                handleConfirm(selectedTokenId, selectedChainId, hotFee, undefined, omniFee)
+              onConfirm={(relayGas, hotFee, omniFee) =>
+                handleConfirm(selectedTokenId, selectedChainId, hotFee, undefined, omniFee, relayGas)
               }
             />
           )}
@@ -815,6 +845,7 @@ function WithdrawStep4({
   prices,
   t,
   liveFee,
+  lang,
   nativeBalanceRaw,
   onQuoteGas,
   onBuyGas,
@@ -831,6 +862,7 @@ function WithdrawStep4({
   t: (typeof bridgeTranslations)["en"];
   /** Ask the bridge for the current fee instead of trusting the registry's snapshot. */
   liveFee: boolean;
+  lang: Language;
   /** `hot-omni` gas the signer already holds, in base units — see `nativeGasBalanceRaw`. */
   nativeBalanceRaw?: string;
   /** Both or neither — see `onQuoteGas` on the modal's own props. */
@@ -838,7 +870,7 @@ function WithdrawStep4({
   onBuyGas?: BuyGasSeam;
   submitting: boolean;
   errorText: string | null;
-  onConfirm: (hotFee?: HotFeeDetail, omniFee?: OmniFeeDetail) => void;
+  onConfirm: (relayGas: RelayGasDeduction | null, hotFee?: HotFeeDetail, omniFee?: OmniFeeDetail) => void;
 }) {
   const token = getTokenById(tokenId);
   const entry = getWithdrawalEntry(tokenId, chainId);
@@ -859,6 +891,13 @@ function WithdrawStep4({
   const decimals = token?.decimals ?? 6;
   const price = prices[tokenId]?.usdPrice ?? token?.fallbackUsdPrice ?? 0;
   const color = colorForSymbol(ticker);
+  // D-589 block 5: the relay's gas, in the token withdrawn, out of the amount typed — only on
+  // the live path (`liveFee` is `isRealRoute`): a mock withdrawal sends nothing. The object
+  // rendered is the object signed, like the fee quote.
+  const relayGasQuote = useRelayGasQuote(liveFee ? tokenId : null);
+  const relayGasCharge = relayGasQuote?.ok ? relayGasQuote.charge : null;
+  const relayGasQty = relayGasCharge?.qty ?? 0;
+  const relayGasProblem = relayGasQuoteProblem(relayGasQuote, shellTranslations[lang]);
 
   // The registry snapshot is the starting point and, ON EVERY ROUTE BUT `hot-omni`, the
   // permanent fallback: there a fee lookup that fails or times out must never block a
@@ -1149,7 +1188,7 @@ function WithdrawStep4({
   const feeInToken = Number(feeRaw) / Math.pow(10, decimals);
   const feeInUsd = feeInToken * price;
   const qtyUsd = qty * price;
-  const netQty = Math.max(0, qty - feeInToken);
+  const netQty = Math.max(0, qty - relayGasQty - feeInToken);
   const netUsd = netQty * price;
 
   // D-251: the fee is paid in the destination chain's gas token, out of a balance the signer
@@ -1215,7 +1254,12 @@ function WithdrawStep4({
   const omniFloorRaw = quote?.omni?.minAmountRaw;
   const minRaw =
     feeFloorRaw && omniFloorRaw && BigInt(omniFloorRaw) > BigInt(feeFloorRaw) ? omniFloorRaw : feeFloorRaw;
-  const minQty = minRaw ? Number(minRaw) / Math.pow(10, decimals) : 0;
+  // Both floors are about what the WITHDRAWAL signs, and the builder takes the relay's gas out
+  // of the amount typed first — so the amount typed has to clear them with the gas on top.
+  const minTypedRaw = minRaw
+    ? (BigInt(minRaw) + (relayGasCharge ? BigInt(relayGasCharge.amount) : BigInt(0))).toString()
+    : null;
+  const minQty = minTypedRaw ? Number(minTypedRaw) / Math.pow(10, decimals) : 0;
   const belowFloor = !loadingFee && minQty > 0 && qty < minQty;
 
   const gasOffer = gasState.kind === "ready" ? gasState.offer : null;
@@ -1233,8 +1277,13 @@ function WithdrawStep4({
   // is the wrong place to find out. Same floor-downwards float handling as
   // `nativeGasBalanceRaw`, and for the same reason: err towards refusing, never towards
   // offering a purchase that would eat the withdrawal.
+  // D-589 block 5: both sides with the relay's gas — the purchase pays its own on top of 1Click's
+  // input (an EXACT_OUTPUT quote cannot shrink), and the withdrawal signs the amount typed minus
+  // its own. Same token, same fixed cost, so one charge serves both.
+  const relayGasRaw = relayGasCharge ? BigInt(relayGasCharge.amount) : BigInt(0);
+  const withdrawalSignsRaw = BigInt(Math.floor(qty * Math.pow(10, decimals))) - relayGasRaw;
   const gasTooLarge = gasOffer
-    ? BigInt(gasOffer.quote.amountInRaw) >= BigInt(Math.floor(qty * Math.pow(10, decimals)))
+    ? BigInt(gasOffer.quote.amountInRaw) + relayGasRaw >= withdrawalSignsRaw
     : false;
   // The ceiling is computed here, where the USD rates already are, and then travels with the
   // quote so the purchase path can enforce the same number rather than a second opinion.
@@ -1258,7 +1307,7 @@ function WithdrawStep4({
 
   async function handleBuyGasClick() {
     if (buyingGas || gasSpent || !gasOffer || gasTooLarge || gasTooExpensive) return;
-    if (gasCeilingRaw === null) return;
+    if (gasCeilingRaw === null || relayGasProblem !== null) return;
     const buy = gasSeams.current.onBuyGas;
     if (!buy) return;
     // Aged out: re-price and show it. This click signs nothing, so it opens no wallet prompt
@@ -1280,7 +1329,9 @@ function WithdrawStep4({
       await buy({
         quote: gasOffer.quote,
         maxAmountInRaw: gasCeilingRaw,
-        withdrawalAmountRaw: BigInt(Math.floor(qty * Math.pow(10, decimals))).toString(),
+        withdrawalAmountRaw: withdrawalSignsRaw.toString(),
+        // The charge on screen as this click found it, like the withdrawal's own.
+        relayGas: relayGasQuote ? relayGasDeductionOf(relayGasQuote) : null,
       });
     } catch (e) {
       setGasError(e instanceof Error ? e.message : String(e));
@@ -1299,11 +1350,13 @@ function WithdrawStep4({
   async function handleConfirmClick() {
     // `feeUnknown` and not `hotFeeBlocked` (D-263): the button is already disabled on it, and
     // a handler that disagreed with its own button would be the next version of this bug.
-    if (submitting || rechecking || belowFloor || feeUnknown) return;
+    if (submitting || rechecking || belowFloor || feeUnknown || relayGasProblem !== null) return;
+    // The charge on screen as this click found it, whatever the price feed does meanwhile.
+    const relayGas = relayGasQuote ? relayGasDeductionOf(relayGasQuote) : null;
     // Second click on the same, now-visible higher fee: this IS the re-confirmation.
     if (feeIncreased) {
       setFeeIncreased(false);
-      onConfirm(quote?.hot, quote?.omni);
+      onConfirm(relayGas, quote?.hot, quote?.omni);
       return;
     }
     if (signsFee) {
@@ -1320,7 +1373,7 @@ function WithdrawStep4({
         setHotFeeBlocked(true);
         return;
       }
-      onConfirm(quote.hot, quote.omni);
+      onConfirm(relayGas, quote.hot, quote.omni);
       return;
     }
     if (wantsLive) {
@@ -1343,11 +1396,11 @@ function WithdrawStep4({
       }
       if (fresh && fresh.source === "live") {
         setQuote(fresh);
-        onConfirm(fresh.hot, fresh.omni);
+        onConfirm(relayGas, fresh.hot, fresh.omni);
         return;
       }
     }
-    onConfirm(quote?.hot, quote?.omni);
+    onConfirm(relayGas, quote?.hot, quote?.omni);
   }
 
   return (
@@ -1434,6 +1487,8 @@ function WithdrawStep4({
               {t.feeFromGasBalance.replace("{symbol}", gasFee.ticker)}
             </p>
           )}
+          {/* D-589 block 5: its own row, never folded into the network fee (operator). */}
+          {relayGasCharge && <RelayGasRow charge={relayGasCharge} symbol={ticker} />}
           <div className="border-t border-slate-700" role="separator" />
           <DetailRow
             label={isOmni ? t.youWillReceiveAtLeastLabel : t.youWillReceiveLabel}
@@ -1463,6 +1518,12 @@ function WithdrawStep4({
           {t.amountBelowFee
             .replace("{min}", minQty.toFixed(Math.min(decimals, 8)))
             .replace("{symbol}", ticker)}
+        </p>
+      )}
+
+      {relayGasProblem && (
+        <p role="alert" className="rounded-xl bg-red-950/40 px-3 py-2.5 text-xs text-red-300">
+          {relayGasProblem}
         </p>
       )}
 
@@ -1512,6 +1573,8 @@ function WithdrawStep4({
               value={`${formatCrypto(gasNeeded)} ${gasTicker}`}
               sub={`${formatCrypto(gasCost)} ${ticker} · ${formatUsd(gasCost * price)}`}
             />
+            {/* D-589 block 5: the purchase is its own signature, so it carries its own charge. */}
+            {relayGasCharge && <RelayGasRow charge={relayGasCharge} symbol={ticker} />}
           </dl>
           {gasPriceMoved && (
             <p role="status" className="text-[11px] text-amber-300">
@@ -1526,7 +1589,7 @@ function WithdrawStep4({
             <button
               type="button"
               onClick={handleBuyGasClick}
-              disabled={buyingGas || submitting}
+              disabled={buyingGas || submitting || relayGasProblem !== null}
               aria-busy={buyingGas}
               className="w-full rounded-xl border border-accent/40 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
@@ -1585,7 +1648,7 @@ function WithdrawStep4({
         ref={confirmRef}
         type="button"
         onClick={handleConfirmClick}
-        disabled={submitting || rechecking || belowFloor || feeUnknown}
+        disabled={submitting || rechecking || belowFloor || feeUnknown || relayGasProblem !== null}
         aria-busy={submitting || rechecking}
         className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       >
@@ -1641,7 +1704,8 @@ function givesLess(next: ConversionQuote, than: ConversionQuote): boolean {
 
 type ConversionQuoteState =
   | { kind: "loading" }
-  | { kind: "ready"; quote: ConversionQuote }
+  /** `relayGas`: the charge this quote was asked net of (D-589 block 5) — signed with it, as a pair. */
+  | { kind: "ready"; quote: ConversionQuote; relayGas: RelayGasCharge | null }
   | { kind: "below-minimum"; minAmountRaw: string }
   | { kind: "token-account-below-minimum"; minAmountRaw: string; feeRaw: string }
   | { kind: "unavailable"; text?: string };
@@ -1663,6 +1727,7 @@ function WithdrawConversionStep4({
   address,
   prices,
   t,
+  lang,
   quoteConversion,
   requoteTick,
   submitting,
@@ -1676,12 +1741,14 @@ function WithdrawConversionStep4({
   address: string;
   prices: TokenPriceMap;
   t: (typeof bridgeTranslations)["en"];
+  lang: Language;
   quoteConversion: WithdrawConversions["quote"];
   /** Bumped by the modal when the click refused the quote for a reason a fresh one fixes. */
   requoteTick: number;
   submitting: boolean;
   errorText: string | null;
-  onConfirm: (quote: ConversionQuote) => void;
+  /** The quote on screen and the relay's gas it was asked net of (null = uncharged). */
+  onConfirm: (quote: ConversionQuote, relayGas: RelayGasDeduction | null) => void;
   /** Declining a worse price goes back to step 3, with the form as it was. */
   onCancel: () => void;
 }) {
@@ -1700,6 +1767,18 @@ function WithdrawConversionStep4({
   const fromChainId = getWithdrawalEntry(tokenId)?.chainId;
   const fromChainName = fromChainId ? getChainMeta(fromChainId)?.displayName ?? fromChainId : "";
   const color = colorForSymbol(ticker);
+
+  // D-589 block 5: the relay's gas, in the held token, out of the amount typed. 1Click is asked
+  // for the rest — the quote is what gets signed — and each quote keeps the charge it was asked
+  // with, so the click signs the pair on screen. Read through a ref inside the pricing effect: a
+  // price tick re-sizes the next quote, it does not re-quote by itself. Only the charge appearing,
+  // disappearing or breaking starts over (`chargeKind`), as a new amount would.
+  const relayGasQuote = useRelayGasQuote(tokenId);
+  const relayGasProblem = relayGasQuoteProblem(relayGasQuote, shellTranslations[lang]);
+  const liveCharge = relayGasQuote?.ok ? relayGasQuote.charge : null;
+  const liveChargeRef = useRef(liveCharge);
+  liveChargeRef.current = liveCharge;
+  const chargeKind = relayGasProblem !== null ? "broken" : liveCharge ? "charged" : "free";
 
   const [state, setState] = useState<ConversionQuoteState>({ kind: "loading" });
   /**
@@ -1756,7 +1835,7 @@ function WithdrawConversionStep4({
   useEffect(() => {
     const controller = new AbortController();
     // A new amount or destination starts over; a re-quote of the same one keeps what was agreed.
-    const key = `${tokenId}|${chainId}|${qty}|${address}`;
+    const key = `${tokenId}|${chainId}|${qty}|${address}|${chargeKind}`;
     const fresh = inputKey.current !== key;
     inputKey.current = key;
     // A click refused as stale (C1/C2). The quote on screen can no longer be signed, so it leaves
@@ -1768,6 +1847,8 @@ function WithdrawConversionStep4({
       if (submittingRef.current) return;
       // Only the newest answer may land: a slow one must not replace a younger quote.
       const mine = (seq.current += 1);
+      // The charge this quote is asked net of, kept with it to the signature.
+      const charge = liveChargeRef.current;
       let next: ConversionQuoteState;
       try {
         const result = await seamRef.current({
@@ -1775,10 +1856,11 @@ function WithdrawConversionStep4({
           chainId,
           qty,
           recipient: address,
+          relayGas: relayGasDeductionOf({ ok: true, charge }),
           signal: controller.signal,
         });
         next = result.ok
-          ? { kind: "ready", quote: result.quote }
+          ? { kind: "ready", quote: result.quote, relayGas: charge }
           : result.reason === "below-minimum"
             ? { kind: "below-minimum", minAmountRaw: result.minAmountRaw }
             : result.reason === "token-account-below-minimum"
@@ -1808,6 +1890,13 @@ function WithdrawConversionStep4({
         if (announce) setRequoted(true);
       }
     };
+    // An unpriceable sending cost signs nothing: 1Click is not even asked.
+    if (chargeKind === "broken") {
+      setState({ kind: "unavailable", text: relayGasProblem ?? undefined });
+      setBaseline(null);
+      setRequoted(false);
+      return () => controller.abort();
+    }
     if (fresh) {
       setState({ kind: "loading" });
       setBaseline(null);
@@ -1823,15 +1912,25 @@ function WithdrawConversionStep4({
       controller.abort();
       clearInterval(timer);
     };
-  }, [tokenId, chainId, qty, address, requoteTick, retryTick, t]);
+    // `relayGasProblem` is a string derived with `chargeKind`: listed for the linter, it adds no run.
+  }, [tokenId, chainId, qty, address, requoteTick, retryTick, t, chargeKind, relayGasProblem]);
 
   const quote = state.kind === "ready" ? state.quote : null;
+  // The charge the quote on screen was asked net of — the one shown and the one signed.
+  const quoteRelayGas = state.kind === "ready" ? state.relayGas : null;
+  const quoteRelayGasRaw = quoteRelayGas ? BigInt(quoteRelayGas.amount) : BigInt(0);
+  // 1Click's minimums are about what the conversion signs; the amount typed has to clear them
+  // with the gas on top, so that is the figure stated.
+  const liveChargeRaw = liveCharge ? BigInt(liveCharge.amount) : BigInt(0);
+  const withGas = (raw: string) => (BigInt(raw) + liveChargeRaw).toString();
+  // What leaves the General Balance: the quoted input plus the gas, i.e. the amount typed.
+  const sentRaw = quote ? (BigInt(quote.amountInRaw) + quoteRelayGasRaw).toString() : null;
   const agreed = quote ? baseline : null;
   const worse = quote !== null && agreed !== null && givesLess(quote, agreed);
   // The banner names the figure that dropped: what arrives, or — if only that held — the guarantee.
   const changedField: "amountOutRaw" | "minAmountOutRaw" =
     worse && quote!.amountOutRaw === agreed!.amountOutRaw ? "minAmountOutRaw" : "amountOutRaw";
-  const sentQty = quote ? fromBaseUnits(BigInt(quote.amountInRaw), decimals) : qty;
+  const sentQty = sentRaw ? fromBaseUnits(BigInt(sentRaw), decimals) : qty;
   const arrivesQty = quote ? fromBaseUnits(BigInt(quote.amountOutRaw), deliveryDecimals) : 0;
   const feeIsZero = quote ? BigInt(quote.withdrawFeeRaw) === BigInt(0) : false;
   const feeQty = quote ? fromBaseUnits(BigInt(quote.withdrawFeeRaw), deliveryDecimals) : 0;
@@ -1848,7 +1947,7 @@ function WithdrawConversionStep4({
     // A worse quote is answered with its own pair of buttons; this one is not on screen then.
     if (submitting || !quote || worse) return;
     setRequoted(false);
-    onConfirm(quote);
+    onConfirm(quote, relayGasDeductionOf({ ok: true, charge: quoteRelayGas }));
   }
 
   // Accept IS the confirmation, as on near.com: the user just read the new figures, so this click
@@ -1858,7 +1957,7 @@ function WithdrawConversionStep4({
     if (Date.now() - askingSince.current < ACCEPT_ARM_MS) return;
     setBaseline(quote);
     setRequoted(false);
-    onConfirm(quote);
+    onConfirm(quote, relayGasDeductionOf({ ok: true, charge: quoteRelayGas }));
   }
 
   return (
@@ -1884,7 +1983,7 @@ function WithdrawConversionStep4({
           <DetailRow
             label={t.conversionSendLabel}
             // One format with or without a quote: "2.00" before it landed and "2" after read as a change.
-            value={`${formatRaw(quote ? quote.amountInRaw : toBaseUnits(qty, decimals), decimals)} ${ticker}`}
+            value={`${formatRaw(sentRaw ?? toBaseUnits(qty, decimals), decimals)} ${ticker}`}
             sub={fromChainName ? `${fromChainName} · ${formatUsd(sentQty * price)}` : formatUsd(sentQty * price)}
           />
           <DetailRow label={t.withdrawNetworkLabel} value={chainName} />
@@ -1935,6 +2034,8 @@ function WithdrawConversionStep4({
               dimValue={!quote}
             />
           )}
+          {/* D-589 block 5: its own row, never folded into the network fee (operator). */}
+          {quoteRelayGas && <RelayGasRow charge={quoteRelayGas} symbol={ticker} />}
           <div className="border-t border-slate-700" role="separator" />
           <DetailRow
             label={t.conversionArrivesLabel}
@@ -2006,7 +2107,7 @@ function WithdrawConversionStep4({
         <p role="alert" className="rounded-xl bg-red-950/40 px-3 py-2.5 text-xs text-red-300">
           {t.conversionBelowMinimum
             .replace("{chain}", chainName)
-            .replace("{min}", formatRaw(state.minAmountRaw, decimals))
+            .replace("{min}", formatRaw(withGas(state.minAmountRaw), decimals))
             .replace("{symbol}", ticker)}
         </p>
       )}
@@ -2016,7 +2117,7 @@ function WithdrawConversionStep4({
             .replaceAll("{deliveryTicker}", deliveryTicker)
             .replaceAll("{chain}", chainName)
             .replace("{fee}", formatRaw(state.feeRaw, deliveryDecimals))
-            .replace("{min}", formatRaw(state.minAmountRaw, decimals))
+            .replace("{min}", formatRaw(withGas(state.minAmountRaw), decimals))
             .replace("{symbol}", ticker)}
         </p>
       )}
@@ -2229,8 +2330,13 @@ function WithdrawStep3({
   // The floor the ENVELOPE enforces, not just the bridge's own: an amount that does not clear
   // the fee delivers nothing at all, so the fee belongs in the minimum the user is shown.
   // Uses the registry snapshot here; step 4 re-checks against the live quote.
+  // D-589 block 5: plus the relay's gas, which comes out of the amount typed before the floor
+  // is checked (step 4 states and enforces the same sum).
+  const relayGasQuote = useRelayGasQuote(isRealRoute && !conversion ? tokenId : null);
+  const relayGasRaw =
+    relayGasQuote?.ok && relayGasQuote.charge ? BigInt(relayGasQuote.charge.amount) : BigInt(0);
   const minRaw = conversion ? null : minimumWithdrawalRaw(tokenId, undefined, chainId);
-  const minWithdrawal = minRaw ? Number(minRaw) / Math.pow(10, decimals) : 0;
+  const minWithdrawal = minRaw ? Number(BigInt(minRaw) + relayGasRaw) / Math.pow(10, decimals) : 0;
 
   const addressResult = address ? validateAddress(address, chainId) : { valid: false };
   const wrongChain = address ? detectWrongChain(address, chainId) : null;

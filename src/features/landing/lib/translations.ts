@@ -35,7 +35,7 @@ export const landingTranslations = {
         {
           number: "03",
           title: "It moves toward your targets",
-          body: "At the market's pace, with no fees as it moves and no action needed from you. There's just a one-time storage cost when you create the portfolio.",
+          body: "At the market's pace, with no fees as it moves and no action needed from you.",
         },
         { number: "04", title: "Earn along the way", body: "Each move aims to leave you a spread in your favor. Once you reach your targets, it keeps aiming without leaving your band." },
       ],
@@ -138,7 +138,7 @@ export const landingTranslations = {
         {
           number: "03",
           title: "Avanza hacia tus objetivos",
-          body: "Al ritmo del mercado, sin comisiones en los movimientos y sin que hagas nada. Sólo hay un costo único de almacenamiento al crear el portfolio.",
+          body: "Al ritmo del mercado, sin comisiones en los movimientos y sin que hagas nada.",
         },
         { number: "04", title: "Ganas en el camino", body: "Cada movimiento busca dejarte un spread a favor. Cuando llegas a tus objetivos, lo sigue buscando sin salir de tu banda." },
       ],

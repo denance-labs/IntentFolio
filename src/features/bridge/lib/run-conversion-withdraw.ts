@@ -23,6 +23,7 @@
 // It never says "lost": past the settlement the honest statements are "delivered", "back in your
 // balance" and "not confirmed yet".
 
+import type { RelayGasDeduction } from "@/features/vault/lib/relay-gas-cost";
 import type { VaultSigner } from "@/features/vault/lib/vault-signer";
 import { buildConversionSignRequest } from "./conversion-envelope";
 import type { ConversionQuote } from "./oneclick-conversion-quote";
@@ -79,8 +80,18 @@ export type RunConversionWithdrawParams = {
   accountId: string;
   /** EXACTLY the quote the screen displayed and the user accepted. */
   quote: ConversionQuote;
-  /** Human units, as the modal shows them. For the record and the activity row only. */
+  /**
+   * Human units, as the modal shows them — the amount typed, so the relay's gas included. For the
+   * record and the activity row only.
+   */
   qty: number;
+  /**
+   * The relay's gas step 4 showed WITH this quote (D-589 block 5), in the held token — or null
+   * when that token has no live price and the conversion goes uncharged. The quote is already net
+   * of it; it leaves the balance on top of `amountIn`, in the same envelope. Required, so a caller
+   * cannot forget it silently.
+   */
+  relayGas: RelayGasDeduction | null;
   signer: VaultSigner;
   onStage?: (stage: ConversionWithdrawStage) => void;
   /**
@@ -138,6 +149,7 @@ export async function runConversionWithdraw(
     signerId: p.accountId,
     quote,
     heldRaw,
+    relayGas: p.relayGas,
     nowMs: p.envelope?.nowMs,
     nonce: p.envelope?.nonce,
   });
@@ -226,7 +238,8 @@ export async function runConversionWithdraw(
   console.log(
     `[conversion] published intent ${intentHash} — ${quote.amountInRaw} of ${quote.originTokenId} ` +
       `to ${quote.depositAddress}, for ${quote.amountOutRaw} of ${quote.deliveryTokenId} on ` +
-      `${quote.chainId} (min ${quote.minAmountOutRaw})`
+      `${quote.chainId} (min ${quote.minAmountOutRaw})` +
+      (request.relayGas ? `; sending cost ${request.relayGas.amount}` : "")
   );
 
   stage("awaiting-settlement");
