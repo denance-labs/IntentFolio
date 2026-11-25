@@ -42,39 +42,11 @@ export function relayGasCostText(charge: RelayGasCharge, symbol?: string): strin
   return `${formatCostQty(charge.qty)} ${symbol ?? getTokenById(registryId)?.symbol ?? registryId}`;
 }
 
-/** Its own line, after the amounts: the charge in its token and its USD value. */
-export function RelayGasLine({ charge, className = "mt-3" }: { charge: RelayGasCharge; className?: string }) {
-  const { lang } = useLanguage();
-  const t = shellTranslations[lang];
-  const priceOf = useLivePriceOf();
-  const usdPrice = priceOf(toRegistryTokenId(charge.tokenId));
-  return (
-    <div
-      className={`${className} flex items-start justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5`}
-    >
-      <span className="flex min-w-0 items-start gap-1.5 text-xs leading-snug text-slate-300">
-        <span>{t.relayGasLabel}</span>
-        <span className="shrink-0 pt-px">
-          <InfoTooltip label={t.relayGasLabel} width={240}>
-            {t.relayGasInfo}
-          </InfoTooltip>
-        </span>
-      </span>
-      <span className="flex shrink-0 flex-col text-right">
-        <span className="text-sm tabular-nums text-slate-100">{relayGasCostText(charge)}</span>
-        {usdPrice !== null && (
-          <span className="text-[11px] tabular-nums text-slate-400">≈ {formatUsd(charge.qty * usdPrice)}</span>
-        )}
-      </span>
-    </div>
-  );
-}
-
 /**
- * The same line as one row of an itemised costs list (a `<dl>`), for the confirmations that
- * already add up their costs into what arrives (withdrawals, conversions, a stock sale): a box of
- * its own under that total would read as a second charge on top of it, when it is one of the
- * deductions above it. `className` adds to the row, for a list laid out as a grid (`col-span-2`);
+ * The line as one row of an itemised costs list (a `<dl>`), for the confirmations that add up
+ * their costs into what arrives (withdrawals, conversions, a stock sale): a box of its own under
+ * that total would read as a second charge on top of it, when it is one of the deductions above
+ * it. Creating a portfolio and adding funds itemise theirs in `FundingSummary`. `className` adds to the row, for a list laid out as a grid (`col-span-2`);
  * `labelClassName` sizes the label like the list's other labels (`text-xs` in the withdrawal's
  * details, `text-sm` in the stock sale's).
  */

@@ -1,7 +1,7 @@
 export const profile = {
   title: "IntentFolio",
   description: "Pick your crypto mix and fund it from any wallet. IntentFolio moves it toward your targets with no fees and keeps it there, and you earn spread along the way.",
-  siteUrl: "https://intentfolio.app",
+  siteUrl: "https://intentfolio.tech",
 
   productName: "IntentFolio",
   productBadge: "Meta Pool · NEAR",

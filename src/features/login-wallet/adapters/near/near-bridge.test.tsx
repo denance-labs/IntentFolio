@@ -242,7 +242,7 @@ describe("NearAdapterBridge key-registration gate (D-280 B2)", () => {
       })),
       connect: vi.fn(async (input: { signMessageParams?: unknown }) => {
         expect(input.signMessageParams).toMatchObject({
-          recipient: "intentfolio.app",
+          recipient: "intentfolio.tech",
           message: expect.stringMatching(/Sign in to IntentFolio/),
           nonce: expect.any(Uint8Array),
         });

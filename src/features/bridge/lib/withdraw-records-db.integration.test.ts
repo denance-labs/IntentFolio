@@ -21,6 +21,7 @@ import {
   type Queryable,
 } from "@/features/vault/lib/ops-records-service";
 import { handleCreateRecord, handlePatchRecord } from "./withdraw-records-service";
+import { noteRelayedTxHash } from "./withdraw-relay-tx-hash";
 
 const CONNECTION_STRING = process.env.INTENTFOLIO_OPS_DB_URL;
 const suite = CONNECTION_STRING ? describe : describe.skip;
@@ -145,6 +146,50 @@ suite("withdraw_record — against a real Postgres 16 through the pooler", () =>
   it("answers 404 for a record the table never received", async () => {
     const result = await call(handlePatchRecord, { id: randomUUID(), status: "settled" });
     expect(result.status).toBe(404);
+  });
+
+  it("takes the relay's note by signer and nonce: a candidate fills, a proved hash replaces (D-593)", async () => {
+    const nonce = Buffer.from(randomUUID().replace(/-/g, ""), "utf8").toString("base64");
+    const record = direct({ nonce });
+    const other = direct({ nonce: Buffer.from(randomUUID().replace(/-/g, ""), "utf8").toString("base64") });
+    await call(handleCreateRecord, record);
+    await call(handleCreateRecord, other);
+
+    const payload = {
+      standard: "erc191",
+      payload: JSON.stringify({ signer_id: record.signerId, nonce }),
+    };
+    const event = { standard: "dip4", event: "intents_executed", data: [{ intent_hash: "ih", account_id: record.signerId, nonce }] };
+    const proved = (txHash: string) => ({
+      ok: true as const,
+      txHash,
+      gasBurntNear: "0",
+      outcome: {
+        receipts_outcome: [
+          { outcome: { executor_id: "intents.near", status: { SuccessValue: "" }, logs: [`EVENT_JSON:${JSON.stringify(event)}`] } },
+        ],
+      },
+    });
+    const unknown = (txHash: string) => ({ ok: false as const, code: "unknown-outcome" as const, error: "x", txHash });
+    const logs: string[] = [];
+    const note = (response: Parameters<typeof noteRelayedTxHash>[0]["response"]) =>
+      noteRelayedTxHash({ payload, response, resolveDb: () => ({ ok: true, db }), log: (m) => logs.push(m) });
+    const txOf = async (id: unknown) =>
+      (await db.query<{ tx_hash: string | null }>("SELECT tx_hash FROM withdraw_record WHERE id = $1", [id])).rows[0].tx_hash;
+
+    await note(unknown("Candidate1"));
+    expect(await txOf(record.id)).toBe("Candidate1");
+    await note(unknown("Candidate2"));
+    expect(await txOf(record.id)).toBe("Candidate1");
+    await note(proved("Proved1"));
+    expect(await txOf(record.id)).toBe("Proved1");
+    await note(unknown("Candidate3"));
+    expect(await txOf(record.id)).toBe("Proved1");
+    // Writing the hash already there touches nothing: two lines, one per real write.
+    await note(proved("Proved1"));
+    expect(logs).toHaveLength(2);
+    expect(logs.join()).not.toContain("NOT noted");
+    expect(await txOf(other.id)).toBeNull();
   });
 
   it("can read the verdict table the solver writes — the grant 024-D will rely on", async () => {

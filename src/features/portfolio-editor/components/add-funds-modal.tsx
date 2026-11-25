@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { depositableTokens, getTokenById } from "@/features/market/lib/token-registry";
-import { TokenIcon } from "@/features/market/lib/token-icons";
 import { isPortfolioOfferable, isReceivable } from "@/features/bridge/lib/token-availability";
 import type { TokenPriceMap } from "@/features/market/types";
 import { useLanguage } from "@/features/dashboard-shell/context/language-context";
@@ -27,24 +26,24 @@ import { inFlightButtonLabel } from "@/features/vault/lib/in-flight-button-label
 import { usePendingAllocates } from "@/features/vault/hooks/use-pending-allocates";
 import { useLoginWallet } from "@/features/login-wallet";
 import { changeSetNoticeCopy } from "./confirm-changes-modal";
-import { formatDecimalForInput, percentChipAmount } from "../lib/decimal-input";
-import { amountChipClass, Modal } from "./portfolio-primitives";
+import { FundAmountRow, FundList, FundUnavailableRow } from "./fund-amount-row";
+import { Modal } from "./portfolio-primitives";
+import { FundingSummary } from "@/features/dashboard-shell/components/funding-summary";
 import {
-  RelayGasLine,
   relayGasQuoteProblem,
   useLivePriceOf,
   useRelayGasQuote,
 } from "@/features/dashboard-shell/components/relay-gas-line";
 import { relayGasDeductionOf, relayGasTokenOf } from "@/features/vault/lib/relay-gas-cost";
 import { toRegistryTokenId } from "@/features/market/lib/intents-token-id";
-import { colorForSymbol, formatUsd, formatCrypto } from "../lib/format";
+import { formatTokenAmount, formatUsd } from "../lib/format";
 import type { translations } from "../lib/translations";
 import type { CurrentPortfolioQty } from "../types";
 
 type T = (typeof translations)["en"];
 
-// Quick-fill chips for the allocate inputs (mirrors preset-review-modal).
-const PERCENT_CHIPS = [25, 50, 75] as const;
+// More tokens than this and the list gets its search.
+const SEARCH_FROM = 8;
 
 type Props = {
   t: T;
@@ -133,6 +132,7 @@ export function AddFundsModal({
   const { pending: pendingAllocates } = usePendingAllocates(realFunding ? intentsAccountId : null);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const [search, setSearch] = useState("");
   // Raw allocate input per token (kept as typed; clamped to available at read time).
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -398,14 +398,68 @@ export function AddFundsModal({
   // Unread (D-541) shares its layout: no search over a list that cannot be filled.
   const fundingEmpty = entries.length === 0 && !balanceLoading && !unconfirmedReason;
 
+  // D-591: a list this short is read at a glance. A search already typed keeps its field.
+  const searchable = entries.length > SEARCH_FROM || search !== "";
+  // Without a search, the focus opens on the title: an amount field is not where to land unasked.
+  const initialFocusRef = searchable ? searchRef : titleRef;
+
+  const portfolioRows = visible.filter((e) => e.inPortfolio);
+  const otherRows = visible.filter((e) => !e.inPortfolio);
+  // With no mix yet (an empty portfolio), "not in this portfolio's mix" would say nothing.
+  const hasMix = (compositionTokenIds ?? []).length > 0;
+
+  const fundRow = (e: Entry) => {
+    const held =
+      e.existingQty > 0
+        ? `${t.addTokensInPortfolio}: ${formatTokenAmount(e.existingQty, e.price)} ≈ ${formatUsd(e.existingUsd)}`
+        : undefined;
+    // D-415: dust is what could never reach MIN_FUNDED_USD, so it counts what the portfolio
+    // already holds — the same total rowBelowMin measures.
+    const hasDust = Math.round((e.existingQty + e.avail) * e.price * 100) / 100 < MIN_FUNDED_USD;
+    if (e.notAvailable || hasDust) {
+      return (
+        <FundUnavailableRow
+          key={e.id}
+          symbol={e.symbol}
+          reason={e.notAvailable ? t.addTokensNotAvailableYet : t.addTokensDustInPortfolio}
+          muted={!e.notAvailable}
+        >
+          {held ? <p className="mt-px text-[11px] tabular-nums text-slate-400">{held}</p> : null}
+          <p className="mt-px text-[11px] tabular-nums text-slate-400">
+            {shellT.presetReviewAvailable}: {formatTokenAmount(e.avail, e.price)} ≈ {formatUsd(e.avail * e.price)}
+          </p>
+        </FundUnavailableRow>
+      );
+    }
+    return (
+      <FundAmountRow
+        key={e.id}
+        tokenId={e.id}
+        symbol={e.symbol}
+        available={e.avail}
+        price={e.price}
+        value={amounts[e.id] ?? ""}
+        amount={allocations[e.id] ?? 0}
+        onChange={(value) => setAmount(e.id, value)}
+        inputLabel={`${e.symbol} ${t.withdrawAmount}`}
+        labels={{ available: shellT.presetReviewAvailable, wholeBalance: shellT.amountWholeBalance, max: t.withdrawMax }}
+        held={held}
+        // D-491: it can't join as a target; its funds come in at 0% and are converted.
+        note={e.fundsOnly && !e.inPortfolio ? t.addTokensFundsOnly : undefined}
+        error={rowOverMax(e) ? t.allocateErrorMax : rowBelowMin(e) ? t.allocateErrorMinFunded : undefined}
+        errorId={`add-funds-error-${e.id}`}
+      />
+    );
+  };
+
   return (
     <Modal
       titleId="add-tokens-title"
       onClose={isSigning ? ignoreClose : onClose}
-      initialFocusRef={searchRef}
+      initialFocusRef={fundingEmpty ? undefined : initialFocusRef}
       maxWidth="max-w-lg"
     >
-      <h2 id="add-tokens-title" className="text-lg font-semibold text-slate-100">
+      <h2 ref={titleRef} tabIndex={-1} id="add-tokens-title" className="text-lg font-semibold text-slate-100 focus:outline-none">
         {title}
       </h2>
       <p className="mt-1 text-sm text-slate-400">{t.addFundsSubcopy}</p>
@@ -434,7 +488,7 @@ export function AddFundsModal({
         className="m-0 min-w-0 border-0 p-0 disabled:opacity-60"
       >
         {/* Nothing to search in an empty funding account; with no field, the Deposit takes the focus. */}
-        {fundingEmpty ? null : (
+        {searchable ? (
           <div className="mt-4">
             <input
               ref={searchRef}
@@ -445,182 +499,66 @@ export function AddFundsModal({
               className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-accent"
             />
           </div>
-        )}
+        ) : null}
 
-        <div
-          ref={listRef}
-          role="list"
-          aria-label={title}
-          className="mt-2 max-h-[22rem] space-y-2 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-2"
-        >
+        <div ref={listRef} className="mt-4 space-y-4">
           {visible.length === 0 ? (
             // After a failed Allocate the refetched balance empties the list; "No tokens found"
             // reads as a search problem there, and the notice below already explains.
-            unconfirmedReason ? null : entries.length === 0 && balanceLoading ? (
-              <div className="px-3 py-8 text-center text-sm text-slate-400">{t.addFundsLoading}</div>
-            ) : fundingEmpty && onRetryBalance ? (
-              <div role="alert" className="flex flex-col items-center gap-3 px-3 py-7 text-center">
-                <p className="max-w-xs text-sm text-amber-200">{t.addFundsUnreadable}</p>
-                <button
-                  type="button"
-                  onClick={onRetryBalance}
-                  className="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-                >
-                  {t.addFundsRetry}
-                </button>
-              </div>
-            ) : fundingEmpty ? (
-              // D-529: nothing to assign. The way in is a Deposit, offered right here.
-              <div className="flex flex-col items-center gap-3 px-3 py-7 text-center">
-                <p className="max-w-xs text-sm text-slate-300">{t.addFundsEmpty}</p>
-                {onDeposit ? (
-                  <button
-                    type="button"
-                    onClick={onDeposit}
-                    className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-                  >
-                    {t.addFundsDeposit}
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="px-3 py-8 text-center text-sm text-slate-400">{t.noTokensFound}</div>
-            )
-          ) : (
-            visible.map((e) => {
-              const amt = allocations[e.id] ?? 0;
-              // D-415: dust is what could never reach MIN_FUNDED_USD, so it counts what the portfolio
-              // already holds — the same total rowBelowMin measures.
-              const hasDust =
-                e.avail > 0 && Math.round((e.existingQty + e.avail) * e.price * 100) / 100 < MIN_FUNDED_USD;
-              const hasAvail = e.avail > 0 && !hasDust && !e.notAvailable;
-              // D-319: Max writes the whole float; the field then holds all of it.
-              const wholeBalance = amounts[e.id] === formatDecimalForInput(e.avail);
-              const overMax = rowOverMax(e);
-              const belowMinFunded = !overMax && rowBelowMin(e);
-              return (
-                <div
-                  key={e.id}
-                  role="listitem"
-                  className={`rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 ${e.notAvailable ? "opacity-50" : ""}`}
-                >
-                  <div className="flex flex-wrap items-start gap-2">
-                    <span
-                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                      style={{ backgroundColor: `${colorForSymbol(e.symbol).hex}22` }}
-                      aria-hidden="true"
+            unconfirmedReason ? null : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-2">
+                {entries.length === 0 && balanceLoading ? (
+                  <div className="px-3 py-8 text-center text-sm text-slate-400">{t.addFundsLoading}</div>
+                ) : fundingEmpty && onRetryBalance ? (
+                  <div role="alert" className="flex flex-col items-center gap-3 px-3 py-7 text-center">
+                    <p className="max-w-xs text-sm text-amber-200">{t.addFundsUnreadable}</p>
+                    <button
+                      type="button"
+                      onClick={onRetryBalance}
+                      className="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                     >
-                      <TokenIcon symbol={e.symbol} size={22} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      {/* Wraps: at 390 px the chip would otherwise run under the amount input. */}
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <p className="whitespace-nowrap text-sm font-semibold text-slate-100">{e.symbol}</p>
-                        {e.inPortfolio ? (
-                          // Neutral, as in "Add tokens" (D-534).
-                          <span className="shrink-0 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">
-                            {t.addTokensInPortfolio}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="truncate text-[11px] text-slate-400">{e.name}</p>
-                      {e.existingQty > 0 && (
-                        <p className="text-[11px] text-slate-400">
-                          <span className="text-slate-400">{t.addTokensInPortfolio}:</span>{" "}
-                          {formatCrypto(e.existingQty)} {e.symbol} ≈ {formatUsd(e.existingUsd)}
-                        </p>
-                      )}
-                      {e.avail > 0 && (
-                        <p className="text-[11px] text-slate-400">
-                          <span className="text-slate-400">{t.addTokensAvailableLabel}:</span>{" "}
-                          {formatCrypto(e.avail)} {e.symbol} ≈ {formatUsd(e.avail * e.price)}
-                        </p>
-                      )}
-                    </div>
-
-                    {e.notAvailable ? (
-                      <span className="w-28 shrink-0 self-center text-right text-[11px] text-amber-400">{t.addTokensNotAvailableYet}</span>
-                    ) : e.fundsOnly && !e.inPortfolio ? (
-                      // D-491: it can't join as a target; its funds come in at 0% and are converted.
-                      <span className="w-28 shrink-0 self-center text-right text-[11px] text-amber-400">{t.addTokensFundsOnly}</span>
-                    ) : hasDust ? (
-                      // The amount column's width (017-8): unbounded, the dust note (D-415) took the
-                      // row at 390 px and crushed the token's column under it.
-                      <span className="w-28 shrink-0 self-center text-right text-[11px] text-slate-400">
-                        {t.addTokensDustInPortfolio}
-                      </span>
+                      {t.addFundsRetry}
+                    </button>
+                  </div>
+                ) : fundingEmpty ? (
+                  // D-529: nothing to assign. The way in is a Deposit, offered right here.
+                  <div className="flex flex-col items-center gap-3 px-3 py-7 text-center">
+                    <p className="max-w-xs text-sm text-slate-300">{t.addFundsEmpty}</p>
+                    {onDeposit ? (
+                      <button
+                        type="button"
+                        onClick={onDeposit}
+                        className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                      >
+                        {t.addFundsDeposit}
+                      </button>
                     ) : null}
                   </div>
-
-                  {/* B-10: the amount on its own line, field + ≈ $ on the left and the chips on the
-                      right, so the right column above stays free for its label. */}
-                  {hasAvail ? (
-                    <div className="mt-2 flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 max-w-[7rem] flex-1 flex-col">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          max={e.avail}
-                          step="any"
-                          value={e.id in amounts ? amounts[e.id] : ""}
-                          onChange={(ev) => setAmount(e.id, ev.target.value)}
-                          placeholder="0"
-                          aria-label={`${e.symbol} ${t.withdrawAmount}`}
-                          aria-invalid={overMax || belowMinFunded}
-                          className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        />
-                        <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">
-                          ≈ {formatUsd(amt * e.price)}
-                        </span>
-                        {/* D-319: Max writes the whole float, wider than the field; the cut is only
-                            visual (the value signed is the field's), so say it is all of it. */}
-                        {wholeBalance && (
-                          <span className="mt-0.5 text-right text-[11px] text-accent/80">
-                            {shellT.amountWholeBalance}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {PERCENT_CHIPS.map((pct) => {
-                          const chipAmount = percentChipAmount(e.avail, pct, getTokenById(e.id)?.decimals ?? 8);
-                          const selected = !wholeBalance && Number(chipAmount) > 0 && amounts[e.id] === chipAmount;
-                          return (
-                            <button
-                              key={pct}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => setAmount(e.id, chipAmount)}
-                              className={amountChipClass(selected)}
-                            >
-                              {pct}%
-                            </button>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          aria-pressed={wholeBalance}
-                          onClick={() => setAmount(e.id, formatDecimalForInput(e.avail))}
-                          className={amountChipClass(wholeBalance)}
-                        >
-                          {t.withdrawMax}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {overMax ? (
-                    <p role="alert" className="mt-1 text-right text-[11px] text-rose-400">
-                      {t.allocateErrorMax}
-                    </p>
-                  ) : belowMinFunded ? (
-                    <p role="alert" className="mt-1 text-right text-[11px] text-rose-400">
-                      {t.allocateErrorMinFunded}
-                    </p>
-                  ) : null}
+                ) : (
+                  <div className="px-3 py-8 text-center text-sm text-slate-400">{t.noTokensFound}</div>
+                )}
+              </div>
+            )
+          ) : (
+            <>
+              {portfolioRows.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-slate-200">{t.addFundsPortfolioTokens}</p>
+                  <FundList label={t.addFundsPortfolioTokens}>{portfolioRows.map(fundRow)}</FundList>
                 </div>
-              );
-            })
+              ) : null}
+              {otherRows.length > 0 ? (
+                hasMix ? (
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">{shellT.presetReviewOtherTokens}</p>
+                    <p className="mb-2 mt-0.5 text-[11px] leading-snug text-slate-400">{shellT.presetReviewOtherTokensNote}</p>
+                    <FundList label={shellT.presetReviewOtherTokens}>{otherRows.map(fundRow)}</FundList>
+                  </div>
+                ) : (
+                  <FundList label={title}>{otherRows.map(fundRow)}</FundList>
+                )
+              ) : null}
+            </>
           )}
         </div>
         {onDeposit && entries.length > 0 && !unconfirmedReason ? (
@@ -639,7 +577,9 @@ export function AddFundsModal({
         ) : null}
       </fieldset>
 
-      {signsNow && relayGasCharge && !unconfirmedReason ? <RelayGasLine charge={relayGasCharge} /> : null}
+      {signsNow && relayGasCharge && !unconfirmedReason ? (
+        <FundingSummary gross={allocations} priceOf={priceOf} relayGas={relayGasCharge} showNet={relayGasProblem === null} />
+      ) : null}
       {relayGasProblem && !unconfirmedReason ? (
         <p className="mt-3 text-[11px] leading-snug text-amber-200">{relayGasProblem}</p>
       ) : null}

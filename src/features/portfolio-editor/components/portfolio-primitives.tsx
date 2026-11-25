@@ -132,8 +132,8 @@ export function SumChip({ totalPct, t }: { totalPct: number; t: Record<string, s
   );
 }
 
-// The quick-fill chips of an amount field (25/50/75 %, Max), in the creation review and in
-// "Add tokens" (027-13): outlined so they read as buttons, all four alike. `selected` while the
+// The quick-fill chips of an amount field (50%, Max), in the creation review and in "Add funds"
+// (027-13, D-591): outlined so they read as buttons, both alike. `selected` while the
 // field holds exactly that chip's amount — derived on every render, never stored, so typing
 // another number or a changed balance clears it instead of leaving a chip that no longer holds.
 export function amountChipClass(selected: boolean): string {

@@ -2,17 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { amountChipClass, Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
+import { FundAmountRow, FundList, FundUnavailableRow } from "@/features/portfolio-editor/components/fund-amount-row";
+import { Modal } from "@/features/portfolio-editor/components/portfolio-primitives";
 import { isPortfolioOfferable, isReceivable } from "@/features/bridge/lib/token-availability";
 import { isStockToken } from "@/features/market/lib/stock-tokens";
 import { getTokenById, tokenRegistry } from "@/features/market/lib/token-registry";
-import { TokenAvatar } from "@/features/market/lib/token-avatar";
 import { useTokenPrices } from "@/features/market/hooks/use-token-prices";
 import {
   buildHeldNoTargetRows,
   computeTargets,
 } from "@/features/portfolio-editor/lib/calculations";
-import { colorForSymbol, formatTokenAmount, formatUsd } from "@/features/portfolio-editor/lib/format";
 import {
   buildChangeSet,
   changeSummaryToSignatureText,
@@ -28,7 +27,6 @@ import {
 import { AmountExceedsBalanceError } from "@/features/vault/lib/base-units";
 import { RealChangeSetInvalidError } from "@/features/vault/lib/vault-errors";
 import { changeSetNoticeCopy } from "@/features/portfolio-editor/components/confirm-changes-modal";
-import { formatDecimalForInput, percentChipAmount } from "@/features/portfolio-editor/lib/decimal-input";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import { useLanguage } from "../context/language-context";
 import { usePortfolio } from "../context/portfolio-context";
@@ -38,8 +36,8 @@ import { RelayPausedNotice } from "@/features/vault/components/relay-paused-noti
 import { useVaultPrecheck } from "@/features/vault/hooks/use-vault-precheck";
 import { VaultPrecheckNotice } from "@/features/vault/components/vault-precheck-notice";
 import { relayGasDeductionOf } from "@/features/vault/lib/relay-gas-cost";
-import { RelayGasLine, relayGasCostText, relayGasQuoteProblem, useRelayGasQuote } from "./relay-gas-line";
-import { StorageCostLine, storageQuoteProblem, useSetupStorageQuote } from "./storage-cost-line";
+import { relayGasCostText, relayGasQuoteProblem, useRelayGasQuote } from "./relay-gas-line";
+import { storageQuoteProblem, useSetupStorageQuote } from "./storage-cost-line";
 import { APP_MAX_TOKENS_PER_PORTFOLIO, growsPastAppTokenCap } from "@/features/vault/lib/change-set-preflight";
 import { usePendingAllocates } from "@/features/vault/hooks/use-pending-allocates";
 import { inFlightButtonLabel } from "@/features/vault/lib/in-flight-button-label";
@@ -51,6 +49,7 @@ import { draftToTargets, type NewPortfolioDraft, type NewPortfolioDraftInput } f
 import { PORTFOLIO_NAME_MAX_LENGTH, validatePortfolioName } from "../lib/portfolio-validation";
 import { shellTranslations } from "../lib/translations";
 import { DraftCompositionTable } from "./draft-composition";
+import { FundingSummary } from "./funding-summary";
 
 function symbolFor(tokenId: string): string {
   return getTokenById(tokenId)?.symbol ?? tokenId;
@@ -65,10 +64,6 @@ const IGNORE_CLOSE = () => {};
 // The rule of a portfolio's "Add funds" (D-396, D-389, D-491): a token that can be a target, or one
 // with no buy route whose funds can still come in to be converted. Any other is shown, never signed.
 const canFundWith = (id: string) => isPortfolioOfferable(id) || isReceivable(id);
-
-// Quick-fill chips for the allocate inputs. 100% (Max) is rendered separately with
-// its own accent so it reads as the primary action.
-const PERCENT_CHIPS = [25, 50, 75] as const;
 
 /**
  * Where the new portfolio's mix comes from: what the editor holds now (D-397), never saved, or
@@ -166,16 +161,25 @@ export function PresetReviewModal({
     () => fundableTokenIds(available, (id) => prices[id]?.usdPrice ?? getTokenById(id)?.fallbackUsdPrice ?? 0),
     [available, prices]
   );
-  const [offered, setOffered] = useState<ReadonlySet<string>>(() => new Set(pricesLoading ? [] : fundableNow));
+  // With the value each was worth when offered, which is what orders them (D-591): ordered by the
+  // live value, a price tick would move a row from under the pointer.
+  const [offered, setOffered] = useState<ReadonlyMap<string, number>>(() => new Map());
   if (!pricesLoading && fundableNow.some((id) => !offered.has(id))) {
-    setOffered(new Set([...offered, ...fundableNow]));
+    const next = new Map(offered);
+    for (const id of fundableNow) if (!next.has(id)) next.set(id, (available.get(id) ?? 0) * priceOf(id));
+    setOffered(next);
   }
 
   const fundTokens = useMemo(
     () =>
-      [...offered]
+      [...offered.keys()]
         .filter((id) => (available.get(id) ?? 0) > 0)
-        .sort((a, b) => symbolFor(a).localeCompare(symbolFor(b))),
+        .sort(
+          (a, b) =>
+            Number(canFundWith(b)) - Number(canFundWith(a)) ||
+            (offered.get(b) ?? 0) - (offered.get(a) ?? 0) ||
+            symbolFor(a).localeCompare(symbolFor(b))
+        ),
     [offered, available]
   );
 
@@ -401,114 +405,27 @@ export function PresetReviewModal({
 
   const goBack = onBack ? () => onBack(name) : onClose;
 
-  // One token's amount: its field, 25/50/75/Max, and what the amount means.
+  // One token's amount: its field, 50% and Max, and what the amount means.
   const fundRow = (id: string) => {
+    const symbol = symbolFor(id);
     if (!canFundWith(id)) {
-      return (
-        <li key={id} className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 opacity-50">
-          <TokenAvatar
-            symbol={symbolFor(id)}
-            size={22}
-            className="rounded-full"
-            style={{ backgroundColor: `${colorForSymbol(symbolFor(id)).hex}22` }}
-          />
-          <span className="text-sm font-medium text-slate-100">{symbolFor(id)}</span>
-          <span className="ml-auto text-right text-[11px] text-amber-400">{editorTranslations[lang].addTokensNotAvailableYet}</span>
-        </li>
-      );
+      return <FundUnavailableRow key={id} symbol={symbol} reason={editorTranslations[lang].addTokensNotAvailableYet} />;
     }
-    const avail = available.get(id) ?? 0;
-    const rawAmt = Number(amountStr(id));
-    const amt = Number.isFinite(rawAmt) ? Math.max(0, Math.min(rawAmt, avail)) : 0;
-    const price = priceOf(id);
-    const rowBelowMin = belowMin(id);
-    // D-319: Max writes the whole float, wider than the field, so it says it is all of it.
-    const wholeBalance = overrides[id] === formatDecimalForInput(avail);
     return (
-      <li key={id} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5">
-        {/* One row on desktop: name, amount input (narrow, not full-width),
-            quick-fill chips. The USD equivalent of the typed amount sits
-            right-aligned directly under the input (the input + ≈USD share a column).
-            What is available sits below it, or "whole balance" once Max took it all. On narrow
-            widths the chips wrap to a second line so the input never
-            collapses. Native spinners hidden: useless at 6+ decimals. */}
-        <div className="flex flex-wrap items-start gap-2">
-          <span className="flex shrink-0 items-center gap-2 pt-1">
-            <TokenAvatar
-              symbol={symbolFor(id)}
-              size={22}
-              className="rounded-full"
-              style={{ backgroundColor: `${colorForSymbol(symbolFor(id)).hex}22` }}
-            />
-            <span className="text-sm font-medium text-slate-100">{symbolFor(id)}</span>
-          </span>
-          <div className="flex min-w-[6rem] flex-1 flex-col">
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              max={avail}
-              step="any"
-              value={amountStr(id)}
-              placeholder="0"
-              onChange={(e) => setOverrides((o) => ({ ...o, [id]: e.target.value }))}
-              aria-label={`${symbolFor(id)} ${t.presetReviewAllocate}`}
-              aria-invalid={rowBelowMin || undefined}
-              aria-describedby={rowBelowMin ? `preset-review-min-${id}` : undefined}
-              className="w-full text-ellipsis rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-right text-sm tabular-nums text-slate-100 focus:text-clip focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-            <span className="mt-1 text-right text-[11px] tabular-nums text-slate-400">≈ {formatUsd(amt * price)}</span>
-            {/* D-528: the token the Storage Cost is charged in says what reaches the portfolio. */}
-            {storageQuote?.ok && storageQuote.tokenId === id ? (
-              <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-300">
-                {t.storageCostNet.replace(
-                  "{amount}",
-                  `${formatTokenAmount(netAllocations[id] ?? 0, price)} ${symbolFor(id)}`
-                )}
-              </span>
-            ) : null}
-            {/* D-319: the ellipsis cut is only visual (the value signed does not change). One line
-                either way, so pressing Max does not move the chips. */}
-            {wholeBalance ? (
-              <span className="mt-0.5 text-right text-[11px] text-accent/80">{t.amountWholeBalance}</span>
-            ) : (
-              <span className="mt-0.5 text-right text-[11px] tabular-nums text-slate-400">
-                {t.presetReviewAvailable}: {formatTokenAmount(avail, price)} <span className="whitespace-nowrap">≈ {formatUsd(avail * price)}</span>
-              </span>
-            )}
-            {rowBelowMin ? (
-              <p id={`preset-review-min-${id}`} role="alert" className="mt-1 text-right text-[11px] text-rose-400">
-                {editorTranslations[lang].allocateErrorMinFunded}
-              </p>
-            ) : null}
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
-            {PERCENT_CHIPS.map((pct) => {
-              const chipAmount = percentChipAmount(avail, pct, getTokenById(id)?.decimals ?? 8);
-              const selected = !wholeBalance && amt > 0 && amountStr(id) === chipAmount;
-              return (
-                <button
-                  key={pct}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setOverrides((o) => ({ ...o, [id]: chipAmount }))}
-                  className={amountChipClass(selected)}
-                >
-                  {pct}%
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              aria-pressed={wholeBalance}
-              onClick={() => setOverrides((o) => ({ ...o, [id]: formatDecimalForInput(avail) }))}
-              className={amountChipClass(wholeBalance)}
-            >
-              {t.depositAmountMax}
-            </button>
-          </div>
-        </div>
-      </li>
+      <FundAmountRow
+        key={id}
+        tokenId={id}
+        symbol={symbol}
+        available={available.get(id) ?? 0}
+        price={priceOf(id)}
+        value={amountStr(id)}
+        amount={allocations[id] ?? 0}
+        onChange={(value) => setOverrides((o) => ({ ...o, [id]: value }))}
+        inputLabel={`${symbol} ${t.presetReviewAllocate}`}
+        labels={{ available: t.presetReviewAvailable, wholeBalance: t.amountWholeBalance, max: t.depositAmountMax }}
+        error={belowMin(id) ? editorTranslations[lang].allocateErrorMinFunded : undefined}
+        errorId={`preset-review-min-${id}`}
+      />
     );
   };
 
@@ -606,30 +523,32 @@ export function PresetReviewModal({
           ) : (
             <>
               <div ref={amountsRef}>
-                {compositionFunds.length > 0 ? <ul className="space-y-2">{compositionFunds.map(fundRow)}</ul> : null}
+                {compositionFunds.length > 0 ? (
+                  <FundList label={t.presetReviewAllocate}>{compositionFunds.map(fundRow)}</FundList>
+                ) : null}
                 {otherFunds.length > 0 ? (
                   <div className={compositionFunds.length > 0 ? "mt-4" : undefined}>
                     <p className="text-xs font-medium text-slate-200">{t.presetReviewOtherTokens}</p>
                     <p className="mb-2 mt-0.5 text-[11px] leading-snug text-slate-400">{t.presetReviewOtherTokensNote}</p>
-                    <ul className="space-y-2">{otherFunds.map(fundRow)}</ul>
+                    <FundList label={t.presetReviewOtherTokens}>{otherFunds.map(fundRow)}</FundList>
                   </div>
                 ) : null}
               </div>
-              {storageQuote?.ok ? (
-                <StorageCostLine quote={storageQuote} usdPrice={priceOf(storageQuote.tokenId)} t={t} />
-              ) : storageProblem ? (
-                <p className="mt-3 text-[11px] leading-snug text-amber-200">
-                  {storageProblem}
-                </p>
+              {hasFunds ? (
+                <FundingSummary
+                  gross={allocations}
+                  priceOf={priceOf}
+                  storage={storageQuote?.ok ? storageQuote : null}
+                  relayGas={relayGasCharge}
+                  showNet={!!storageQuote?.ok && !!relayGasCharge && !relayGasProblem}
+                  remainingUsd={lowered ? remainingUsd : null}
+                />
               ) : null}
-              {storageQuote?.ok && relayGasCharge ? <RelayGasLine charge={relayGasCharge} className="mt-2" /> : null}
+              {!storageQuote?.ok && storageProblem ? (
+                <p className="mt-3 text-[11px] leading-snug text-amber-200">{storageProblem}</p>
+              ) : null}
               {storageQuote?.ok && relayGasProblem ? (
                 <p className="mt-2 text-[11px] leading-snug text-amber-200">{relayGasProblem}</p>
-              ) : null}
-              {lowered && hasFunds ? (
-                <p className="mt-2 text-[11px] tabular-nums text-slate-400">
-                  {t.presetReviewRemaining.replace("{amount}", formatUsd(remainingUsd))}
-                </p>
               ) : null}
             </>
           )}

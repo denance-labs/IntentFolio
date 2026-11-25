@@ -665,7 +665,7 @@ function TokenAmountChips({ amounts }: { amounts: { tokenId: string; qty: number
   return (
     <span
       ref={ref}
-      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden"
+      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden sm:flex-initial"
       style={overflowing ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
     >
       {amounts.map(({ tokenId, qty }) => {
@@ -701,38 +701,60 @@ function CompletedPortfolioRow({
   t: typeof shellTranslations.en;
 }) {
   const label = portfolioActivityLabel(row, liveName ?? row.name, t);
+  const hasAmounts = row.amounts.length > 0;
   // The date goes under the label, as on the rows in progress: beside it, it cut «…to your
   // general balance» off at 390 px (017-8). The label wraps rather than lose its end.
   const content = (
     <>
       <ActivityIcon kind={row.action} />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="break-words text-sm font-medium text-slate-100">{label}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {onOpen ? (
+          // The whole row opens the portfolio through the button's `after` layer: a link cannot
+          // sit inside a button, so the explorer link is its sibling, above that layer (D-593).
+          <button
+            type="button"
+            onClick={onOpen}
+            className="break-words text-left text-sm font-medium text-slate-100 after:absolute after:inset-0 after:rounded-lg focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-accent/60"
+          >
+            {label}
+          </button>
+        ) : (
+          <span className="break-words text-sm font-medium text-slate-100">{label}</span>
+        )}
+        {/* On a phone the chips need the line to themselves: the link goes under them. */}
+        <div className={`flex min-w-0 items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-400 ${hasAmounts ? "flex-wrap sm:flex-nowrap" : ""}`}>
           <DoneLabel label={t.activityDoneConfirmed} tone="muted" iconOnlyOnPhone />
           <span aria-hidden="true" className={AFTER_ICON_ONLY}>·</span>
           <span className="shrink-0">{when}</span>
-          {row.amounts.length > 0 && (
+          {hasAmounts && (
             <>
               <span aria-hidden="true">·</span>
               <TokenAmountChips amounts={row.amounts} />
             </>
           )}
-        </span>
-      </span>
+          <span aria-hidden="true" className={hasAmounts ? "hidden sm:inline" : undefined}>·</span>
+          <span className={hasAmounts ? "flex basis-full sm:shrink-0 sm:basis-auto" : "flex min-w-0"}>
+            <a
+              href={NEAR_EXPLORER.explorerTxUrl(row.txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t.depositViewOnExplorer}
+              className="relative z-10 min-w-0 truncate font-mono text-slate-400 underline-offset-2 hover:text-accent hover:underline"
+            >
+              {truncateHash(row.txHash)}
+            </a>
+          </span>
+        </div>
+      </div>
     </>
   );
   return onOpen ? (
-    // The wrapper carries the list's divider; the button bleeds past it only for its hover,
+    // The wrapper carries the list's divider; the row bleeds past it only for its hover,
     // or the divider would bleed (and round) with it.
     <div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
-      >
+      <div className="relative -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 transition hover:bg-slate-800/60">
         {content}
-      </button>
+      </div>
     </div>
   ) : (
     <div className="flex items-center gap-3 py-3">{content}</div>

@@ -9,7 +9,7 @@ mainnet. An off-chain solver then moves every portfolio toward its targets with 
 This repository is the web app: a Next.js 15 / React 19 / TypeScript frontend, plus the small
 server routes it needs (an RPC proxy, a gas relayer, and history reads).
 
-Hosted app: **https://intentfolio.app** (NEAR mainnet, real funds).
+Hosted app: **https://intentfolio.tech** (NEAR mainnet, real funds).
 
 ## The problem
 
@@ -45,7 +45,7 @@ user who signs in from another chain does not need NEAR to pay for gas.
 
 ### Hosted
 
-1. Open https://intentfolio.app → the landing page (EN / ES toggle in the header).
+1. Open https://intentfolio.tech → the landing page (EN / ES toggle in the header).
 2. Click **Open app** → the dashboard. Click **Build my first portfolio** → pick a preset mix or
    start from scratch, without connecting a wallet.
 3. Connect a wallet (NEAR, EVM, Solana, TON, Stellar or Tron) → **Funding**, with your Funding

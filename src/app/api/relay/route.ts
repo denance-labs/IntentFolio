@@ -11,10 +11,13 @@
 // relay-sender.ts; the allowance warning in relay-allowance.ts. This file is only
 // the transport and the wiring.
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { KeyPair, type KeyPairString } from "near-api-js";
+import { WITHDRAW_RECORDS_ENABLED } from "@/features/bridge/lib/withdraw-records-flag";
+import { noteRelayedTxHash } from "@/features/bridge/lib/withdraw-relay-tx-hash";
 import { readNearRpcConfig } from "@/features/wallet/lib/near-rpc-proxy";
 import { getOpsAlerter } from "@/features/vault/lib/ops-alerts";
+import { resolveOpsDb } from "@/features/vault/lib/ops-db-pool";
 import { allowanceOf, createAllowanceWatcher } from "@/features/vault/lib/relay-allowance";
 import { createRelayGate } from "@/features/vault/lib/relay-gate";
 import { createRelayRpc, relayUpstreamsFromConfig } from "@/features/vault/lib/relay-rpc-provider";
@@ -106,6 +109,24 @@ export async function POST(request: Request) {
       alerter: getOpsAlerter(),
     }),
   });
+
+  // A withdrawal's hash, for the solver, even when the tab that signed it is gone (D-593). Never
+  // awaited, never rejects, in the withdrawal records' own pool. `after` gets the PROMISE, not a
+  // callback: Next runs a callback on the response's `close`, which a tab that died during the send
+  // may have fired already — and then never runs it. Its throw must not cost the relay's answer.
+  const { target, payload } = (body ?? {}) as { target?: unknown; payload?: unknown };
+  if (WITHDRAW_RECORDS_ENABLED && target === "verifier") {
+    const noted = noteRelayedTxHash({
+      payload,
+      response: responseBody,
+      resolveDb: () => resolveOpsDb(process.env, "withdraw"),
+    });
+    try {
+      after(noted);
+    } catch (e) {
+      console.log(`[ops] withdraw-record relay tx note may be cut short: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   return NextResponse.json(responseBody, { status });
 }

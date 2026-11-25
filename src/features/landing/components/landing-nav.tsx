@@ -22,7 +22,7 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
       {/* D-401: under `sm` the row had a fixed minimum of 391 px (ES) — gutter, gaps, the
           wordmark and the CTA's padding all shrink there so it fits 360.
           D-563: under 360 it still ran 17 px (EN) and 35 px (ES) past a 320 px screen, so there
-          the gutter, gaps and CTA padding shrink again and the wordmark drops ".app". */}
+          the gutter, gaps and CTA padding shrink again and the wordmark drops ".tech". */}
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 max-[359px]:px-3 sm:px-6">
         {/* Wordmark */}
         <Link
@@ -33,7 +33,7 @@ export function LandingNav({ comingSoon = false }: { comingSoon?: boolean }) {
           {/* D-568: the wordmark is set wide, like the name on a device. Normal width under 360 px. */}
           <span className="text-lg font-bold tracking-tight text-bone [font-stretch:118%] max-[359px]:text-[1rem] max-[359px]:[font-stretch:100%] sm:text-xl">IntentFolio</span>
           {/* Not `sm:text-base`: `base` is also a theme color, and that class would paint it near-black. */}
-          <span className="text-sm text-bone-dim max-[359px]:hidden sm:text-[1rem]">.app</span>
+          <span className="text-sm text-bone-dim max-[359px]:hidden sm:text-[1rem]">.tech</span>
         </Link>
 
         {/* Right side */}

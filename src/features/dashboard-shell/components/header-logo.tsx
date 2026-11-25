@@ -27,13 +27,13 @@ function Wordmark({ withDomain }: { withDomain: boolean }) {
     // D-571: the landing's wordmark (landing-nav.tsx): set wide, like the name on a device.
     <span className="flex items-baseline gap-0.5 whitespace-nowrap">
       <span className="text-lg font-bold tracking-tight text-slate-100 [font-stretch:118%]">IntentFolio</span>
-      {withDomain && <span className="text-sm font-normal text-slate-400">.app</span>}
+      {withDomain && <span className="text-sm font-normal text-slate-400">.tech</span>}
     </span>
   );
 }
 
 /**
- * The header's logo in three sizes (022-J, D-460): "IntentFolio.app", then "IntentFolio", then
+ * The header's logo in three sizes (022-J, D-460): "IntentFolio.tech", then "IntentFolio", then
  * the app icon alone. It takes the room the header's right side leaves and shows the largest
  * that fits — measured, not by breakpoint, since that room depends on the language and on the
  * wallet's name. Before this, the wordmark was cut to "I…" at 390 with a wallet.
@@ -64,7 +64,7 @@ export function HeaderLogo({ home }: { home: boolean }) {
     fit === "mark" ? (
       <>
         <AppMark size={28} />
-        <span className="sr-only">IntentFolio.app</span>
+        <span className="sr-only">IntentFolio.tech</span>
       </>
     ) : (
       <Wordmark withDomain={fit === "full"} />

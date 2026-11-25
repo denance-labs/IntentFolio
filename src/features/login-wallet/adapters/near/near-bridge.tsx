@@ -32,7 +32,7 @@ import {
 import { deriveIntentsAccountId } from "../../lib/identity";
 
 // Used as the NEP-413 `recipient` field — identifies this dApp to the wallet.
-const RECIPIENT = "intentfolio.app";
+const RECIPIENT = "intentfolio.tech";
 
 const LOGIN_VERIFICATION_MESSAGE =
   "Sign in to IntentFolio. This signature verifies wallet ownership and does not authorize transactions.";

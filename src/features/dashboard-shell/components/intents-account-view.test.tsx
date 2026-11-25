@@ -435,6 +435,26 @@ describe("IntentsAccountView — Recent activity with the finished history", () 
     expect(screen.queryByRole("button", { name: /Deleted “AgrRenamed”/ })).toBeNull();
   });
 
+  it("every portfolio row links its transaction, outside the button that opens the portfolio (D-593)", () => {
+    ready(S217_EVENTS);
+    const onOpenPortfolio = vi.fn();
+    render(<IntentsAccountView onOpenPortfolio={onOpenPortfolio} />);
+    const rowOf = (text: string) => screen.getByText(text).closest("div.flex.items-center.gap-3") as HTMLElement;
+    for (const text of [
+      "Created “AgrRenamed”",
+      "Renamed “Aggressive” to “AgrRenamed”",
+      "Moved funds from “AgrRenamed” to your funding account",
+      "Deleted “AgrRenamed”",
+      "Changed the mix of “Portfolio 1”",
+    ]) {
+      const link = within(rowOf(text)).getByRole("link");
+      expect(S217_EVENTS.some((e) => link.getAttribute("href")?.endsWith(`/${e.txHash}`))).toBe(true);
+      expect(link.closest("button")).toBeNull();
+    }
+    fireEvent.click(within(rowOf("Changed the mix of “Portfolio 1”")).getByRole("link"));
+    expect(onOpenPortfolio).not.toHaveBeenCalled();
+  });
+
   it("a finished withdrawal says Withdrawal, like a deposit says Deposit, and survives a reload", () => {
     // A reload is exactly this: nothing tracked in memory, only the chain read (s217).
     ready(S217_EVENTS);

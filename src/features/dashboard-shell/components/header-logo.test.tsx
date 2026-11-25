@@ -4,9 +4,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { HeaderLogo } from "./header-logo";
 
 // jsdom has no layout: the slot's room is set per test, and the copies' natural widths are those
-// measured at 390 ES (s248): "IntentFolio.app" 134 px, "IntentFolio" ~105 px.
+// measured at 390 ES (s248) with the previous ".app" suffix: "IntentFolio.app" 134 px, "IntentFolio" ~105 px.
 let room = 0;
-const widthOf = (el: HTMLElement) => (el.textContent?.includes(".app") ? 134 : 105);
+const widthOf = (el: HTMLElement) => (el.textContent?.includes(".tech") ? 134 : 105);
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -36,10 +36,10 @@ const visible = () => screen.getByRole("link");
 
 describe("HeaderLogo (022-J, D-460)", () => {
   it.each([
-    [200, "IntentFolio.app", false],
-    [134, "IntentFolio.app", false],
+    [200, "IntentFolio.tech", false],
+    [134, "IntentFolio.tech", false],
     [120, "IntentFolio", false],
-    [60, "IntentFolio.app", true],
+    [60, "IntentFolio.tech", true],
   ])("with %i px it shows %s (icon: %s)", (width, text, icon) => {
     room = width;
     render(<HeaderLogo home />);

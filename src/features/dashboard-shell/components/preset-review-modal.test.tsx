@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { RealAllocateUnconfirmedError } from "@/features/vault/lib/run-real-allocate";
 import { AmountExceedsBalanceError } from "@/features/vault/lib/base-units";
 import { RelayError } from "@/features/vault/lib/relay-client";
-import { formatUsd } from "@/features/portfolio-editor/lib/format";
+import { formatTokenAmount, formatUsd } from "@/features/portfolio-editor/lib/format";
 import { translations as editorTranslations } from "@/features/portfolio-editor/lib/translations";
 import type { NewPortfolioDraft } from "../lib/new-portfolio-draft";
 import { shellTranslations } from "../lib/translations";
@@ -277,7 +277,9 @@ describe("PresetReviewModal — MAX on a 24-decimal balance", () => {
     fireEvent.click(screen.getByRole("button", { name: "50%" }));
     expect(pressed("50%")).toBe("true");
     expect(pressed(t.depositAmountMax)).toBe("false");
-    expect(pressed("25%")).toBe("false");
+    // D-591: 50% and Max are the only two.
+    expect(screen.queryByRole("button", { name: "25%" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "75%" })).toBeNull();
 
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "0.5" } });
     expect(pressed("50%")).toBe("false");
@@ -614,13 +616,13 @@ describe.each([
   });
 
   // D-309: an edit mid-signature changes nothing already signed; it only confuses.
-  it("the amounts and 25/50/75/Max are frozen while signing, and free again after", async () => {
+  it("the amounts, 50% and Max are frozen while signing, and free again after", async () => {
     let fail: (e: Error) => void = () => {};
     state.create.mockImplementation(() => new Promise<void>((_resolve, reject) => (fail = reject)));
     renderModal(source);
     const controls = () => [
       ...screen.getAllByRole("spinbutton"),
-      ...["25%", "50%", "75%", t.depositAmountMax].flatMap((name) => screen.getAllByRole("button", { name })),
+      ...["50%", t.depositAmountMax].flatMap((name) => screen.getAllByRole("button", { name })),
     ];
     expect(controls().every((el) => !el.matches(":disabled"))).toBe(true);
 
@@ -734,6 +736,18 @@ describe.each(["en", "es"] as const)("PresetReviewModal — nothing starts fille
     const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(before(fieldOf(/^NEAR/), title)).toBe(true);
     expect(before(title, fieldOf(/^USDC\(NEAR\)/))).toBe(true);
+  });
+
+  // D-591: by what each was worth when offered, not by name; and a later price does not move a row.
+  it("orders each group by value, and keeps the order when a price moves", () => {
+    state.prices = { ...state.prices, near: { usdPrice: 3 } };
+    state.available = new Map([["near", 1], [USDC, 20]]);
+    const { rerender } = renderModal(noneHeldSource, { filled: false });
+    const names = () => screen.getAllByRole("spinbutton").map((f) => f.getAttribute("aria-label")?.split(" ")[0]);
+    expect(names()).toEqual(["USDC(NEAR)", "NEAR"]);
+    state.prices = { ...state.prices, near: { usdPrice: 300 } };
+    rerender();
+    expect(names()).toEqual(["USDC(NEAR)", "NEAR"]);
   });
 
   it("has no such title when every token offered is in the mix", () => {
@@ -940,7 +954,8 @@ describe("PresetReviewModal — what is pending is shown", () => {
 // quote handed to the signature. The changeset stays GROSS: the cost is deducted downstream, once.
 describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-528) (%s)", (lang) => {
   const t = shellTranslations[lang];
-  const netPrefix = t.storageCostNet.split("{amount}")[0];
+  // The figures of a summary row, by its label.
+  const summaryOf = (label: string) => screen.getByText(label).closest("dt")?.nextElementSibling?.textContent;
   const createButton = () => screen.getByRole("button", { name: t.presetReviewCreate }) as HTMLButtonElement;
 
   beforeEach(() => {
@@ -951,10 +966,11 @@ describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-
   });
   afterEach(cleanup);
 
-  it("shows its own line and what reaches the portfolio, and hands the quote to the signature", async () => {
+  it("shows what is assigned, the cost and what reaches the portfolio, and hands the quote to the signature", async () => {
     renderModal();
     expect(screen.getByText(t.storageCostLabel)).toBeTruthy();
-    expect(screen.getByText((text) => text.startsWith(netPrefix))).toBeTruthy();
+    expect(summaryOf(t.fundingSummaryAssigned)).toContain("5 NEAR");
+    expect(screen.getByText(t.fundingSummaryNet)).toBeTruthy();
     expect(createButton().disabled).toBe(false);
 
     await clickPrimary(t.presetReviewCreate);
@@ -965,10 +981,34 @@ describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-
     expect(storage.amount).toBe(storage.costYocto); // charged in NEAR: exactly the cost
   });
 
+  // D-591: the total is the amounts less both costs, as signed.
+  it("the total is what is assigned less both costs", async () => {
+    renderModal();
+    const shown = summaryOf(t.fundingSummaryNet);
+    const shownOf = Object.fromEntries(
+      [t.fundingSummaryAssigned, t.storageCostLabel, t.relayGasLabel].map((label) => [label, summaryOf(label)])
+    );
+    await clickPrimary(t.presetReviewCreate);
+    const net = 5 - state.create.mock.calls[0][3].qty - 0.002;
+    // In USD it adds up with the cents above it.
+    const usdOf = (label: string) => Number(/^\$(\d+\.\d{2})/.exec(shownOf[label] ?? "")?.[1]);
+    const sum = usdOf(t.fundingSummaryAssigned) - usdOf(t.storageCostLabel) - usdOf(t.relayGasLabel);
+    expect(shown).toBe(`${formatUsd(sum)}${formatTokenAmount(net, 3)} NEAR`);
+  });
+
+  it("with several tokens the total is in USD only", () => {
+    state.available = new Map([["near", 5], [USDC, 20]]);
+    renderModal();
+    expect(summaryOf(t.fundingSummaryAssigned)).toMatch(/^\$[\d.,]+$/);
+    expect(summaryOf(t.fundingSummaryNet)).toMatch(/^\$[\d.,]+$/);
+  });
+
   it("blocks the signature, and says why, when the charged token cannot cover it", () => {
     state.available = new Map([["near", 0.004]]); // $0.012, under the cost
     renderModal();
     expect(screen.queryByText(t.storageCostLabel)).toBeNull();
+    // A total less a cost it does not know would promise too much.
+    expect(screen.queryByText(t.fundingSummaryNet)).toBeNull();
     expect(screen.getByText((text) => text.startsWith(t.storageCostExceedsAmount.split("{token}")[0]))).toBeTruthy();
     expect(createButton().disabled).toBe(true);
   });
@@ -993,6 +1033,7 @@ describe.each(["en", "es"] as const)("PresetReviewModal — the Storage Cost (D-
     renderModal();
     expect(screen.queryByText(t.storageCostExceedsAmount.split("{token}")[0])).toBeNull();
     expect(screen.getByText((text) => text.startsWith(t.relayGasExceedsAmount.split("{token}")[0]))).toBeTruthy();
+    expect(screen.queryByText(t.fundingSummaryNet)).toBeNull();
     expect(createButton().disabled).toBe(true);
   });
 

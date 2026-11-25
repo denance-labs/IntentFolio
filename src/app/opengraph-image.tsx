@@ -109,7 +109,7 @@ export default async function OpengraphImage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 34 }}>
             <div style={{ display: "flex", alignItems: "baseline" }}>
               <span style={{ fontSize: 40, fontWeight: 700 }}>IntentFolio</span>
-              <span style={{ color: BONE_DIM, fontSize: 30 }}>.app</span>
+              <span style={{ color: BONE_DIM, fontSize: 30 }}>.tech</span>
             </div>
             <div style={{ display: "flex", color: BONE_DIM, fontSize: 28 }}>Incubated by Meta Pool</div>
           </div>

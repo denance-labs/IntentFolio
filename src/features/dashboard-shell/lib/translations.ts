@@ -489,11 +489,13 @@ export const shellTranslations = {
     assignFundsPortfolioTitle: "You have {amount} in your funding account — assign funds to “{name}”",
     assignFundsNotNow: "Not now",
     presetReviewRemaining: "{amount} stays in your funding account.",
+    // D-591: the summary under the amounts (assigned, costs, what reaches the portfolio).
+    fundingSummaryAssigned: "You assign",
+    fundingSummaryNet: "Reaches the portfolio",
     // D-528: the Setup's Storage Cost. Never "fee" or "commission"; no mention of a refund.
-    storageCostLabel: "Storage cost (one-time, when creating the portfolio)",
+    storageCostLabel: "Storage cost (one-time)",
     storageCostInfo:
       "NEAR requires locking NEAR to store your portfolio's data on the blockchain. It's paid once; adding funds doesn't charge it.",
-    storageCostNet: "To the portfolio: {amount}",
     storageCostPricesNotLive: "Waiting for current prices to work out the storage cost.",
     storageCostExceedsAmount: "The {token} amount doesn't cover the storage cost ({cost}). Raise it or add another token.",
     storageCostImplausible: "We couldn't work out the storage cost. Nothing was signed; reload the page.",
@@ -1056,10 +1058,11 @@ export const shellTranslations = {
     assignFundsPortfolioTitle: "Tienes {amount} en tu cuenta de fondos — asigna fondos a «{name}»",
     assignFundsNotNow: "Ahora no",
     presetReviewRemaining: "Te quedan {amount} en tu cuenta de fondos.",
-    storageCostLabel: "Costo de almacenamiento (único, al crear el portfolio)",
+    fundingSummaryAssigned: "Asignas",
+    fundingSummaryNet: "Llega al portfolio",
+    storageCostLabel: "Costo de almacenamiento (único)",
     storageCostInfo:
       "NEAR exige bloquear NEAR para guardar los datos de tu portfolio en la blockchain. Se paga una sola vez; agregar fondos no lo cobra.",
-    storageCostNet: "Al portfolio: {amount}",
     storageCostPricesNotLive: "Esperando precios actualizados para calcular el costo de almacenamiento.",
     storageCostExceedsAmount: "El monto de {token} no cubre el costo de almacenamiento ({cost}). Subí el monto o sumá otro token.",
     storageCostImplausible: "No pudimos calcular el costo de almacenamiento. No se firmó nada; recargá la página.",

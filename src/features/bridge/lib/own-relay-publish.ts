@@ -47,7 +47,8 @@ export type OwnRelayPublication = {
   waitForSettlement: SettlementWaiter;
   /**
    * Who signed a transaction this page published: the relayer, not `intents.near`. HOT's delivery
-   * wait reads the settlement back from an RPC that finds a transaction by its sender.
+   * wait passes it to the RPC when it reads the settlement back. Lost on a reload, which is fine:
+   * the RPC finds the transaction under any sender (measured 2026-11-25, see hot-delivery.ts).
    */
   senderOf: (txHash: string) => string | undefined;
 };

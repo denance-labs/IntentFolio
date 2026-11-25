@@ -5,6 +5,6 @@ import sitemap from "./sitemap";
 describe("sitemap", () => {
   it("lists the landing and the guide, and nothing under /dashboard", () => {
     const urls = sitemap().map((entry) => entry.url);
-    expect(urls).toEqual(["https://intentfolio.app", "https://intentfolio.app/learn"]);
+    expect(urls).toEqual(["https://intentfolio.tech", "https://intentfolio.tech/learn"]);
   });
 });

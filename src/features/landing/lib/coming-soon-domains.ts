@@ -1,7 +1,7 @@
 // Which hostnames serve the "coming soon" landing instead of the live app (D-245 follow-up).
 //
 // Empty since the public opening (D-474, 2026-10-12): every domain serves the live app.
-// `intentfolio.app` is the canonical domain; `intentfolio.com` / `intentfolio.online` and the
+// `intentfolio.tech` is the canonical domain (the .tech fund requires it); `intentfolio.app`, `.com` / `.online` and the
 // `www.` aliases redirect to it at the Vercel domain level, not here. The mechanism stays so a
 // domain can be put back into coming-soon mode with one line, e.g. `"intentfolio.app"`.
 // `staging.intentfolio.app`, Vercel preview/production aliases and localhost must never go in.

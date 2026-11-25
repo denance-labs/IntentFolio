@@ -62,6 +62,7 @@ vi.mock("@/features/market/hooks/use-token-prices", async () => {
   return { useTokenPrices: () => ({ prices, isLoading: false }) };
 });
 
+import { depositableTokens } from "@/features/market/lib/token-registry";
 import { AddFundsModal } from "./add-funds-modal";
 
 async function clickPrimary(name: string) {
@@ -199,6 +200,10 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit, real portfolio) — %
     typeNear(lang, "2");
     expect(screen.getByText(shellTranslations[lang].relayGasLabel)).toBeTruthy();
     expect(screen.getByText("0.002 NEAR")).toBeTruthy();
+    // D-591: what is assigned, and what reaches the portfolio once the cost is out.
+    const figures = (label: string) => screen.getByText(label).closest("dt")?.nextElementSibling?.textContent;
+    expect(figures(shellTranslations[lang].fundingSummaryAssigned)).toContain("2 NEAR");
+    expect(figures(shellTranslations[lang].fundingSummaryNet)).toContain("1.998 NEAR");
   });
 
   it("with no amount typed there is nothing to sign", () => {
@@ -469,11 +474,41 @@ describe.each(["en", "es"] as const)("AddFundsModal (edit) — only funds (%s)",
     expect(screen.queryByRole("button", { name: t.addFundsDepositOther })).toBeNull();
   });
 
-  it("a search with no match says so, not that the account is empty", () => {
+  // D-591: the search is for a list too long to read at a glance.
+  it("has no search for a few tokens, and the focus opens on the title, not on an amount", () => {
     renderEdit({ lang, withDeposit: true });
+    expect(screen.queryByLabelText(t.searchToken)).toBeNull();
+    expect(document.activeElement?.textContent).toBe(t.addFundsTitle);
+  });
+
+  it("with more than eight, searches, and a search with no match says so, not that the account is empty", () => {
+    renderEdit({ lang, withDeposit: true, available: new Map(depositableTokens.slice(0, 9).map((token) => [token.id, 10])) });
+    expect(screen.getAllByRole("listitem")).toHaveLength(9);
     fireEvent.change(screen.getByLabelText(t.searchToken), { target: { value: "zzz-none" } });
     expect(document.body.textContent).toContain(t.noTokensFound);
     expect(document.body.textContent).not.toContain(t.addFundsEmpty);
+  });
+
+  it("lists the portfolio's tokens first, the others under what adding them means", () => {
+    renderEdit({ lang, available: new Map([["near", 5], [USDC_ETH, 100]]), compositionTokenIds: ["near"] });
+    const mine = screen.getByRole("list", { name: t.addFundsPortfolioTokens });
+    const others = screen.getByRole("list", { name: shellTranslations[lang].presetReviewOtherTokens });
+    expect(within(mine).getAllByRole("spinbutton")).toHaveLength(1);
+    expect(mine.contains(rowOf("NEAR"))).toBe(true);
+    expect(others.contains(rowOf("USDC(ETH)"))).toBe(true);
+    expect(screen.getByText(shellTranslations[lang].presetReviewOtherTokensNote)).toBeTruthy();
+  });
+
+  it("with no mix yet, no token is outside it", () => {
+    renderEdit({ lang, available: new Map([["near", 5]]), compositionTokenIds: [] });
+    expect(screen.queryByText(shellTranslations[lang].presetReviewOtherTokensNote)).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("the chips are 50% and Max", () => {
+    renderEdit({ lang });
+    const chips = within(rowOf("NEAR")).getAllByRole("button").map((b) => b.textContent);
+    expect(chips).toEqual(["50%", t.withdrawMax]);
   });
 });
 

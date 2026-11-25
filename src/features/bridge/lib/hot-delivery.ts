@@ -255,9 +255,10 @@ export async function waitForHotDelivery(
   return poll<HotDeliveryOutcome>(async () => {
     try {
       if (nonce === null) {
-        // Not the user: the RPC needs the transaction's sender to find it. Since D-589 IntentFolio's
-        // own relayer sends it, and the publish read who that is from the outcome; `intents.near`
-        // stays the fallback it was under the solver relay.
+        // `tx` takes a sender, and it is not the user: since D-589 IntentFolio's own relayer sends it,
+        // and the publish read who that is from the outcome. After a reload that is gone and
+        // `intents.near` goes instead, which is enough: the primary RPC found the relayer's
+        // transactions under any sender, and FastNEAR those of other signers (2026-11-25, D-593).
         const sender = ownRelayPublication.senderOf(p.txHash) ?? config.env.contractID;
         const outcome = await readOutcome(p.txHash, sender);
         nonce = parseHotWithdrawalNonces(outcome)[0] ?? null;

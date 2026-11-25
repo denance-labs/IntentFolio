@@ -72,7 +72,7 @@ export function formatDecimalForInput(value: number): string {
 const PERCENT_CHIP_MAX_DECIMALS = 8;
 
 /**
- * Field text for a percent chip (25/50/75 %): that share of `available`, cut DOWN to what the
+ * Field text for a percent chip (50 %): that share of `available`, cut DOWN to what the
  * token can hold (D-485). Half of 0.351649 USDC (6 decimals) is "0.175824", not "0.1758245" —
  * the 7th decimal cannot be signed, so showing it showed an amount that is not the one moved.
  * Cut down, never rounded up: the chip must not offer more than that share. Max is not this
